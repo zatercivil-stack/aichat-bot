@@ -1,0 +1,135 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="row row-cards">
+  <div class="col-md-3">
+    <div class="card stat-card">
+      <div class="card-body">
+        <div class="stat-label mb-2">PostgreSQL</div>
+        {% if health.db_ok %}
+          <div class="h2 mb-0 text-success">✓ OK</div>
+          <div class="small text-muted">{{ health.db_ms }} ms</div>
+        {% else %}
+          <div class="h2 mb-0 text-danger">✗ FAIL</div>
+          <div class="small text-danger">{{ health.db_error or '—' }}</div>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+  <div class="col-md-3">
+    <div class="card stat-card">
+      <div class="card-body">
+        <div class="stat-label mb-2">Redis</div>
+        {% if health.redis_ok %}
+          <div class="h2 mb-0 text-success">✓ OK</div>
+          <div class="small text-muted">{{ health.redis_ms }} ms</div>
+        {% else %}
+          <div class="h2 mb-0 text-danger">✗ FAIL</div>
+          <div class="small text-danger">{{ health.redis_error or '—' }}</div>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+  <div class="col-md-3">
+    <div class="card stat-card">
+      <div class="card-body">
+        <div class="stat-label mb-2">Последняя AI-активность</div>
+        {% if health.last_msg_min is not none %}
+          {% set m = health.last_msg_min %}
+          <div class="h2 mb-0{% if m < 30 %} text-success{% elif m < 180 %} text-warning{% else %} text-danger{% endif %}">
+            {% if m < 60 %}{{ m }} мин назад
+            {% elif m < 1440 %}{{ (m // 60) }} ч {{ (m % 60) }} мин назад
+            {% else %}{{ (m // 1440) }} д {{ ((m % 1440) // 60) }} ч назад{% endif %}
+          </div>
+          <div class="small text-muted">{{ health.last_msg_tier or '—' }} · любой AI-event</div>
+        {% else %}
+          <div class="h2 mb-0 text-muted">—</div>
+          <div class="small text-muted">нет AI-активности</div>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+  <div class="col-md-3">
+    <div class="card stat-card">
+      <div class="card-body">
+        <div class="stat-label mb-2">Ошибки за час</div>
+        <div class="h2 mb-0{% if health.errors_hour > 10 %} text-danger{% elif health.errors_hour > 3 %} text-warning{% else %} text-muted{% endif %}">{{ health.errors_hour }}</div>
+        <div class="small text-muted">за последние 60 мин</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="card mt-3">
+  <div class="card-header">
+    <h3 class="card-title"><i class="ti ti-activity me-1"></i>Здоровье AI-моделей (последние 5 мин)</h3>
+    <div class="card-actions text-muted small">Зелёный = healthy, оранжевый = в cooldown'е</div>
+  </div>
+  <div class="table-responsive">
+    <table class="table table-vcenter table-sm mb-0">
+      <thead>
+        <tr><th>Модель</th><th class="text-end">Успехов</th><th class="text-end">Фейлов</th><th class="text-end">% успеха</th><th>Статус</th><th>Восстановится через</th></tr>
+      </thead>
+      <tbody>
+      {% for m in model_stats %}
+        <tr>
+          <td><code>{{ m.model }}</code></td>
+          <td class="text-end text-success">{{ m.success }}</td>
+          <td class="text-end{% if m.failure %} text-danger{% endif %}">{{ m.failure }}</td>
+          <td class="text-end">
+            {% if m.success + m.failure > 0 %}
+              <strong{% if m.success_rate < 60 %} class="text-danger"{% elif m.success_rate < 90 %} class="text-warning"{% endif %}>{{ m.success_rate }}%</strong>
+            {% else %}<span class="text-muted">—</span>{% endif %}
+          </td>
+          <td>
+            {% if m.unhealthy %}
+              <span class="badge bg-warning">⏸ cooldown</span>
+            {% elif m.success > 0 %}
+              <span class="badge bg-success">✓ healthy</span>
+            {% else %}
+              <span class="badge bg-secondary">—</span>
+            {% endif %}
+          </td>
+          <td class="text-muted small">{% if m.unhealthy %}через {{ m.cooldown_left // 60 }} мин {{ m.cooldown_left % 60 }} сек{% else %}—{% endif %}</td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<div class="row row-cards mt-3">
+  <div class="col-md-6">
+    <div class="card">
+      <div class="card-header"><h3 class="card-title">Расход (сегодня)</h3></div>
+      <div class="card-body">
+        <table class="table table-borderless mb-0">
+          <tr><td class="text-muted">Сообщений отправлено</td><td class="text-end fw-bold">{{ '{:,}'.format(health.msgs_today) }}</td></tr>
+          <tr><td class="text-muted">Из них в trial</td><td class="text-end">{{ '{:,}'.format(health.trial_today) }}</td></tr>
+          <tr><td class="text-muted">Картинок сгенерировано</td><td class="text-end">{{ '{:,}'.format(health.images_today) }}</td></tr>
+          <tr><td class="text-muted">Фото отредактировано</td><td class="text-end">{{ '{:,}'.format(health.edits_today) }}</td></tr>
+        </table>
+      </div>
+    </div>
+  </div>
+  <div class="col-md-6">
+    <div class="card">
+      <div class="card-header"><h3 class="card-title">Последние 5 ошибок</h3></div>
+      <div class="card-body p-0">
+        <table class="table table-sm mb-0">
+          <tbody>
+          {% for e in recent_errors %}
+            <tr>
+              <td class="text-muted small" style="white-space:nowrap">{{ e.created_at|msk_strftime('%H:%M:%S') if e.created_at else '—' }}</td>
+              <td class="small text-muted" style="max-width:400px;overflow:hidden;text-overflow:ellipsis">{{ e.extra | tojson }}</td>
+            </tr>
+          {% else %}
+            <tr><td class="empty-state" colspan="2">Ошибок нет 🎉</td></tr>
+          {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

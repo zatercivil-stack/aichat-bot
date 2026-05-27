@@ -1,0 +1,48 @@
+{% extends "base.html" %}
+
+{% block content %}
+<form method="post" action="/admin/experiments/create">
+  <div class="card" style="max-width:900px">
+    <div class="card-header"><h3 class="card-title">Новый эксперимент</h3></div>
+    <div class="card-body">
+      <p class="text-muted">A/B-тест распределяет юзеров на варианты по хэшу `user.id`. Назначение стабильное (юзер всегда видит свой вариант). Конверсия трекается на 1-е сообщение и 1-й платёж.</p>
+
+      <div class="mb-3">
+        <label class="form-label">Имя (англ., короткое)</label>
+        <input type="text" name="name" class="form-control" required pattern="[a-z0-9_-]{3,64}" placeholder="welcome_2026_05">
+      </div>
+
+      <div class="mb-3">
+        <label class="form-label">Целевой слот</label>
+        <select name="target" class="form-select">
+          <option value="welcome">welcome — приветствие /start</option>
+        </select>
+        <small class="text-muted">Пока поддерживается welcome. Добавим другие слоты по запросу.</small>
+      </div>
+
+      <div class="mb-3">
+        <label class="form-label">Описание</label>
+        <input type="text" name="description" class="form-control" placeholder="Что тестируем и зачем">
+      </div>
+
+      <div class="mb-3">
+        <label class="form-label">Варианты</label>
+        <small class="text-muted d-block mb-2">2-4 варианта. Поддерживается HTML.</small>
+        <div class="row g-2">
+          {% for k in ['A','B','C','D'] %}
+          <div class="col-md-6">
+            <label class="form-label">Вариант {{ k }}</label>
+            <textarea name="variant_{{ k }}" class="form-control" rows="8" style="font-family:ui-monospace,monospace;font-size:.85rem" placeholder="Текст варианта {{ k }} (HTML). Пусто = не используется."></textarea>
+          </div>
+          {% endfor %}
+        </div>
+      </div>
+
+      <div class="d-flex gap-2">
+        <button type="submit" class="btn btn-primary"><i class="ti ti-rocket me-1"></i>Запустить</button>
+        <a href="/admin/experiments" class="btn btn-outline-secondary">Отмена</a>
+      </div>
+    </div>
+  </div>
+</form>
+{% endblock %}

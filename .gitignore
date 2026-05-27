@@ -1,0 +1,26 @@
+# секреты / окружение
+.env
+.env.*
+!.env.example
+
+# runtime-данные и сгенерированные ассеты (крупные; содержат чувствительное,
+# напр. data/aurum/users.db). Бэкапятся отдельно, в код-репо им не место.
+data/
+
+# python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+
+# логи и дампы БД
+*.log
+*.sql.gz
+*.session
+*.session-journal
+
+# ОС/редактор
+.DS_Store
+.idea/
+.vscode/

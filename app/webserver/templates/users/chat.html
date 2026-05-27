@@ -1,0 +1,58 @@
+{% extends "base.html" %}
+
+{% block header_actions %}
+<div class="col-auto">
+  <a href="/admin/users/{{ user.id }}" class="btn btn-outline-secondary"><i class="ti ti-arrow-left me-1"></i>К профилю</a>
+</div>
+<div class="col-auto">
+  <a href="/admin/users/{{ user.id }}/chat/export.txt" class="btn btn-outline-secondary"><i class="ti ti-file-export me-1"></i>Экспорт TXT</a>
+</div>
+{% endblock %}
+
+{% block content %}
+<div class="card mb-3">
+  <div class="card-body py-2 d-flex align-items-center flex-wrap gap-2">
+    <div>
+      <strong>{% if user.username %}@{{ user.username }}{% else %}{{ user.full_name or '—' }}{% endif %}</strong>
+      <span class="text-muted small ms-2"><code>{{ user.telegram_id }}</code></span>
+    </div>
+    <div class="ms-auto text-muted small">
+      Всего сообщений: <strong>{{ total }}</strong> · показано <strong>{{ messages|length }}</strong>
+    </div>
+  </div>
+</div>
+
+<div class="card">
+  <div class="card-header">
+    <h3 class="card-title"><i class="ti ti-messages me-1"></i>История диалога</h3>
+  </div>
+  <div class="card-body" style="max-height:75vh;overflow-y:auto">
+  {% for m in messages %}
+    <div class="mb-2 p-2 rounded" style="background:{% if m.role == 'user' %}rgba(99,102,241,.08){% else %}rgba(34,197,94,.06){% endif %};border-left:3px solid {% if m.role == 'user' %}#6366f1{% else %}#22c55e{% endif %}">
+      <div class="text-muted small mb-1 d-flex justify-content-between">
+        <span>
+          {% if m.role == 'user' %}<i class="ti ti-user me-1"></i>Пользователь{% else %}<i class="ti ti-robot me-1"></i>Нейра ({{ m.model_key or '—' }}){% endif %}
+        </span>
+        <span>{{ m.created_at|msk_strftime('%d.%m %H:%M:%S') if m.created_at else '' }}{% if m.credits_spent %} · {{ m.credits_spent }}кр{% endif %}</span>
+      </div>
+      <div style="white-space:pre-wrap;font-size:.85rem;word-wrap:break-word">{{ m.content }}</div>
+    </div>
+  {% else %}
+    <div class="empty-state">
+      <div class="empty-icon">💬</div>
+      Сообщений пока нет.
+      <div class="text-muted small mt-1">Логирование сообщений включается с момента деплоя — старые диалоги недоступны.</div>
+    </div>
+  {% endfor %}
+  </div>
+  {% if total_pages > 1 %}
+  <div class="card-footer d-flex justify-content-between">
+    <div class="text-muted">страница {{ page }} из {{ total_pages }}</div>
+    <ul class="pagination m-0">
+      {% if page > 1 %}<li class="page-item"><a class="page-link" href="?page={{ page-1 }}">←</a></li>{% endif %}
+      {% if page < total_pages %}<li class="page-item"><a class="page-link" href="?page={{ page+1 }}">→</a></li>{% endif %}
+    </ul>
+  </div>
+  {% endif %}
+</div>
+{% endblock %}

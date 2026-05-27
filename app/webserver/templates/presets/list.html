@@ -1,0 +1,120 @@
+{% extends "base.html" %}
+
+{% block header_actions %}
+<div class="col-auto ms-auto">
+  <a href="/admin/presets/new" class="btn btn-primary">
+    <i class="ti ti-plus me-1"></i> Новый пресет
+  </a>
+</div>
+{% endblock %}
+
+{% block content %}
+<div class="row row-cards mb-3">
+  <div class="col-sm-4">
+    <div class="card"><div class="card-body">
+      <div class="small text-muted">Кастом-пресетов</div>
+      <div class="h2 mb-0">{{ rows|length }}</div>
+    </div></div>
+  </div>
+  <div class="col-sm-4">
+    <div class="card"><div class="card-body">
+      <div class="small text-muted">Включено</div>
+      <div class="h2 mb-0 text-success">{{ rows|selectattr('p.enabled')|list|length }}</div>
+    </div></div>
+  </div>
+  <div class="col-sm-4">
+    <div class="card"><div class="card-body">
+      <div class="small text-muted">Активная база (рассылка «всем»)</div>
+      <div class="h2 mb-0 gradient-text">{{ '{:,}'.format(total_users) }}</div>
+    </div></div>
+  </div>
+</div>
+
+<div class="alert alert-info">
+  Пресеты, добавленные здесь, мёржатся в каталог бота <b>сразу, без деплоя</b>.
+  Порядок: создать → <b>сгенерить превью</b> (fal, ~$0.12 за муж/жен) → <b>разослать</b>.
+</div>
+
+{% if not rows %}
+<div class="card"><div class="card-body text-center text-muted py-5">
+  Пока нет кастом-пресетов. Жми <b>«Новый пресет»</b> справа сверху.
+</div></div>
+{% else %}
+<div class="card">
+  <div class="table-responsive">
+    <table class="table table-vcenter card-table">
+      <thead><tr>
+        <th>Превью</th><th>Пресет</th><th>Категория</th><th>Режим</th>
+        <th>Использование (30д)</th>
+        <th>Статус</th><th class="text-end">Действия</th>
+      </tr></thead>
+      <tbody>
+      {% for row in rows %}
+        <tr>
+          <td style="width:120px">
+            <div class="d-flex gap-1">
+              {% if row.has_female %}
+                <img src="/admin/presets/{{ row.p.id }}/thumb/0" alt="жен"
+                     style="width:48px;height:64px;object-fit:cover;border-radius:6px" title="женское превью">
+              {% else %}
+                <span class="text-muted small" title="нет женского превью">жен —</span>
+              {% endif %}
+              {% if row.has_male %}
+                <img src="/admin/presets/{{ row.p.id }}/thumb/1" alt="муж"
+                     style="width:48px;height:64px;object-fit:cover;border-radius:6px" title="мужское превью">
+              {% elif not row.p.female_only %}
+                <span class="text-muted small" title="нет мужского превью">муж —</span>
+              {% endif %}
+            </div>
+          </td>
+          <td>
+            <div class="fw-bold">{{ row.p.label }}</div>
+            <div class="text-muted small"><code>{{ row.p.key }}</code></div>
+            {% if row.p.female_only %}<span class="badge bg-pink-lt">только жен</span>{% endif %}
+          </td>
+          <td class="text-muted">{{ row.p.category or '🆕 Новинки' }}</td>
+          <td><span class="badge bg-blue-lt">{{ row.p.quality_mode }}</span></td>
+          <td>
+            <div class="fw-bold">{{ row.gen_count_30d }} ген.</div>
+            {% if row.last_used %}
+              <div class="text-muted small">посл.: {{ row.last_used|msk_strftime('%d.%m %H:%M') }}</div>
+            {% else %}
+              <div class="text-muted small">не использовался</div>
+            {% endif %}
+          </td>
+          <td>
+            {% if row.p.enabled %}<span class="badge bg-success-lt">вкл</span>
+            {% else %}<span class="badge bg-secondary-lt">выкл</span>{% endif %}
+          </td>
+          <td class="text-end">
+            <div class="d-flex flex-column gap-1 align-items-end">
+              <div class="btn-list">
+                <a href="/admin/presets/{{ row.p.id }}/edit" class="btn btn-sm">Изменить</a>
+                <form method="post" action="/admin/presets/{{ row.p.id }}/generate" style="display:inline"
+                      onsubmit="return confirm('Сгенерить превью через fal? Это спишет ~$0.12 за каждое (муж+жен).')">
+                  <button class="btn btn-sm btn-outline-primary">Сгенерить превью</button>
+                </form>
+                <form method="post" action="/admin/presets/{{ row.p.id }}/toggle" style="display:inline">
+                  <button class="btn btn-sm">{{ 'Выключить' if row.p.enabled else 'Включить' }}</button>
+                </form>
+                <form method="post" action="/admin/presets/{{ row.p.id }}/delete" style="display:inline"
+                      onsubmit="return confirm('Удалить пресет «{{ row.p.label }}»? Это уберёт его из каталога.')">
+                  <button class="btn btn-sm btn-outline-danger">Удалить</button>
+                </form>
+              </div>
+              {% if row.has_female or row.has_male %}
+              <a href="/admin/presets/{{ row.p.id }}/broadcast"
+                 class="btn btn-sm btn-success">📢 Разослать…</a>
+              {% else %}
+              <span class="text-muted small">сначала сгенерь превью →</span>
+              {% endif %}
+            </div>
+          </td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endif %}
+{% endblock %}

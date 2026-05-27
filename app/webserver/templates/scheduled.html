@@ -1,0 +1,51 @@
+{% extends "base.html" %}
+
+{% block content %}
+{% if not items %}
+<div class="card"><div class="card-body text-center text-muted py-5">
+  Нет запланированных рассылок. Создавай их на странице рассылки пресета —
+  поле «Отправить в».
+</div></div>
+{% else %}
+<div class="card">
+  <div class="table-responsive">
+    <table class="table table-vcenter card-table">
+      <thead><tr>
+        <th>Пресет</th><th>Аудитория</th><th>Когда (МСК)</th><th>Статус</th>
+        <th class="text-end">Действия</th>
+      </tr></thead>
+      <tbody>
+      {% for it in items %}
+        <tr>
+          <td>
+            <div class="fw-bold">{{ it.label }}</div>
+            <div class="text-muted small"><code>{{ it.key }}</code></div>
+          </td>
+          <td><code class="small">{{ it.sb.audience }}</code></td>
+          <td>{{ it.sb.send_at|msk_strftime('%d.%m %H:%M') }}</td>
+          <td>
+            {% if it.sb.status == 'pending' %}<span class="badge bg-warning-lt">ждёт</span>
+            {% elif it.sb.status == 'running' %}<span class="badge bg-info-lt">отправляется</span>
+            {% elif it.sb.status == 'sent' %}<span class="badge bg-success-lt">отправлено</span>
+            {% elif it.sb.status == 'cancelled' %}<span class="badge bg-secondary-lt">отменено</span>
+            {% elif it.sb.status == 'failed' %}<span class="badge bg-danger-lt" title="{{ it.sb.error }}">ошибка</span>
+            {% else %}<span class="badge bg-secondary-lt">{{ it.sb.status }}</span>{% endif %}
+          </td>
+          <td class="text-end">
+            {% if it.sb.status == 'pending' %}
+              <form method="post" action="/admin/scheduled/{{ it.sb.id }}/cancel" style="display:inline"
+                    onsubmit="return confirm('Отменить отложенную рассылку?')">
+                <button class="btn btn-sm btn-outline-danger">Отменить</button>
+              </form>
+            {% else %}
+              <span class="text-muted small">—</span>
+            {% endif %}
+          </td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endif %}
+{% endblock %}

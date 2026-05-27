@@ -1,0 +1,68 @@
+{% extends "base.html" %}
+
+{% block header_actions %}
+<div class="col-auto">
+  <a href="/admin/broadcasts" class="btn btn-outline-secondary"><i class="ti ti-arrow-left me-1"></i>К списку</a>
+</div>
+{% endblock %}
+
+{% block content %}
+<div class="row row-cards">
+  <div class="col-md-6">
+    <div class="card">
+      <div class="card-header"><h3 class="card-title"><i class="ti ti-info-circle me-1"></i>Основное</h3></div>
+      <div class="card-body">
+        <table class="table table-borderless mb-0">
+          <tr><td class="text-muted w-50">Источник</td><td>
+            {% if broadcast.source == 'velum' %}🟦 Velum VPN
+            {% elif broadcast.source == 'aurum' %}🟨 Aurum VPN
+            {% elif broadcast.source == 'neyra' %}🟩 Neyra AI
+            {% else %}{{ broadcast.source }}{% endif %}
+          </td></tr>
+          <tr><td class="text-muted">Промокод</td><td><code>{{ broadcast.promo_code }}</code></td></tr>
+          <tr><td class="text-muted">Получателей</td><td>{{ '{:,}'.format(broadcast.total_recipients) }}</td></tr>
+          <tr><td class="text-muted">Доставлено</td><td class="text-success fw-bold">{{ '{:,}'.format(broadcast.sent_count) }}</td></tr>
+          <tr><td class="text-muted">Заблокировано</td><td class="text-danger">{{ '{:,}'.format(broadcast.blocked_count) }}</td></tr>
+          <tr><td class="text-muted">Ошибок</td><td class="text-warning">{{ '{:,}'.format(broadcast.error_count) }}</td></tr>
+          <tr><td class="text-muted">Кликов по кнопке</td><td class="text-info fw-bold">{{ '{:,}'.format(broadcast.click_count or 0) }}</td></tr>
+          <tr><td class="text-muted">CTR (клики / доставка)</td><td>
+            {% if broadcast.sent_count %}
+              <b>{{ '{:.1f}'.format((broadcast.click_count or 0) * 100 / broadcast.sent_count) }}%</b>
+            {% else %}—{% endif %}
+          </td></tr>
+          <tr><td class="text-muted">Длительность</td><td>{{ broadcast.duration_seconds or '—' }} сек</td></tr>
+          <tr><td class="text-muted">Статус</td><td>
+            {% if broadcast.status == 'completed' %}<span class="badge bg-success">Завершена</span>
+            {% elif broadcast.status == 'failed' %}<span class="badge bg-danger">Ошибка</span>
+            {% else %}<span class="badge bg-warning">{{ broadcast.status }}</span>{% endif %}
+          </td></tr>
+          <tr><td class="text-muted">Лог-файл</td><td><code class="small">{{ broadcast.log_file or '—' }}</code></td></tr>
+        </table>
+      </div>
+    </div>
+  </div>
+  <div class="col-md-6">
+    <div class="card">
+      <div class="card-header"><h3 class="card-title"><i class="ti ti-trending-up me-1"></i>Конверсия промокода <code>{{ broadcast.promo_code }}</code></h3></div>
+      <div class="card-body">
+        <p class="text-muted small">Активаций промокода после получения рассылки (live):</p>
+        <canvas id="convChart" height="120"></canvas>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+fetch('/admin/api/promos/{{ broadcast.promo_code }}/conversion')
+  .then(r => r.json())
+  .then(d => {
+    new Chart(document.getElementById('convChart'), {
+      type: 'bar',
+      data: {labels: ['Отправлено', 'Доставлено', 'Активаций'], datasets: [{data: [d.total_sent, d.delivered, d.clicked], backgroundColor: ['#6366f1', '#22c55e', '#a855f7'], borderRadius: 8}]},
+      options: {plugins: {legend: {display: false}}, scales: {y: {beginAtZero: true, grid: {color: '#262a44'}}, x: {grid: {color: '#262a44'}}}}
+    });
+  });
+</script>
+{% endblock %}

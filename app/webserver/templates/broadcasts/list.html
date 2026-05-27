@@ -1,0 +1,79 @@
+{% extends "base.html" %}
+
+{% block header_actions %}
+<div class="col-auto">
+  <a href="/admin/broadcasts/photo" class="btn btn-outline-secondary"><i class="ti ti-photo me-1"></i>Фото-шаблоны</a>
+</div>
+<div class="col-auto">
+  <a href="/admin/broadcast" class="btn btn-primary"><i class="ti ti-send me-1"></i>Текстовая рассылка</a>
+</div>
+{% endblock %}
+
+{% block content %}
+<div class="card mb-3">
+  <div class="card-body">
+    <form method="get" class="d-flex gap-2 align-items-end">
+      <div>
+        <label class="form-label">Источник</label>
+        <select name="source" class="form-select" style="width:200px">
+          <option value="">Все</option>
+          <option value="velum" {% if source=='velum' %}selected{% endif %}>Velum</option>
+          <option value="aurum" {% if source=='aurum' %}selected{% endif %}>Aurum</option>
+          <option value="neyra" {% if source=='neyra' %}selected{% endif %}>Neyra</option>
+        </select>
+      </div>
+      <button class="btn btn-primary"><i class="ti ti-filter me-1"></i>Фильтр</button>
+    </form>
+  </div>
+</div>
+
+<div class="card">
+  <div class="card-header"><h3 class="card-title">Всего: <strong>{{ '{:,}'.format(total) }}</strong></h3></div>
+  <div class="table-responsive">
+    <table class="table table-vcenter mb-0">
+      <thead>
+        <tr><th>ID</th><th>Источник</th><th>Промокод</th><th class="text-end">Получателей</th><th class="text-end">Доставлено</th><th class="text-end">Заблок.</th><th class="text-end">Ошибки</th><th>Старт</th><th>Финиш</th><th>Длит.</th><th>Статус</th><th></th></tr>
+      </thead>
+      <tbody>
+      {% for b in broadcasts %}
+        <tr>
+          <td>#{{ b.id }}</td>
+          <td>
+            {% if b.source == 'velum' %}<span class="badge bg-info">Velum</span>
+            {% elif b.source == 'aurum' %}<span class="badge bg-warning">Aurum</span>
+            {% elif b.source == 'neyra' %}<span class="badge bg-primary">Neyra</span>
+            {% else %}<span class="badge bg-secondary">{{ b.source }}</span>{% endif %}
+          </td>
+          <td><code>{{ b.promo_code }}</code></td>
+          <td class="text-end">{{ '{:,}'.format(b.total_recipients) }}</td>
+          <td class="text-end text-success fw-semibold">{{ '{:,}'.format(b.sent_count) }}</td>
+          <td class="text-end text-danger">{{ '{:,}'.format(b.blocked_count) }}</td>
+          <td class="text-end text-warning">{{ '{:,}'.format(b.error_count) }}</td>
+          <td class="text-muted">{{ b.started_at|msk_strftime('%d.%m %H:%M') if b.started_at else '—' }}</td>
+          <td class="text-muted">{{ b.completed_at|msk_strftime('%d.%m %H:%M') if b.completed_at else '—' }}</td>
+          <td class="text-muted">{{ b.duration_seconds or '—' }}с</td>
+          <td>
+            {% if b.status == 'completed' %}<span class="badge bg-success">✓ ok</span>
+            {% elif b.status == 'failed' %}<span class="badge bg-danger">✗ fail</span>
+            {% elif b.status == 'running' %}<span class="badge bg-warning">⟳ run</span>
+            {% else %}<span class="badge bg-secondary">{{ b.status }}</span>{% endif %}
+          </td>
+          <td><a href="/admin/broadcasts/{{ b.id }}" class="btn btn-sm btn-outline-secondary"><i class="ti ti-arrow-right"></i></a></td>
+        </tr>
+      {% else %}
+        <tr><td colspan="12" class="empty-state">Нет рассылок</td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% if total_pages > 1 %}
+  <div class="card-footer d-flex justify-content-between">
+    <div class="text-muted">страница {{ page }} из {{ total_pages }}</div>
+    <ul class="pagination m-0">
+      {% if page > 1 %}<li class="page-item"><a class="page-link" href="?page={{ page-1 }}&source={{ source }}">←</a></li>{% endif %}
+      {% if page < total_pages %}<li class="page-item"><a class="page-link" href="?page={{ page+1 }}&source={{ source }}">→</a></li>{% endif %}
+    </ul>
+  </div>
+  {% endif %}
+</div>
+{% endblock %}

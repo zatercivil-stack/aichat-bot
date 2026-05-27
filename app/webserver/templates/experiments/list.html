@@ -1,0 +1,36 @@
+{% extends "base.html" %}
+
+{% block header_actions %}
+<div class="col-auto">
+  <a href="/admin/experiments/new" class="btn btn-primary"><i class="ti ti-plus me-1"></i>Новый эксперимент</a>
+</div>
+{% endblock %}
+
+{% block content %}
+<div class="card">
+  <div class="card-header"><h3 class="card-title">Все эксперименты</h3></div>
+  <div class="table-responsive">
+    <table class="table table-vcenter mb-0">
+      <thead>
+        <tr><th>ID</th><th>Имя</th><th>Цель</th><th>Вариантов</th><th class="text-end">Назначений</th><th>Статус</th><th>Создан</th><th></th></tr>
+      </thead>
+      <tbody>
+      {% for e in experiments %}
+        <tr>
+          <td>#{{ e.id }}</td>
+          <td><strong>{{ e.name }}</strong>{% if e.description %}<div class="text-muted small">{{ e.description }}</div>{% endif %}</td>
+          <td><code>{{ e.target }}</code></td>
+          <td>{{ e.variants|length }}</td>
+          <td class="text-end">{{ counts.get(e.id, 0) }}</td>
+          <td>{% if e.is_active %}<span class="badge bg-success">Активен</span>{% else %}<span class="badge bg-secondary">Off</span>{% endif %}</td>
+          <td class="text-muted">{{ e.created_at|msk_strftime('%d.%m.%Y') if e.created_at else '—' }}</td>
+          <td><a href="/admin/experiments/{{ e.id }}" class="btn btn-sm btn-outline-secondary">Результаты</a></td>
+        </tr>
+      {% else %}
+        <tr><td colspan="8" class="empty-state">Экспериментов нет. <a href="/admin/experiments/new">Создать</a></td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}

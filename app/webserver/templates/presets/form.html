@@ -1,0 +1,120 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="row justify-content-center">
+  <div class="col-lg-9">
+    <form method="post"
+          action="{% if preset %}/admin/presets/{{ preset.id }}/update{% else %}/admin/presets/create{% endif %}">
+      <div class="card">
+        <div class="card-header">
+          <h3 class="card-title">
+            {{ 'Редактировать пресет' if preset else 'Новый пресет' }}
+            {% if is_override %}<span class="badge bg-warning-lt ms-2"
+              title="Этот custom-пресет переопределяет встроенный хардкод. Удаление вернёт хардкод обратно как было.">⚙ override хардкода</span>{% endif %}
+          </h3>
+        </div>
+        <div class="card-body">
+
+          <div class="mb-3">
+            <label class="form-label required">Ключ (латиницей, уникальный)</label>
+            {% if preset %}
+              <input type="text" class="form-control" value="{{ preset.key }}" disabled>
+              <div class="form-hint">Ключ менять нельзя — к нему привязаны превью.</div>
+            {% else %}
+              <input type="text" name="key" class="form-control" placeholder="напр. neon_dragon"
+                     pattern="[a-z0-9_]+" required>
+              <div class="form-hint">Только латиница, цифры, _. Пример: <code>marble_punk</code></div>
+            {% endif %}
+          </div>
+
+          <div class="mb-3">
+            <label class="form-label required">Название (с эмодзи, видят юзеры)</label>
+            <input type="text" name="label" class="form-control" maxlength="128"
+                   value="{{ preset.label if preset else '' }}" placeholder="🐉 Неоновый дракон" required>
+          </div>
+
+          <div class="row">
+            <div class="col-md-6 mb-3">
+              <label class="form-label">Категория</label>
+              <select name="category" class="form-select">
+                <option value="">🆕 Новинки (по умолчанию)</option>
+                {% for c in categories %}
+                  <option value="{{ c }}" {% if preset and preset.category == c %}selected{% endif %}>{{ c }}</option>
+                {% endfor %}
+              </select>
+            </div>
+            <div class="col-md-6 mb-3">
+              <label class="form-label">Режим / цена</label>
+              <select name="quality_mode" class="form-select">
+                <option value="quality" {% if not preset or preset.quality_mode == 'quality' %}selected{% endif %}>quality — 2K, 200 кр</option>
+                <option value="fast" {% if preset and preset.quality_mode == 'fast' %}selected{% endif %}>fast — быстро, 40 кр</option>
+              </select>
+            </div>
+          </div>
+
+          <div class="mb-3">
+            <label class="form-check">
+              <input type="checkbox" name="female_only" value="1" class="form-check-input"
+                     {% if preset and preset.female_only %}checked{% endif %}>
+              <span class="form-check-label">Только для девушек (мужчинам не показывать)</span>
+            </label>
+            <label class="form-check">
+              <input type="checkbox" name="featured" value="1" class="form-check-input"
+                     {% if preset and preset.featured %}checked{% endif %}>
+              <span class="form-check-label">⭐ Featured (хит — первым в категории каталога)</span>
+            </label>
+          </div>
+
+          <div class="mb-3">
+            <label class="form-label required">Промпт (англ., основной)</label>
+            <textarea name="prompt" class="form-control" rows="6" required
+                      placeholder="Repaint as a ... portrait. ...">{{ preset.prompt if preset else '' }}</textarea>
+            <div class="form-hint">Identity-lock добавляется автоматически — лицо описывать не нужно.</div>
+          </div>
+
+          <div class="mb-3">
+            <label class="form-label">Мужская версия промпта (необязательно)</label>
+            <textarea name="male_prompt" class="form-control" rows="4"
+                      placeholder="Оставь пустым — тогда к основному добавится masculine-суффикс автоматически.">{{ preset.male_prompt or '' if preset else '' }}</textarea>
+            <div class="form-hint">Заполняй, если в основном промпте вшиты женские детали (платье, серьги, причёска).</div>
+          </div>
+
+        </div>
+        <div class="card-footer d-flex">
+          <a href="/admin/presets" class="btn btn-link">Отмена</a>
+          <button type="submit" class="btn btn-primary ms-auto">
+            {{ 'Сохранить' if preset else 'Создать пресет' }}
+          </button>
+        </div>
+      </div>
+    </form>
+
+    {% if not preset %}
+    <div class="alert alert-info mt-3">
+      После создания нажми <b>«Сгенерить превью»</b> в списке — бот сделает 2K-картинки
+      (жен + муж) и пришлёт их тебе в Telegram. Потом появится кнопка <b>«Разослать»</b>.
+    </div>
+
+    <details class="mt-4">
+      <summary class="text-muted small" style="cursor:pointer">
+        📦 Импорт пачкой через JSON
+      </summary>
+      <form method="post" action="/admin/presets/import" class="mt-2"
+            onsubmit="return confirm('Импортировать пресеты из JSON?')">
+        <div class="card">
+          <div class="card-body">
+            <p class="small text-muted">
+              Массив объектов с полями <code>key, label, prompt, male_prompt, category, quality_mode, female_only, featured</code>.
+              Дубликаты и пресеты с занятым ключом пропускаются. Превью не генерятся — только записи в БД.
+            </p>
+            <textarea name="payload" class="form-control" rows="10" required
+                      placeholder='[{"key":"neon_dragon","label":"🐉 Неоновый дракон","prompt":"Repaint as ..."}, ...]'></textarea>
+            <button class="btn btn-outline-primary mt-2">Импортировать</button>
+          </div>
+        </div>
+      </form>
+    </details>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}

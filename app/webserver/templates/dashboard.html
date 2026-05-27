@@ -1,0 +1,248 @@
+{% extends "base.html" %}
+
+{% block content %}
+{% if alerts %}
+  {% for a in alerts %}
+    <div class="alert alert-{{ a.level }} d-flex align-items-center">
+      <i class="ti ti-alert-triangle me-2"></i>{{ a.text }}
+    </div>
+  {% endfor %}
+{% endif %}
+<div class="row row-cards">
+  <div class="col-sm-6 col-lg-3">
+    <div class="card stat-card" style="--accent:linear-gradient(135deg,#6366f1,#a855f7)">
+      <div class="card-body">
+        <div class="stat-label mb-2">Всего пользователей</div>
+        <div class="d-flex align-items-baseline">
+          <div class="h1 me-2 mb-0">{{ '{:,}'.format(stats.total_users) }}</div>
+        </div>
+        <div class="stat-trend trend-up mt-1">
+          <i class="ti ti-trending-up"></i> +{{ stats.new_today }} сегодня
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="col-sm-6 col-lg-3">
+    <div class="card stat-card" style="--accent:linear-gradient(135deg,#22c55e,#16a34a)">
+      <div class="card-body">
+        <div class="stat-label mb-2">Активные сегодня</div>
+        <div class="h1 mb-0">{{ '{:,}'.format(stats.active_today) }}</div>
+        <div class="stat-trend text-muted mt-1">{{ '{:,}'.format(stats.active_week) }} за 7 дней</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="col-sm-6 col-lg-3">
+    <div class="card stat-card" style="--accent:linear-gradient(135deg,#3b82f6,#1d4ed8)">
+      <div class="card-body">
+        <div class="stat-label mb-2">Сообщений сегодня</div>
+        <div class="h1 mb-0">{{ '{:,}'.format(stats.messages_today) }}</div>
+        <div class="stat-trend text-muted mt-1">{{ '{:,}'.format(stats.messages_week) }} за 7 дней</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="col-sm-6 col-lg-3">
+    <div class="card stat-card" style="--accent:linear-gradient(135deg,#ec4899,#db2777)">
+      <div class="card-body">
+        <div class="stat-label mb-2">Выручка за месяц</div>
+        <div class="h1 mb-0">₽{{ '{:,.0f}'.format(stats.revenue_month) }}</div>
+        <div class="stat-trend text-muted mt-1">₽{{ '{:,.0f}'.format(stats.revenue_today) }} сегодня</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="row row-cards mt-3">
+  <div class="col-sm-3">
+    <div class="card stat-card text-center">
+      <div class="card-body">
+        <div class="stat-label mb-2"><i class="ti ti-wand me-1"></i>Правок фото (7д)</div>
+        <div class="h1 mb-0 gradient-text">{{ '{:,}'.format(stats.image_edits_week) }}</div>
+        <div class="stat-trend text-muted mt-1">{{ '{:,}'.format(stats.image_edits_today) }} сегодня</div>
+      </div>
+    </div>
+  </div>
+  <div class="col-sm-3">
+    <div class="card stat-card text-center">
+      <div class="card-body">
+        <div class="stat-label mb-2"><i class="ti ti-mask me-1"></i>Face-swap (7д)</div>
+        <div class="h1 mb-0 gradient-text">{{ '{:,}'.format(stats.face_swaps_week) }}</div>
+      </div>
+    </div>
+  </div>
+  <div class="col-sm-3">
+    <div class="card stat-card text-center">
+      <div class="card-body">
+        <div class="stat-label mb-2"><i class="ti ti-microphone me-1"></i>Голосовых (7д)</div>
+        <div class="h1 mb-0 gradient-text">{{ '{:,}'.format(stats.voice_week) }}</div>
+      </div>
+    </div>
+  </div>
+  <div class="col-sm-3">
+    <div class="card stat-card text-center"
+         style="border-left:3px solid {% if fal_balance_usd is none %}#6b7280{% elif fal_balance_usd < 1 %}#ef4444{% elif fal_balance_usd < 5 %}#f59e0b{% else %}#22c55e{% endif %}">
+      <div class="card-body">
+        <div class="stat-label mb-2"><i class="ti ti-wallet me-1"></i>fal-баланс</div>
+        <div class="h1 mb-0">
+          {% if fal_balance_usd is none %}—{% else %}${{ '{:.2f}'.format(fal_balance_usd) }}{% endif %}
+        </div>
+        <form method="post" action="/admin/api/fal-sync" class="mt-1">
+          <button class="btn btn-sm btn-ghost-primary" title="Запросить реальный баланс у fal API">
+            <i class="ti ti-refresh"></i> Синхр.
+          </button>
+        </form>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="row row-cards mt-3">
+  <div class="col-md-4">
+    <div class="card">
+      <div class="card-header">
+        <h3 class="card-title"><i class="ti ti-bolt me-1"></i> Быстрые действия</h3>
+      </div>
+      <div class="card-body">
+        <div class="d-grid gap-2">
+          <a href="/admin/broadcast" class="btn btn-primary"><i class="ti ti-send me-1"></i>Запустить рассылку</a>
+          <a href="/admin/promos" class="btn btn-outline-secondary"><i class="ti ti-ticket me-1"></i>Создать промокод</a>
+          <a href="/admin/pricing" class="btn btn-outline-secondary"><i class="ti ti-tag me-1"></i>Изменить цены</a>
+          <a href="/admin/logs" class="btn btn-outline-secondary"><i class="ti ti-activity me-1"></i>Live-логи</a>
+        </div>
+      </div>
+    </div>
+    <div class="card mt-3">
+      <div class="card-header">
+        <h3 class="card-title"><i class="ti ti-broadcast me-1"></i> Последние рассылки</h3>
+        <div class="card-actions"><a href="/admin/broadcasts" class="btn btn-ghost-primary btn-sm">Все →</a></div>
+      </div>
+      <div class="card-body p-0">
+        <table class="table table-sm mb-0">
+          <thead><tr><th>ID</th><th>Источник</th><th class="text-end">Доставлено</th><th class="text-center">Статус</th></tr></thead>
+          <tbody>
+          {% for b in recent_broadcasts %}
+            <tr>
+              <td><a href="/admin/broadcasts/{{ b.id }}" class="text-decoration-none">#{{ b.id }}</a></td>
+              <td><span class="badge bg-indigo-lt">{{ b.source }}</span></td>
+              <td class="text-end fw-semibold text-success">{{ '{:,}'.format(b.sent_count) }}</td>
+              <td class="text-center">
+                {% if b.status == 'completed' %}<span class="badge bg-success">✓</span>
+                {% elif b.status == 'failed' %}<span class="badge bg-danger">✗</span>
+                {% elif b.status == 'running' %}<span class="badge bg-warning">⟳</span>
+                {% else %}<span class="badge bg-secondary">?</span>{% endif %}
+              </td>
+            </tr>
+          {% else %}
+            <tr><td colspan="4" class="empty-state">Пока нет рассылок</td></tr>
+          {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <div class="col-md-4">
+    <div class="card">
+      <div class="card-header">
+        <h3 class="card-title"><i class="ti ti-trophy me-1"></i> Топ промокодов</h3>
+        <div class="card-actions"><a href="/admin/promos" class="btn btn-ghost-primary btn-sm">Все →</a></div>
+      </div>
+      <div class="card-body p-0">
+        <table class="table table-sm mb-0">
+          <thead><tr><th>Код</th><th class="text-end">Кредиты</th><th class="text-end">Активаций</th></tr></thead>
+          <tbody>
+          {% for p in top_promos %}
+            <tr>
+              <td><code>{{ p.code }}</code></td>
+              <td class="text-end">{{ p.credits }}</td>
+              <td class="text-end fw-semibold">{{ '{:,}'.format(p.used_count) }}</td>
+            </tr>
+          {% else %}
+            <tr><td colspan="3" class="empty-state">Нет данных</td></tr>
+          {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <div class="col-md-4">
+    <div class="card h-100">
+      <div class="card-header">
+        <h3 class="card-title"><i class="ti ti-flame me-1"></i> Топ пресетов (7д)</h3>
+        <div class="card-actions"><a href="/admin/presets" class="btn btn-ghost-primary btn-sm">Все →</a></div>
+      </div>
+      <div class="card-body p-0">
+        <table class="table table-sm mb-0">
+          <thead><tr><th>Пресет</th><th class="text-end">Правок</th></tr></thead>
+          <tbody>
+          {% for p in top_presets %}
+            <tr>
+              <td>{{ p.label }}<div class="text-muted small"><code>{{ p.key }}</code></div></td>
+              <td class="text-end fw-semibold">{{ '{:,}'.format(p.cnt) }}</td>
+            </tr>
+          {% else %}
+            <tr><td colspan="2" class="empty-state small">
+              Пока нет данных за 7 дней.<br>
+              <span class="text-muted">Топ начнёт заполняться с новых генераций
+              (preset_key пишется с 22.05.2026). Тех-юзеры (админ, @grelok) не считаются.</span>
+            </td></tr>
+          {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="row row-cards mt-3">
+  <div class="col-md-7">
+    <div class="card">
+      <div class="card-header">
+        <h3 class="card-title"><i class="ti ti-user-plus me-1"></i> Новые пользователи (14 дней)</h3>
+      </div>
+      <div class="card-body">
+        <canvas id="usersChart" height="80"></canvas>
+      </div>
+    </div>
+  </div>
+  <div class="col-md-5">
+    <div class="card">
+      <div class="card-header">
+        <h3 class="card-title"><i class="ti ti-wand me-1"></i> Правки фото (14 дней)</h3>
+      </div>
+      <div class="card-body">
+        <canvas id="editsChart" height="120"></canvas>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+const days = {{ chart_days|tojson }};
+const newUsers = {{ chart_new_users|tojson }};
+const editDays = {{ chart_edit_days|tojson }};
+const editCounts = {{ chart_edit_counts|tojson }};
+
+new Chart(document.getElementById('usersChart'), {
+  type: 'bar',
+  data: {labels: days, datasets: [{label: 'Новые юзеры', data: newUsers, backgroundColor: 'rgba(99,102,241,.7)', borderColor: '#6366f1', borderWidth: 0, borderRadius: 6}]},
+  options: {plugins: {legend: {display: false}}, scales: {x: {grid: {color: '#262a44'}}, y: {grid: {color: '#262a44'}, beginAtZero: true}}}
+});
+
+// Правки фото (14 дней) — заменил прежний график «Сообщения», т.к. фото-правка
+// теперь главная фишка, а чат — вторичное действие.
+const editGrad = document.getElementById('editsChart').getContext('2d').createLinearGradient(0, 0, 0, 200);
+editGrad.addColorStop(0, 'rgba(236,72,153,.3)');
+editGrad.addColorStop(1, 'rgba(236,72,153,0)');
+new Chart(document.getElementById('editsChart'), {
+  type: 'line',
+  data: {labels: editDays, datasets: [{label: 'Правки фото', data: editCounts, backgroundColor: editGrad, borderColor: '#ec4899', fill: true, tension: .35, pointRadius: 0, borderWidth: 2}]},
+  options: {plugins: {legend: {display: false}}, scales: {x: {grid: {color: '#262a44'}}, y: {grid: {color: '#262a44'}, beginAtZero: true}}}
+});
+</script>
+{% endblock %}

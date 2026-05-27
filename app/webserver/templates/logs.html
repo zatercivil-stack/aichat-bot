@@ -1,0 +1,125 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="card mb-3">
+  <div class="card-body">
+    <div class="d-flex flex-wrap align-items-center gap-2">
+      <div class="d-flex align-items-center">
+        <span class="status-indicator status-green status-indicator-animated me-2">
+          <span class="status-indicator-circle"></span>
+          <span class="status-indicator-circle"></span>
+          <span class="status-indicator-circle"></span>
+        </span>
+        <strong id="conn-status">Подключено</strong>
+      </div>
+      <div class="vr mx-2"></div>
+      <label class="form-label mb-0 me-1">Фильтр:</label>
+      <select id="filter-event" class="form-select form-select-sm" style="width:auto">
+        <option value="">Все типы событий</option>
+        <option value="message_sent">Сообщения</option>
+        <option value="payment_succeeded">Платежи</option>
+        <option value="promo_redeemed">Промокоды</option>
+        <option value="user_registered">Регистрации</option>
+        <option value="image_generated">Картинки</option>
+        <option value="voice_sent">Голосовые</option>
+        <option value="vision_analyzed">Фото-анализ</option>
+        <option value="error">Ошибки</option>
+      </select>
+      <input type="text" id="filter-tg" class="form-control form-control-sm" style="width:160px" placeholder="Telegram ID">
+      <div class="ms-auto d-flex gap-2">
+        <button id="btn-pause" class="btn btn-sm btn-outline-warning"><i class="ti ti-player-pause me-1"></i>Пауза</button>
+        <button id="btn-clear" class="btn btn-sm btn-outline-secondary"><i class="ti ti-trash me-1"></i>Очистить</button>
+        <span class="badge bg-secondary" id="line-count">0 строк</span>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="card">
+  <div class="card-header">
+    <h3 class="card-title"><i class="ti ti-activity me-1"></i>Поток событий</h3>
+    <div class="card-actions text-muted small">SSE · обновляется автоматически</div>
+  </div>
+  <div class="card-body">
+    <div id="log-feed" class="log-feed"></div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+const feed = document.getElementById('log-feed');
+const connStatus = document.getElementById('conn-status');
+const lineCount = document.getElementById('line-count');
+const filterEvent = document.getElementById('filter-event');
+const filterTg = document.getElementById('filter-tg');
+const btnPause = document.getElementById('btn-pause');
+const btnClear = document.getElementById('btn-clear');
+
+let paused = false;
+let count = 0;
+let buffer = [];
+const MAX_LINES = 500;
+
+function fmtLine(e) {
+  const t = new Date(e.created_at).toLocaleTimeString('ru-RU');
+  const evtClass = 'evt-' + (e.event_type || 'default');
+  const userPart = e.telegram_id
+    ? `<a href="/admin/users/${e.user_id}" class="text-decoration-none">${e.username ? '@'+e.username : e.telegram_id}</a>`
+    : '<span class="text-muted">—</span>';
+  const modelPart = e.model_key ? `<code>${e.model_key}</code>` : '';
+  const creditsPart = e.credits_spent ? `<span class="text-muted">${e.credits_spent}кр</span>` : '';
+  return `<div class="log-line">
+    <span class="log-time">${t}</span>
+    <span class="log-event ${evtClass}">${e.event_type}</span>
+    ${userPart} ${modelPart} ${creditsPart}
+  </div>`;
+}
+
+function appendLine(e) {
+  if (paused) return;
+  // Apply filters
+  if (filterEvent.value && e.event_type !== filterEvent.value) return;
+  if (filterTg.value && String(e.telegram_id || '') !== filterTg.value) return;
+
+  const div = document.createElement('div');
+  div.innerHTML = fmtLine(e);
+  feed.insertBefore(div.firstElementChild, feed.firstChild);
+  count++;
+
+  while (feed.children.length > MAX_LINES) feed.removeChild(feed.lastChild);
+  lineCount.textContent = count + ' строк';
+}
+
+let evtSource = null;
+function connect() {
+  if (evtSource) evtSource.close();
+  evtSource = new EventSource('/admin/api/events/stream');
+  evtSource.onopen = () => { connStatus.textContent = 'Подключено'; };
+  evtSource.onerror = () => { connStatus.textContent = 'Переподключение...'; };
+  evtSource.onmessage = (m) => {
+    try {
+      const e = JSON.parse(m.data);
+      appendLine(e);
+    } catch (err) {}
+  };
+}
+
+btnPause.addEventListener('click', () => {
+  paused = !paused;
+  btnPause.innerHTML = paused
+    ? '<i class="ti ti-player-play me-1"></i>Продолжить'
+    : '<i class="ti ti-player-pause me-1"></i>Пауза';
+  btnPause.classList.toggle('btn-warning', paused);
+  btnPause.classList.toggle('btn-outline-warning', !paused);
+});
+
+btnClear.addEventListener('click', () => {
+  feed.innerHTML = '';
+  count = 0;
+  lineCount.textContent = '0 строк';
+});
+
+connect();
+</script>
+{% endblock %}

@@ -1,0 +1,150 @@
+{% extends "base.html" %}
+
+{% block content %}
+{% if not summary.available %}
+<div class="card">
+  <div class="card-body">
+    <h3 class="card-title text-danger">⚠️ Aurum-БД недоступна</h3>
+    <p class="text-muted">
+      Файл <code>/app/data/aurum/users.db</code> не найден или повреждён.<br>
+      Проверь cron-job <code>/etc/cron.d/aurum-sync</code> на хост-сервере — должен копировать
+      <code>users.db</code> с Aurum-сервера каждые 5 минут.
+    </p>
+    {% if summary.error %}<p class="small text-muted">Ошибка: <code>{{ summary.error }}</code></p>{% endif %}
+  </div>
+</div>
+{% else %}
+
+{# ── Top KPI cards ─────────────────────────────────────────────────────── #}
+<div class="row row-cards mb-3">
+  <div class="col-sm-6 col-lg-3">
+    <div class="card stat-card">
+      <div class="card-body">
+        <div class="stat-label mb-2">Всего юзеров Aurum</div>
+        <div class="h1 mb-0">{{ '{:,}'.format(summary.total_users) }}</div>
+      </div>
+    </div>
+  </div>
+  <div class="col-sm-6 col-lg-3">
+    <div class="card stat-card">
+      <div class="card-body">
+        <div class="stat-label mb-2">Платящих</div>
+        <div class="h1 mb-0 text-success">{{ '{:,}'.format(summary.paying_users) }}</div>
+        <div class="stat-trend text-muted mt-1">
+          {{ '{:.1f}'.format(summary.paying_users / summary.total_users * 100) if summary.total_users else '—' }}% от всех
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="col-sm-6 col-lg-3">
+    <div class="card stat-card">
+      <div class="card-body">
+        <div class="stat-label mb-2">Выручка Aurum (всё время)</div>
+        <div class="h1 mb-0 gradient-text">₽{{ '{:,.0f}'.format(summary.revenue_total) }}</div>
+      </div>
+    </div>
+  </div>
+  <div class="col-sm-6 col-lg-3">
+    <div class="card stat-card">
+      <div class="card-body">
+        <div class="stat-label mb-2">С источником из канала</div>
+        <div class="h1 mb-0 text-primary">{{ '{:,}'.format(summary.tracked_users) }}</div>
+        <div class="stat-trend text-muted mt-1">
+          {{ '{:,}'.format(summary.landings_total) }} кликов всего
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="card mb-3">
+  <div class="card-body py-2 d-flex align-items-center small text-muted">
+    <i class="ti ti-database me-2"></i>
+    <span>База Aurum синхронизирована
+      {% if summary.db_age_sec is not none %}
+        {% if summary.db_age_sec < 60 %}<strong class="text-success">{{ summary.db_age_sec }} сек назад</strong>
+        {% elif summary.db_age_sec < 600 %}<strong>{{ (summary.db_age_sec // 60) }} мин назад</strong>
+        {% else %}<strong class="text-warning">{{ (summary.db_age_sec // 60) }} мин назад — возможно cron отстаёт</strong>
+        {% endif %}
+      {% endif %}
+    </span>
+    <span class="ms-auto">обновление каждые 5 мин (cron) · только read-only</span>
+  </div>
+</div>
+
+{# ── Funnel by source ──────────────────────────────────────────────────── #}
+<div class="card">
+  <div class="card-header">
+    <h3 class="card-title">
+      <i class="ti ti-funnel me-1"></i>Воронка по источникам трафика
+    </h3>
+  </div>
+  <div class="table-responsive">
+    <table class="table table-vcenter mb-0">
+      <thead>
+        <tr>
+          <th>Source</th>
+          <th class="text-end">Зашло</th>
+          <th class="text-end">Trial</th>
+          <th class="text-end">Платящих</th>
+          <th class="text-end">Конверсия</th>
+          <th class="text-end">Выручка</th>
+          <th class="text-end">ARPPU</th>
+          <th>Период</th>
+        </tr>
+      </thead>
+      <tbody>
+      {% for r in funnel %}
+        <tr>
+          <td><code class="fw-bold">{{ r.source }}</code></td>
+          <td class="text-end">{{ '{:,}'.format(r.users) }}</td>
+          <td class="text-end text-muted">{{ r.trials_used }}</td>
+          <td class="text-end{% if r.payers %} text-success fw-bold{% endif %}">{{ r.payers }}</td>
+          <td class="text-end">
+            {% if r.conv_rate >= 5 %}<span class="text-success fw-bold">{{ r.conv_rate }}%</span>
+            {% elif r.conv_rate >= 1 %}<span class="text-warning">{{ r.conv_rate }}%</span>
+            {% else %}<span class="text-muted">{{ r.conv_rate }}%</span>{% endif %}
+          </td>
+          <td class="text-end fw-bold">{% if r.revenue_rub %}₽{{ '{:,.0f}'.format(r.revenue_rub) }}{% else %}<span class="text-muted">—</span>{% endif %}</td>
+          <td class="text-end text-muted">{% if r.arppu %}₽{{ '{:,.0f}'.format(r.arppu) }}{% else %}—{% endif %}</td>
+          <td class="text-muted small">
+            {% if r.first_signup %}{{ r.first_signup[:10] }}{% if r.last_signup and r.last_signup[:10] != r.first_signup[:10] %} → {{ r.last_signup[:10] }}{% endif %}{% else %}—{% endif %}
+          </td>
+        </tr>
+      {% else %}
+        <tr><td colspan="8" class="empty-state">
+          Пока ни одного перехода с трекингом. Источники появятся когда юзеры начнут
+          кликать <code>https://t.me/Shop_Aurum_Bot?start=chan_daily</code> из постов канала.
+        </td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+{# ── Recent landings ──────────────────────────────────────────────────── #}
+<div class="card mt-3">
+  <div class="card-header">
+    <h3 class="card-title">Последние {{ landings|length }} переходов</h3>
+    <div class="card-actions text-muted small">включая повторные (event «traffic_landed»)</div>
+  </div>
+  <div class="table-responsive">
+    <table class="table table-sm table-vcenter mb-0">
+      <thead><tr><th>Время</th><th>Source</th><th>TG ID</th></tr></thead>
+      <tbody>
+      {% for l in landings %}
+        <tr>
+          <td class="text-muted small">{{ l.created_at[:19] if l.created_at else '—' }}</td>
+          <td><code>{{ l.source }}</code></td>
+          <td class="text-muted small">{{ l.user_id }}</td>
+        </tr>
+      {% else %}
+        <tr><td colspan="3" class="empty-state">Кликов нет</td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+{% endif %}
+{% endblock %}

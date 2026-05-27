@@ -1,0 +1,159 @@
+{% extends "base.html" %}
+
+{% block content %}
+
+{# ── Baseline: реальное число подписчиков из TG vs наш трекер ───────── #}
+<div class="alert alert-info mb-3">
+  <strong>В канале сейчас (по Telegram):</strong>
+  {{ '{:,}'.format(tg_total_subs) if tg_total_subs is not none else '—' }}
+  &nbsp;·&nbsp;
+  <strong>Трекаем с момента включения:</strong>
+  {{ totals.total_joins or 0 }} джойнов / {{ totals.total_leaves or 0 }} левов
+  {% if totals and totals.first_event_ts %}
+    (с {{ totals.first_event_ts|msk_strftime('%d.%m %H:%M') }})
+  {% endif %}
+  <div class="small text-muted mt-1">
+    Разница нормальна: подписчики ДО включения трекинга остаются в TG, но invite-источник
+    для них Telegram не отдаёт. Дашборд считает атрибуцию только для НОВЫХ.
+  </div>
+</div>
+
+{% if not totals or not totals.first_event_ts %}
+<div class="card mb-3">
+  <div class="card-body">
+    <h3 class="card-title">⏳ Пока ни одного отслеженного события</h3>
+    <p class="text-muted mb-0">
+      Бот слушает <code>chat_member</code>-обновления. Чтобы проверить —
+      попроси тестового юзера (или вторую TG-учётку) зайти по invite-ссылке.
+      Через пару секунд строка появится в таблице ниже (F5).
+    </p>
+  </div>
+</div>
+{% else %}
+
+{# ── KPI ─────────────────────────────────────────────────────────────── #}
+<div class="row row-cards mb-3">
+  <div class="col-sm-6 col-lg-3">
+    <div class="card">
+      <div class="card-body">
+        <div class="text-muted mb-2">Всего джойнов</div>
+        <div class="h1 mb-0 text-success">+{{ '{:,}'.format(totals.total_joins or 0) }}</div>
+      </div>
+    </div>
+  </div>
+  <div class="col-sm-6 col-lg-3">
+    <div class="card">
+      <div class="card-body">
+        <div class="text-muted mb-2">Всего левов</div>
+        <div class="h1 mb-0 text-danger">−{{ '{:,}'.format(totals.total_leaves or 0) }}</div>
+      </div>
+    </div>
+  </div>
+  <div class="col-sm-6 col-lg-3">
+    <div class="card">
+      <div class="card-body">
+        <div class="text-muted mb-2">За 24ч</div>
+        <div class="h1 mb-0">
+          <span class="text-success">+{{ totals.joins_24h or 0 }}</span>
+          /
+          <span class="text-danger">−{{ totals.leaves_24h or 0 }}</span>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="col-sm-6 col-lg-3">
+    <div class="card">
+      <div class="card-body">
+        <div class="text-muted mb-2">Чистый прирост</div>
+        <div class="h1 mb-0">{{ (totals.total_joins or 0) - (totals.total_leaves or 0) }}</div>
+        <div class="small text-muted mt-1">
+          с {{ totals.first_event_ts|msk_strftime('%d.%m %H:%M') if totals.first_event_ts else '—' }}
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+{# ── Источники ──────────────────────────────────────────────────────── #}
+<div class="card mb-3">
+  <div class="card-header"><h3 class="card-title">Источники</h3></div>
+  <div class="table-responsive">
+    <table class="table table-vcenter mb-0">
+      <thead>
+        <tr>
+          <th>Источник</th>
+          <th>Имя в TG</th>
+          <th class="text-end">Всего пришло</th>
+          <th class="text-end">Сейчас в канале</th>
+          <th class="text-end">Retention</th>
+          <th class="text-end">За 24ч</th>
+          <th class="text-end">За 7д</th>
+        </tr>
+      </thead>
+      <tbody>
+      {% for s in sources %}
+        <tr>
+          <td>
+            {% if s.link_url == 'organic' %}
+              <span class="badge bg-secondary">organic / @conturD</span>
+            {% else %}
+              <code><a href="{{ s.link_url }}" target="_blank">{{ s.link_url[-12:] }}</a></code>
+            {% endif %}
+          </td>
+          <td>{{ s.link_name or '—' }}</td>
+          <td class="text-end fw-semibold">{{ s.joined }}</td>
+          <td class="text-end">{{ s.still_here }}</td>
+          <td class="text-end">
+            {% set ret = (s.still_here / s.joined * 100) if s.joined else 0 %}
+            {% if ret >= 80 %}<span class="badge bg-success">{{ '{:.0f}'.format(ret) }}%</span>
+            {% elif ret >= 50 %}<span class="badge bg-warning">{{ '{:.0f}'.format(ret) }}%</span>
+            {% else %}<span class="badge bg-danger">{{ '{:.0f}'.format(ret) }}%</span>{% endif %}
+          </td>
+          <td class="text-end text-muted">{{ s.joined_24h }}</td>
+          <td class="text-end text-muted">{{ s.joined_7d }}</td>
+        </tr>
+      {% else %}
+        <tr><td colspan="7" class="text-muted">Пока никого по invite-ссылкам не приходило.</td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  <div class="card-footer text-muted small">
+    <strong>Retention</strong> = доля юзеров, пришедших через эту ссылку и
+    оставшихся в канале (последнее событие = join). Низкий retention с
+    купленного трафика — признак ботов/офферов, которые отписываются.
+  </div>
+</div>
+
+{# ── Последние 30 событий ───────────────────────────────────────────── #}
+<div class="card">
+  <div class="card-header"><h3 class="card-title">Последние события</h3></div>
+  <div class="table-responsive">
+    <table class="table table-vcenter table-sm mb-0">
+      <thead>
+        <tr><th>Когда</th><th>Событие</th><th>User ID</th><th>Через</th></tr>
+      </thead>
+      <tbody>
+      {% for r in recent %}
+        <tr>
+          <td class="text-muted">{{ r.ts|msk_strftime('%d.%m %H:%M:%S') }}</td>
+          <td>
+            {% if r.event == 'join' %}<span class="badge bg-success">+ join</span>
+            {% else %}<span class="badge bg-danger">− leave</span>{% endif %}
+          </td>
+          <td><code>{{ r.user_tg_id }}</code></td>
+          <td>
+            {% if r.via_chat_folder %}<span class="badge bg-info">chat folder</span>
+            {% elif r.invite_link_url %}
+              <span title="{{ r.invite_link_url }}">{{ r.invite_link_name or r.invite_link_url[-12:] }}</span>
+            {% else %}<span class="text-muted">organic</span>{% endif %}
+          </td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+{% endif %}
+{% endblock %}

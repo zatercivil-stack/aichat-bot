@@ -1,0 +1,30 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="card" style="max-width:760px">
+  <div class="card-header"><h3 class="card-title"><i class="ti ti-send me-1"></i>Отправить сообщение пользователям</h3></div>
+  <div class="card-body">
+    <p class="text-muted">Доступных получателей: <strong>{{ '{:,}'.format(total) }}</strong></p>
+    <form method="post" action="/admin/broadcast">
+      <div class="mb-3">
+        <label class="form-label">Аудитория</label>
+        <select name="audience" class="form-select">
+          <option value="test_user">🧪 Тест на @{{ test_user or 'grelok' }} (1 чел)</option>
+          <option value="admin_only">Тест на админа (1 чел)</option>
+          <option value="all">Все активные ({{ '{:,}'.format(total) }})</option>
+          <option value="free">Только Free план</option>
+          <option value="paid">Только платные планы</option>
+        </select>
+      </div>
+      <div class="mb-3">
+        <label class="form-label">Текст сообщения <span class="text-muted">(HTML: &lt;b&gt;, &lt;i&gt;, &lt;code&gt;, &lt;a&gt;)</span></label>
+        <textarea name="text" class="form-control" rows="8" required placeholder="🎁 У нас новинка..."></textarea>
+      </div>
+      <button type="submit" class="btn btn-primary" onclick="return confirm('Запустить рассылку?')">
+        <i class="ti ti-broadcast me-1"></i>Запустить рассылку
+      </button>
+      <a href="/admin/broadcasts" class="btn btn-outline-secondary ms-2">Отмена</a>
+    </form>
+  </div>
+</div>
+{% endblock %}

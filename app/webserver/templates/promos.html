@@ -1,0 +1,266 @@
+{% extends "base.html" %}
+
+{% block content %}
+{# ── Summary KPIs ───────────────────────────────────────────────────────── #}
+<div class="row row-cards mb-3">
+  <div class="col-sm-6 col-lg-3">
+    <div class="card"><div class="card-body">
+      <div class="small text-muted">Всего промокодов</div>
+      <div class="h2 mb-0">{{ totals.count }}</div>
+    </div></div>
+  </div>
+  <div class="col-sm-6 col-lg-3">
+    <div class="card"><div class="card-body">
+      <div class="small text-muted">Активных</div>
+      <div class="h2 mb-0 text-success">{{ totals.active }}</div>
+    </div></div>
+  </div>
+  <div class="col-sm-6 col-lg-3">
+    <div class="card"><div class="card-body">
+      <div class="small text-muted">Всего активаций</div>
+      <div class="h2 mb-0 text-primary">{{ '{:,}'.format(totals.redemptions) }}</div>
+    </div></div>
+  </div>
+  <div class="col-sm-6 col-lg-3">
+    <div class="card"><div class="card-body">
+      <div class="small text-muted">Выдано кредитов</div>
+      <div class="h2 mb-0 gradient-text">{{ '{:,}'.format(totals.credits_issued) }}</div>
+    </div></div>
+  </div>
+</div>
+
+<div class="row row-cards">
+  {# ── Promo table + funnel ──────────────────────────────────────────────── #}
+  <div class="col-lg-8">
+    <div class="card">
+      <div class="card-header d-flex align-items-center">
+        <h3 class="card-title mb-0"><i class="ti ti-ticket me-1"></i>Промокоды</h3>
+        <div class="ms-auto d-flex gap-2 align-items-center">
+          <select class="form-select form-select-sm" style="width:auto"
+                  onchange="location.href = this.value ? '/admin/promos?promo=' + encodeURIComponent(this.value) : '/admin/promos'">
+            <option value="">— Воронка по промокоду —</option>
+            {% for p in promos %}
+            <option value="{{ p.code }}" {% if promo == p.code %}selected{% endif %}>{{ p.code }}</option>
+            {% endfor %}
+          </select>
+          <input type="text" id="promoFilter" class="form-control form-control-sm" style="width:160px"
+                 placeholder="Поиск кода…" oninput="filterPromos(this.value)">
+        </div>
+      </div>
+      <div class="table-responsive">
+        <table class="table table-vcenter mb-0" id="promoTable">
+          <thead>
+            <tr>
+              <th>Код</th>
+              <th class="text-end">Кр.</th>
+              <th>Использовано</th>
+              <th class="text-end">%</th>
+              <th>Истекает</th>
+              <th>Первое</th>
+              <th>Последнее</th>
+              <th>Статус</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody>
+          {% for p in promos %}
+            {% set pct = (p.used_count / p.max_uses * 100) if p.max_uses else 0 %}
+            <tr data-code="{{ p.code|lower }}">
+              <td>
+                <a href="/admin/promos?promo={{ p.code }}"><code>{{ p.code }}</code></a>
+              </td>
+              <td class="text-end fw-semibold">{{ '{:,}'.format(p.credits) }}</td>
+              <td>{{ p.used_count }} / {{ p.max_uses or '∞' }}</td>
+              <td class="text-end">{% if p.max_uses %}{{ '{:.1f}'.format(pct) }}%{% else %}—{% endif %}</td>
+              <td class="text-muted">{{ p.expires_at|msk_strftime('%d.%m.%Y') if p.expires_at else '∞' }}</td>
+              <td class="text-muted">{{ p.first_used|msk_strftime('%d.%m') if p.first_used else '—' }}</td>
+              <td class="text-muted">{{ p.last_used|msk_strftime('%d.%m') if p.last_used else '—' }}</td>
+              <td>
+                {% if p.is_active %}
+                  <span class="badge bg-success">on</span>
+                {% else %}
+                  <span class="badge bg-secondary">off</span>
+                {% endif %}
+              </td>
+              <td class="text-end">
+                <div class="btn-list flex-nowrap">
+                  <button class="btn btn-sm btn-outline-secondary btn-icon"
+                          onclick="copyDeeplink('{{ p.code }}')" title="Скопировать диплинк">
+                    <i class="ti ti-link"></i>
+                  </button>
+                  {% if p.is_active %}
+                  <form method="post" action="/admin/promos/{{ p.id }}/deactivate" class="d-inline"
+                        onsubmit="return confirm('Деактивировать промокод {{ p.code }}?')">
+                    <button class="btn btn-sm btn-outline-danger btn-icon" title="Деактивировать">
+                      <i class="ti ti-power"></i>
+                    </button>
+                  </form>
+                  {% endif %}
+                </div>
+              </td>
+            </tr>
+          {% else %}
+            <tr><td colspan="9" class="empty-state">Промокодов пока нет — создай первый справа</td></tr>
+          {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    {# ── Funnel (only when one promo is selected) ──────────────────────── #}
+    {% if funnel_data %}
+    <div class="card mt-3">
+      <div class="card-header">
+        <h3 class="card-title mb-0">
+          <i class="ti ti-funnel me-1"></i>Воронка: <code>{{ promo }}</code>
+        </h3>
+        <div class="ms-auto"><a href="/admin/promos" class="btn btn-sm btn-outline-secondary">Сбросить</a></div>
+      </div>
+      <div class="card-body">
+        {% set conv_rate = (funnel_data.clicked / funnel_data.delivered * 100) if funnel_data.delivered else 0 %}
+        <div class="row text-center mb-3">
+          <div class="col-4">
+            <div class="h2 mb-0">{{ '{:,}'.format(funnel_data.total_sent) }}</div>
+            <div class="small text-muted">Отправлено в рассылках</div>
+          </div>
+          <div class="col-4">
+            <div class="h2 mb-0 text-success">{{ '{:,}'.format(funnel_data.delivered) }}</div>
+            <div class="small text-muted">Доставлено</div>
+          </div>
+          <div class="col-4">
+            <div class="h2 mb-0 text-primary">{{ '{:,}'.format(funnel_data.clicked) }}</div>
+            <div class="small text-muted">Активаций</div>
+          </div>
+        </div>
+        <div class="progress mb-2" style="height:10px">
+          <div class="progress-bar bg-success" style="width:{{ '{:.1f}'.format(conv_rate) }}%"></div>
+        </div>
+        <small class="text-muted">
+          Конверсия из доставленных: <strong>{{ '{:.1f}'.format(conv_rate) }}%</strong>
+        </small>
+      </div>
+    </div>
+    {% endif %}
+  </div>
+
+  {# ── Create form ───────────────────────────────────────────────────────── #}
+  <div class="col-lg-4">
+    <div class="card">
+      <div class="card-header"><h3 class="card-title"><i class="ti ti-plus me-1"></i>Создать промокод</h3></div>
+      <div class="card-body">
+        <form method="post" action="/admin/promos/create">
+          <div class="mb-3">
+            <label class="form-label">Код</label>
+            <div class="input-group">
+              <input type="text" name="code" id="promoCodeInput" class="form-control" required
+                     placeholder="WELCOME100" autocomplete="off"
+                     pattern="[A-Za-z0-9_-]+" style="text-transform:uppercase">
+              <button type="button" class="btn btn-outline-secondary" onclick="randomCode()" title="Случайный код">
+                <i class="ti ti-dice"></i>
+              </button>
+            </div>
+          </div>
+          <div class="mb-3">
+            <label class="form-label">Кредитов</label>
+            <input type="number" name="credits" class="form-control" value="100" min="1" required>
+          </div>
+          <div class="row">
+            <div class="col-6 mb-3">
+              <label class="form-label">Макс. использований</label>
+              <input type="number" name="max_uses" class="form-control" value="0" min="0">
+              <small class="text-muted">0 = ∞</small>
+            </div>
+            <div class="col-6 mb-3">
+              <label class="form-label">Срок (дней)</label>
+              <input type="number" name="expires_days" class="form-control" value="0" min="0">
+              <small class="text-muted">0 = ∞</small>
+            </div>
+          </div>
+          <button type="submit" class="btn btn-primary w-100">
+            <i class="ti ti-check me-1"></i>Создать
+          </button>
+        </form>
+      </div>
+    </div>
+
+    <div class="card mt-3">
+      <div class="card-header"><h3 class="card-title">ℹ️ Подсказки</h3></div>
+      <div class="card-body small text-muted">
+        <ul class="ps-3 mb-2">
+          <li><strong>Диплинк</strong> — кнопка <i class="ti ti-link"></i> копирует ссылку вида
+            <code>t.me/{{ bot_username or 'NeyraChatBot' }}?start=promo_CODE</code></li>
+          <li><strong>Активаций</strong> = реальные срабатывания в боте</li>
+          <li><strong>Конверсия</strong> = Активаций / Доставлено (из рассылок)</li>
+        </ul>
+        {% if msg %}
+        <div class="alert alert-success py-2 mb-0">{{ msg }}</div>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+const BOT_USERNAME = "{{ bot_username or 'NeyraChatBot' }}";
+
+function filterPromos(q) {
+  const needle = (q || '').toLowerCase().trim();
+  document.querySelectorAll('#promoTable tbody tr[data-code]').forEach(tr => {
+    tr.style.display = !needle || tr.dataset.code.includes(needle) ? '' : 'none';
+  });
+}
+
+function randomCode() {
+  const len = 8;
+  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+  let out = '';
+  for (let i = 0; i < len; i++) out += chars[Math.floor(Math.random() * chars.length)];
+  document.getElementById('promoCodeInput').value = out;
+}
+
+function showToast(text, ok = true) {
+  const t = document.createElement('div');
+  t.textContent = text;
+  const bg = ok ? '#1e2342' : '#3a1e1e';
+  const bd = ok ? '#3a3f5e' : '#5e3a3a';
+  t.style.cssText = `position:fixed;bottom:24px;right:24px;padding:10px 16px;background:${bg};border:1px solid ${bd};border-radius:8px;color:#dde2f4;z-index:9999;font-size:.85rem;box-shadow:0 4px 12px rgba(0,0,0,.4);max-width:480px;word-break:break-all`;
+  document.body.appendChild(t);
+  setTimeout(() => t.remove(), 2800);
+}
+
+// Fallback для HTTP-контекста: navigator.clipboard доступен только под HTTPS/localhost.
+// Через скрытый textarea + execCommand('copy') работает на любом транспорте.
+function legacyCopy(text) {
+  const ta = document.createElement('textarea');
+  ta.value = text;
+  ta.setAttribute('readonly', '');
+  ta.style.cssText = 'position:absolute;left:-9999px;top:0;opacity:0';
+  document.body.appendChild(ta);
+  ta.select();
+  ta.setSelectionRange(0, text.length);
+  let ok = false;
+  try { ok = document.execCommand('copy'); } catch (_) { ok = false; }
+  ta.remove();
+  return ok;
+}
+
+function copyDeeplink(code) {
+  const link = `https://t.me/${BOT_USERNAME}?start=promo_${code}`;
+  const onOk = () => showToast('✓ Диплинк скопирован: ' + link, true);
+  const onFail = () => {
+    // Последний шанс — показать ссылку юзеру через prompt,
+    // он сам выделит и скопирует Cmd/Ctrl+C.
+    window.prompt('Скопируй ссылку вручную (Cmd/Ctrl+C, Enter):', link);
+  };
+
+  if (navigator.clipboard && window.isSecureContext) {
+    navigator.clipboard.writeText(link).then(onOk).catch(() => {
+      if (legacyCopy(link)) onOk(); else onFail();
+    });
+  } else {
+    // HTTP-контекст — сразу через legacy
+    if (legacyCopy(link)) onOk(); else onFail();
+  }
+}
+</script>
+{% endblock %}

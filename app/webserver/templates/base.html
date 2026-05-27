@@ -1,0 +1,216 @@
+<!DOCTYPE html>
+<html lang="ru" data-bs-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>{{ title }} — Нейра Admin</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E🤖%3C/text%3E%3C/svg%3E">
+<link href="https://cdn.jsdelivr.net/npm/@tabler/core@1.0.0-beta20/dist/css/tabler.min.css" rel="stylesheet">
+<link href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@3.5.0/dist/tabler-icons.min.css" rel="stylesheet">
+<style>
+:root{
+  --tblr-bg-surface:#15182b;
+  --tblr-bg-surface-secondary:#1a1d33;
+  --tblr-border-color:#262a44;
+  --neyra-grad:linear-gradient(135deg,#6366f1 0%,#a855f7 50%,#ec4899 100%);
+}
+body{font-feature-settings:"cv11","ss01";background:#0f1226;color:#dde2f4;font-size:.875rem}
+.page-wrapper{background:transparent}
+.navbar{background:linear-gradient(180deg,#1a1d33 0%,#15182b 100%);backdrop-filter:blur(20px);border-bottom:1px solid #262a44}
+.navbar-vertical{background:linear-gradient(180deg,#15182b 0%,#0f1226 100%);border-right:1px solid #262a44}
+.navbar-toggler{border-color:#3a3f5e;padding:.4rem .65rem}
+.navbar-toggler:focus{box-shadow:0 0 0 .15rem rgba(99,102,241,.4)}
+.navbar-toggler-icon{background-image:url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 30 30'%3e%3cpath stroke='rgba%28221,226,244,1%29' stroke-linecap='round' stroke-miterlimit='10' stroke-width='2' d='M4 7h22M4 15h22M4 23h22'/%3e%3c/svg%3e")}
+@media (max-width: 991.98px){
+  .navbar-vertical{position:sticky;top:0;z-index:1030;height:auto;min-height:auto}
+  .navbar-vertical .navbar-brand-image-text{font-size:1rem}
+  .h1{font-size:1.25rem}
+  .stat-card .h1{font-size:1.5rem}
+  .page-title{font-size:1.15rem}
+  .card-header{padding:.65rem 1rem}
+  .page-body{padding-top:.5rem}
+  .page-header{padding:.5rem 0}
+  .container-xl{padding-left:.75rem;padding-right:.75rem}
+  .table>:not(caption)>*>*{padding:.5rem .6rem;font-size:.82rem}
+  .btn{font-size:.82rem;padding:.4rem .7rem}
+  .form-control,.form-select{font-size:.85rem;padding:.45rem .65rem}
+  .log-feed{max-height:55vh;font-size:.7rem}
+  .log-event{font-size:.65rem}
+}
+@media (max-width: 575.98px){
+  .stat-card .h1{font-size:1.25rem}
+  .stat-card .stat-label{font-size:.7rem}
+}
+/* Responsive tables fallback */
+.table-responsive{overflow-x:auto;-webkit-overflow-scrolling:touch}
+.navbar-brand{font-weight:700}
+.navbar-brand-image-text{background:var(--neyra-grad);-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent;font-size:1.15rem;letter-spacing:-.02em}
+.navbar-vertical .nav-link{color:#a0a8c0;border-radius:.5rem;margin:.15rem .5rem;padding:.55rem .85rem;font-weight:500;transition:all .15s}
+.navbar-vertical .nav-link:hover{background:rgba(99,102,241,.08);color:#fff}
+.navbar-vertical .nav-link.active{background:rgba(99,102,241,.18);color:#fff}
+.navbar-vertical .nav-link.active::before{content:"";position:absolute;left:0;top:6px;bottom:6px;width:3px;background:var(--neyra-grad);border-radius:0 3px 3px 0}
+.nav-link-icon{font-size:1.05rem;margin-right:.5rem}
+.card{background:#1a1d33;border:1px solid #262a44;border-radius:.75rem;box-shadow:0 1px 3px rgba(0,0,0,.2)}
+.card-header{background:transparent;border-bottom:1px solid #262a44;padding:.85rem 1.25rem}
+.card-title{font-weight:600;font-size:.95rem;margin-bottom:0}
+.card .card-actions .btn{padding:.25rem .65rem}
+.btn-primary{background:var(--neyra-grad);border:0;font-weight:500}
+.btn-primary:hover{filter:brightness(1.15)}
+.btn-ghost-primary{color:#a78bfa;background:transparent;border:0}
+.btn-ghost-primary:hover{background:rgba(167,139,250,.1);color:#c4b5fd}
+.btn{font-weight:500;border-radius:.5rem}
+.table{color:#dde2f4;--tblr-table-bg:transparent;--tblr-table-color-state:#fff;--tblr-table-bg-state:rgba(99,102,241,.08)}
+.table>:not(caption)>*>*{padding:.65rem .85rem;border-bottom-color:#262a44}
+.table thead th{font-weight:600;font-size:.7rem;letter-spacing:.05em;text-transform:uppercase;color:#888fa3;border-bottom:2px solid #262a44}
+.table tbody tr:hover{background:rgba(99,102,241,.05)}
+.form-control,.form-select{background:#0f1226;border-color:#262a44;color:#dde2f4}
+.form-control:focus,.form-select:focus{background:#0f1226;border-color:#6366f1;box-shadow:0 0 0 .2rem rgba(99,102,241,.2);color:#fff}
+.form-label{color:#a0a8c0;font-size:.8rem;font-weight:500;margin-bottom:.4rem}
+.badge{font-weight:500;letter-spacing:.02em;padding:.3em .65em;border-radius:.4rem}
+.bg-purple{background:#a855f7!important}
+.bg-pink{background:#ec4899!important}
+.bg-indigo{background:#6366f1!important}
+.text-muted{color:#888fa3!important}
+.subheader{color:#888fa3;font-size:.7rem;letter-spacing:.06em;text-transform:uppercase;font-weight:600}
+.h1{font-size:1.5rem;font-weight:700;letter-spacing:-.01em}
+.page-title{font-weight:700;letter-spacing:-.01em}
+.page-pretitle{color:#888fa3;font-size:.7rem;letter-spacing:.08em;text-transform:uppercase}
+/* Stat cards with gradient accents */
+.stat-card{position:relative;overflow:hidden}
+.stat-card::after{content:"";position:absolute;top:0;right:0;width:80px;height:80px;background:var(--accent,var(--neyra-grad));opacity:.08;filter:blur(40px);border-radius:50%}
+.stat-card .h1{font-size:1.75rem;font-weight:700}
+.stat-card .stat-label{color:#888fa3;font-size:.75rem;font-weight:500;text-transform:uppercase;letter-spacing:.05em}
+.stat-card .stat-trend{font-size:.78rem;font-weight:500}
+.trend-up{color:#22c55e}
+.trend-down{color:#ef4444}
+.alert{border-radius:.65rem;border-width:0;border-left:3px solid currentColor}
+.alert-success{background:rgba(34,197,94,.1);color:#86efac}
+.alert-danger{background:rgba(239,68,68,.1);color:#fca5a5}
+.alert-warning{background:rgba(245,158,11,.1);color:#fcd34d}
+.alert-info{background:rgba(56,189,248,.1);color:#7dd3fc}
+.dropdown-menu{background:#1a1d33;border:1px solid #262a44;box-shadow:0 8px 24px rgba(0,0,0,.4)}
+.dropdown-item{color:#dde2f4}
+.dropdown-item:hover{background:rgba(99,102,241,.1);color:#fff}
+.modal-content{background:#1a1d33;border:1px solid #262a44}
+.modal-header{border-bottom-color:#262a44}
+.modal-footer{border-top-color:#262a44}
+.pagination .page-link{background:#1a1d33;border-color:#262a44;color:#a0a8c0}
+.pagination .page-link:hover{background:#262a44;color:#fff}
+.pagination .active .page-link{background:#6366f1;border-color:#6366f1;color:#fff}
+code,pre{color:#a78bfa;background:rgba(167,139,250,.08);padding:.1em .35em;border-radius:.25em;font-size:.875em}
+.divider{height:1px;background:#262a44;margin:1rem 0}
+/* Sparkline + glow effects */
+.gradient-text{background:var(--neyra-grad);-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent}
+.btn-icon{width:2.25rem;height:2.25rem;padding:0;display:inline-flex;align-items:center;justify-content:center}
+.btn-outline-secondary{border-color:#3a3f5e;color:#a0a8c0}
+.btn-outline-secondary:hover{background:#262a44;border-color:#3a3f5e;color:#fff}
+.empty-state{padding:2rem;text-align:center;color:#666c85}
+.empty-state .empty-icon{font-size:3rem;opacity:.4;margin-bottom:1rem}
+/* Avatar */
+.avatar{background:#262a44;color:#dde2f4;font-weight:600;font-size:.85rem}
+.avatar-grad{background:var(--neyra-grad);color:#fff}
+/* Scrollbar */
+::-webkit-scrollbar{width:10px;height:10px}
+::-webkit-scrollbar-track{background:#0f1226}
+::-webkit-scrollbar-thumb{background:#262a44;border-radius:5px}
+::-webkit-scrollbar-thumb:hover{background:#3a3f5e}
+/* Live log feed styling */
+.log-feed{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:.75rem;line-height:1.5;background:#0a0c1c;border:1px solid #262a44;border-radius:.5rem;padding:.75rem;max-height:600px;overflow-y:auto}
+.log-line{padding:.15rem .25rem;border-radius:.25rem}
+.log-line:hover{background:rgba(99,102,241,.05)}
+.log-time{color:#666c85;margin-right:.5rem}
+.log-event{display:inline-block;padding:.05em .45em;border-radius:.25em;font-size:.7rem;font-weight:600;margin-right:.5rem}
+.evt-message{background:rgba(99,102,241,.15);color:#a78bfa}
+.evt-promo_redeemed{background:rgba(34,197,94,.15);color:#86efac}
+.evt-payment_succeeded{background:rgba(34,197,94,.2);color:#22c55e}
+.evt-user_registered{background:rgba(56,189,248,.15);color:#7dd3fc}
+.evt-image_generated{background:rgba(245,158,11,.15);color:#fcd34d}
+.evt-default{background:rgba(160,168,192,.1);color:#a0a8c0}
+{% block extra_styles %}{% endblock %}
+</style>
+</head>
+<body>
+<div class="page">
+  <aside class="navbar navbar-vertical navbar-expand-lg" data-bs-theme="dark">
+    <div class="container-fluid">
+      <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbar-menu">
+        <span class="navbar-toggler-icon"></span>
+      </button>
+      <h1 class="navbar-brand navbar-brand-autodark">
+        <a href="/admin/" class="d-flex align-items-center text-decoration-none">
+          <span style="font-size:1.4rem;margin-right:.5rem">🤖</span>
+          <span class="navbar-brand-image-text">Нейра</span>
+        </a>
+      </h1>
+      <div class="collapse navbar-collapse" id="navbar-menu">
+        <ul class="navbar-nav pt-lg-3">
+          {% for key, icon, label, url in nav_items %}
+            {% if url is none %}
+          <li class="nav-item mt-2 mb-1 px-3">
+            <span class="text-uppercase small fw-bold" style="letter-spacing:.06em;color:#5b6280;opacity:.85">{{ label }}</span>
+          </li>
+            {% else %}
+          <li class="nav-item">
+            <a class="nav-link{% if active == key %} active{% endif %}" href="{{ url }}">
+              <span class="nav-link-icon">{{ icon }}</span>
+              <span class="nav-link-title">{{ label }}</span>
+            </a>
+          </li>
+            {% endif %}
+          {% endfor %}
+        </ul>
+        <div class="mt-auto p-3 border-top d-none d-lg-block" style="border-color:#262a44!important">
+          <a href="/admin/logout" class="btn btn-outline-secondary w-100 btn-sm">
+            <i class="ti ti-logout me-1"></i> Выйти
+          </a>
+        </div>
+        <div class="d-lg-none p-3">
+          <a href="/admin/logout" class="btn btn-outline-secondary w-100 btn-sm">
+            <i class="ti ti-logout me-1"></i> Выйти
+          </a>
+        </div>
+      </div>
+    </div>
+  </aside>
+
+  <div class="page-wrapper">
+    <div class="page-header d-print-none">
+      <div class="container-xl">
+        <div class="row g-2 align-items-center">
+          <div class="col">
+            {% if pretitle %}<div class="page-pretitle">{{ pretitle }}</div>{% endif %}
+            <h2 class="page-title">{{ title }}</h2>
+          </div>
+          <div class="col-auto">
+            {# Глобальный поиск юзеров — по id / username / имени. Идёт на /admin/users
+               с параметром search (уже поддерживается). #}
+            <form action="/admin/users" method="get" class="d-flex" role="search">
+              <input type="search" name="search" class="form-control form-control-sm"
+                     placeholder="🔍 Найти юзера (id / @username / имя)"
+                     style="min-width:280px" autocomplete="off">
+            </form>
+          </div>
+          {% block header_actions %}{% endblock %}
+        </div>
+      </div>
+    </div>
+    <div class="page-body">
+      <div class="container-xl">
+        {% if msg %}<div class="alert alert-success">{{ msg }}</div>{% endif %}
+        {% if error %}<div class="alert alert-danger">{{ error }}</div>{% endif %}
+        {% block content %}{% endblock %}
+      </div>
+    </div>
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/@tabler/core@1.0.0-beta20/dist/js/tabler.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<script>
+Chart.defaults.color = '#888fa3';
+Chart.defaults.borderColor = '#262a44';
+Chart.defaults.font.family = 'inherit';
+</script>
+{% block scripts %}{% endblock %}
+</body>
+</html>

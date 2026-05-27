@@ -1,0 +1,43 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="row justify-content-center">
+  <div class="col-lg-9">
+
+    <div class="alert alert-info">
+      <b>Что это:</b> прогнать твой промпт через fal на синтетическом base-лице
+      (мужском или женском) <b>без сохранения</b> в каталог. Удобно для
+      итерации промпта, прежде чем создавать пресет.
+      <br><br>
+      <b>Стоит ~$0.12</b> за каждый запуск (fal 2K PNG). Результат прилетает в твой Telegram.
+    </div>
+
+    <form method="post" action="/admin/sandbox/run"
+          onsubmit="return confirm('Запустить тест? Спишется ~$0.12 с fal-баланса.')">
+      <div class="card">
+        <div class="card-header"><h3 class="card-title">Тест промпта</h3></div>
+        <div class="card-body">
+          <div class="mb-3">
+            <label class="form-label required">Промпт (англ.)</label>
+            <textarea name="prompt" class="form-control" rows="8" required
+                      placeholder="Repaint as ... portrait. Background: ... Style: ..."></textarea>
+            <div class="form-hint">Identity-lock добавится автоматически. Лицо описывать не нужно.</div>
+          </div>
+          <div class="mb-3">
+            <label class="form-label">Base-лицо</label>
+            <select name="gender" class="form-select">
+              <option value="female" selected>Женское (base_face.jpg)</option>
+              <option value="male">Мужское (base_face_male.jpg, + male-суффикс)</option>
+            </select>
+          </div>
+        </div>
+        <div class="card-footer d-flex">
+          <a href="/admin/presets" class="btn btn-link">← К пресетам</a>
+          <button type="submit" class="btn btn-primary ms-auto">🧪 Запустить тест ($0.12)</button>
+        </div>
+      </div>
+    </form>
+
+  </div>
+</div>
+{% endblock %}

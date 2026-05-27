@@ -1,0 +1,97 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="card mb-3">
+  <div class="card-body">
+    <form method="get" class="row g-2 align-items-end">
+      <div class="col-md-2">
+        <label class="form-label">Статус</label>
+        <select name="status" class="form-select">
+          <option value="">Все</option>
+          {% for s in ['succeeded','pending','failed','canceled'] %}
+          <option value="{{ s }}" {% if status==s %}selected{% endif %}>{{ s }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="col-md-2">
+        <label class="form-label">Метод</label>
+        <select name="method" class="form-select">
+          <option value="">Все</option>
+          <option value="yookassa" {% if method=='yookassa' %}selected{% endif %}>YooKassa</option>
+          <option value="stars" {% if method=='stars' %}selected{% endif %}>Stars</option>
+          <option value="platega" {% if method=='platega' %}selected{% endif %}>Platega</option>
+        </select>
+      </div>
+      <div class="col-md-3">
+        <label class="form-label">Telegram ID</label>
+        <input type="text" name="user_id" value="{{ user_id }}" class="form-control" placeholder="123456789">
+      </div>
+      <div class="col d-flex gap-2">
+        <button class="btn btn-primary"><i class="ti ti-filter me-1"></i>Применить</button>
+        <a href="/admin/payments" class="btn btn-outline-secondary">Сбросить</a>
+        <a href="/admin/api/export/payments.csv?status={{ status }}&method={{ method }}" class="btn btn-outline-secondary ms-auto"><i class="ti ti-file-export me-1"></i>CSV</a>
+      </div>
+    </form>
+  </div>
+</div>
+
+<div class="card">
+  <div class="card-header">
+    <h3 class="card-title">Найдено: <strong>{{ '{:,}'.format(total) }}</strong></h3>
+  </div>
+  <div class="table-responsive">
+    <table class="table table-vcenter mb-0">
+      <thead>
+        <tr><th>ID</th><th>Юзер</th><th class="text-end">Сумма</th><th>Метод</th><th>Статус</th><th>Создан</th><th>External ID</th><th></th></tr>
+      </thead>
+      <tbody>
+      {% for p in payments %}
+        {% set u = users_map.get(p.user_id) %}
+        {% set sv = p.status.value if p.status.value is defined else p.status %}
+        <tr>
+          <td>{{ p.id }}</td>
+          <td>
+            {% if u %}
+              <a href="/admin/users/{{ u.id }}">{% if u.username %}@{{ u.username }}{% else %}{{ u.full_name or '#' ~ u.id }}{% endif %}</a>
+              <div class="text-muted small">{{ u.telegram_id }}</div>
+            {% else %}—{% endif %}
+          </td>
+          <td class="text-end fw-bold">₽{{ '{:,.0f}'.format(p.amount) }}</td>
+          <td><span class="badge bg-secondary">{{ p.payment_method }}</span></td>
+          <td>
+            {% if sv == 'succeeded' %}<span class="badge bg-success">{{ sv }}</span>
+            {% elif sv == 'pending' %}<span class="badge bg-warning">{{ sv }}</span>
+            {% elif sv == 'failed' %}<span class="badge bg-danger">{{ sv }}</span>
+            {% else %}<span class="badge bg-secondary">{{ sv }}</span>{% endif %}
+          </td>
+          <td class="text-muted">{{ p.created_at|msk_strftime('%d.%m.%Y %H:%M') if p.created_at else '—' }}</td>
+          <td><code class="small">{{ (p.external_id or '')[:30] }}</code></td>
+          <td>
+            {% if sv == 'succeeded' %}
+            <form method="post" action="/admin/payments/{{ p.id }}/refund" class="d-inline" onsubmit="return confirm('Возврат? Кредиты будут списаны.')">
+              <button class="btn btn-sm btn-outline-warning" title="Возврат"><i class="ti ti-arrow-back"></i></button>
+            </form>
+            {% elif sv == 'pending' %}
+            <form method="post" action="/admin/payments/{{ p.id }}/cancel" class="d-inline">
+              <button class="btn btn-sm btn-outline-danger" title="Отменить"><i class="ti ti-x"></i></button>
+            </form>
+            {% endif %}
+          </td>
+        </tr>
+      {% else %}
+        <tr><td colspan="8" class="empty-state">Платежей нет</td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% if total_pages > 1 %}
+  <div class="card-footer d-flex justify-content-between align-items-center">
+    <div class="text-muted">страница {{ page }} из {{ total_pages }}</div>
+    <ul class="pagination m-0">
+      {% if page > 1 %}<li class="page-item"><a class="page-link" href="?page={{ page-1 }}&status={{ status }}&method={{ method }}&user_id={{ user_id }}">←</a></li>{% endif %}
+      {% if page < total_pages %}<li class="page-item"><a class="page-link" href="?page={{ page+1 }}&status={{ status }}&method={{ method }}&user_id={{ user_id }}">→</a></li>{% endif %}
+    </ul>
+  </div>
+  {% endif %}
+</div>
+{% endblock %}

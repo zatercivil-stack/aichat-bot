@@ -1,0 +1,179 @@
+{% extends "base.html" %}
+
+{% block header_actions %}
+<div class="col-auto">
+  <a href="/admin/api/export/users.csv" class="btn btn-outline-secondary">
+    <i class="ti ti-file-export me-1"></i> Экспорт CSV
+  </a>
+</div>
+{% endblock %}
+
+{% block content %}
+<div class="card mb-3">
+  <div class="card-body">
+    <form method="get" class="row g-2 align-items-end">
+      <div class="col-md-3">
+        <label class="form-label">Поиск</label>
+        <input type="text" name="search" value="{{ search }}" class="form-control" placeholder="@username или TG ID">
+      </div>
+      <div class="col-md-2">
+        <label class="form-label">План</label>
+        <select name="plan" class="form-select">
+          <option value="">Все</option>
+          <option value="free"   {% if plan=='free' %}selected{% endif %}>Free</option>
+          <option value="paid"   {% if plan=='paid' %}selected{% endif %}>Платные</option>
+          <option value="banned" {% if plan=='banned' %}selected{% endif %}>Забаненные</option>
+        </select>
+      </div>
+      <div class="col-md-2">
+        <label class="form-label">Активность</label>
+        <select name="activity" class="form-select">
+          <option value="">Любая</option>
+          <option value="24h"      {% if activity=='24h' %}selected{% endif %}>24ч</option>
+          <option value="7d"       {% if activity=='7d' %}selected{% endif %}>7 дней</option>
+          <option value="inactive" {% if activity=='inactive' %}selected{% endif %}>Неактивны 14д+</option>
+        </select>
+      </div>
+      <div class="col-md-1">
+        <label class="form-label">Кр. от</label>
+        <input type="number" name="credits_min" value="{{ credits_min }}" class="form-control">
+      </div>
+      <div class="col-md-1">
+        <label class="form-label">до</label>
+        <input type="number" name="credits_max" value="{{ credits_max }}" class="form-control">
+      </div>
+      <div class="col-md-3 d-flex gap-2">
+        <button class="btn btn-primary"><i class="ti ti-filter me-1"></i>Применить</button>
+        <a href="/admin/users" class="btn btn-outline-secondary">Сбросить</a>
+      </div>
+    </form>
+  </div>
+</div>
+
+<div class="card">
+  <div class="card-header d-flex align-items-center">
+    <h3 class="card-title mb-0">Найдено: <strong>{{ '{:,}'.format(total) }}</strong></h3>
+    <div class="card-actions">
+      <div class="btn-group">
+        <button class="btn btn-sm btn-outline-secondary dropdown-toggle" data-bs-toggle="dropdown" id="bulkBtn" disabled>
+          <i class="ti ti-checks me-1"></i>Массовые действия (<span id="selCount">0</span>)
+        </button>
+        <ul class="dropdown-menu dropdown-menu-end">
+          <li><a class="dropdown-item" href="#" onclick="bulkAction('credits', '+100')">+100 кредитов</a></li>
+          <li><a class="dropdown-item" href="#" onclick="bulkAction('credits', '+500')">+500 кредитов</a></li>
+          <li><a class="dropdown-item" href="#" onclick="bulkAction('credits', custom='ask')">+N кредитов (ввести)</a></li>
+          <li><a class="dropdown-item" href="#" onclick="bulkAction('credits', '-100')">-100 кредитов</a></li>
+          <li><hr class="dropdown-divider"></li>
+          <li><a class="dropdown-item text-danger" href="#" onclick="bulkAction('ban')">Забанить</a></li>
+          <li><a class="dropdown-item text-success" href="#" onclick="bulkAction('unban')">Разбанить</a></li>
+          <li><hr class="dropdown-divider"></li>
+          <li><a class="dropdown-item" href="#" onclick="bulkAction('broadcast')">📢 Отправить сообщение</a></li>
+        </ul>
+      </div>
+    </div>
+  </div>
+  <div class="table-responsive">
+    <table class="table table-vcenter mb-0">
+      <thead>
+        <tr>
+          <th class="w-1"><input type="checkbox" id="selAll" class="form-check-input"></th>
+          <th>TG ID</th>
+          <th>Имя</th>
+          <th class="text-end">Кредиты</th>
+          <th>План</th>
+          <th>Статус</th>
+          <th>Регистрация</th>
+          <th>Активность</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+      {% for u in users %}
+        <tr>
+          <td><input type="checkbox" class="form-check-input user-select" value="{{ u.id }}"></td>
+          <td><code>{{ u.telegram_id }}</code></td>
+          <td>
+            {% if u.username %}<strong>@{{ u.username }}</strong>{% else %}{{ u.full_name or '—' }}{% endif %}
+          </td>
+          <td class="text-end fw-semibold">{{ '{:,}'.format(u.credits) }}</td>
+          <td>
+            {% if u.current_plan.value == 'free' %}<span class="badge bg-secondary">Free</span>
+            {% elif u.current_plan.value == 'basic' %}<span class="badge bg-primary">Basic</span>
+            {% elif u.current_plan.value == 'pro' %}<span class="badge bg-purple">Pro</span>
+            {% elif u.current_plan.value == 'max' %}<span class="badge bg-pink">Max</span>{% endif %}
+          </td>
+          <td>{% if u.is_banned %}<span class="badge bg-danger">БАН</span>{% endif %}</td>
+          <td class="text-muted">{{ u.created_at|msk_strftime('%d.%m.%Y') if u.created_at else '—' }}</td>
+          <td class="text-muted">{{ u.last_active_at|msk_strftime('%d.%m %H:%M') if u.last_active_at else '—' }}</td>
+          <td>
+            <a href="/admin/users/{{ u.id }}" class="btn btn-sm btn-outline-secondary">
+              <i class="ti ti-arrow-right"></i>
+            </a>
+          </td>
+        </tr>
+      {% else %}
+        <tr><td colspan="9" class="empty-state">Никого не нашлось</td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% if total_pages > 1 %}
+  <div class="card-footer d-flex justify-content-between align-items-center">
+    <div class="text-muted">страница {{ page }} из {{ total_pages }}</div>
+    <ul class="pagination m-0">
+      {% if page > 1 %}<li class="page-item"><a class="page-link" href="?{{ qs }}&page={{ page-1 }}"><i class="ti ti-chevron-left"></i></a></li>{% endif %}
+      {% if page < total_pages %}<li class="page-item"><a class="page-link" href="?{{ qs }}&page={{ page+1 }}"><i class="ti ti-chevron-right"></i></a></li>{% endif %}
+    </ul>
+  </div>
+  {% endif %}
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+const selAll = document.getElementById('selAll');
+const bulkBtn = document.getElementById('bulkBtn');
+const selCount = document.getElementById('selCount');
+
+function updateSelection() {
+  const count = document.querySelectorAll('.user-select:checked').length;
+  selCount.textContent = count;
+  bulkBtn.disabled = count === 0;
+}
+
+selAll.addEventListener('change', () => {
+  document.querySelectorAll('.user-select').forEach(c => c.checked = selAll.checked);
+  updateSelection();
+});
+document.querySelectorAll('.user-select').forEach(c => c.addEventListener('change', updateSelection));
+
+async function bulkAction(action, value, custom) {
+  const ids = Array.from(document.querySelectorAll('.user-select:checked')).map(c => c.value);
+  if (!ids.length) return alert('Выбери хотя бы одного');
+
+  if (action === 'credits' && custom === 'ask') {
+    value = prompt('Сколько кредитов начислить (можно отрицательное)?', '+250');
+    if (!value) return;
+  }
+  if (action === 'broadcast') {
+    const text = prompt(`Сообщение для ${ids.length} пользователей (HTML):`);
+    if (!text) return;
+    value = text;
+  }
+  if (!confirm(`Применить «${action}${value ? ' ' + value : ''}» к ${ids.length} пользователям?`)) return;
+
+  const fd = new FormData();
+  fd.append('action', action);
+  fd.append('value', value || '');
+  ids.forEach(id => fd.append('user_ids', id));
+  fd.append('csrf_token', '{{ csrf_token }}');  // CSRF: fetch не проходит через инжект форм
+
+  const r = await fetch('/admin/users/bulk', {method: 'POST', body: fd});
+  if (r.ok) {
+    location.reload();
+  } else {
+    alert('Ошибка: ' + await r.text());
+  }
+}
+</script>
+{% endblock %}

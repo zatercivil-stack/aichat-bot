@@ -1,0 +1,66 @@
+services:
+  bot:
+    build: .
+    container_name: aichat_bot
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    env_file: .env
+    networks:
+      - aichat_net
+    volumes:
+      - ./data:/app/data
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    ports:
+      # 25.05 БЕЗОПАСНОСТЬ: привязка ТОЛЬКО к localhost. Раньше «8181:8080»
+      # слушало 0.0.0.0 → дашборд/вебхук торчали наружу по http://<публ.IP>:8181
+      # (токен админки летел открытым текстом, минуя TLS). Теперь снаружи порт
+      # недоступен; Caddy ходит через localhost:8181 (см. /etc/caddy/Caddyfile)
+      # и отдаёт всё по HTTPS на admin.example.com.
+      - "127.0.0.1:8181:8080"
+
+  postgres:
+    image: postgres:16-alpine
+    container_name: aichat_bot_db
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-aichat_bot}
+      POSTGRES_USER: ${POSTGRES_USER:-aichat_user}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    volumes:
+      - aichat_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-aichat_user} -d ${POSTGRES_DB:-aichat_bot}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - aichat_net
+
+  redis:
+    image: redis:7-alpine
+    container_name: aichat_bot_redis
+    restart: unless-stopped
+    # 24.05: добавлен persistence. Раньше при рестарте контейнера/сервера
+    # терялись ZSET'ы и cooldown'ы (wheel:ready_at, mystery:used:*, etc) →
+    # юзеры не получали push «колесо готово», теряли claim'ы. AOF =
+    # append-only, fsync каждую секунду — компромисс между скоростью и
+    # потерей данных (<1с при крэше).
+    command: redis-server --appendonly yes --appendfsync everysec
+    volumes:
+      - aichat_redis_data:/data
+    networks:
+      - aichat_net
+
+volumes:
+  aichat_pgdata:
+  aichat_redis_data:
+
+networks:
+  aichat_net:
+    driver: bridge

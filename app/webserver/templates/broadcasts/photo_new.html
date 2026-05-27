@@ -1,0 +1,38 @@
+{% extends "base.html" %}
+
+{% block content %}
+<form method="post" action="/admin/broadcasts/photo/create" enctype="multipart/form-data">
+  <div class="card" style="max-width:780px">
+    <div class="card-header"><h3 class="card-title">Новый фото-шаблон для рассылки</h3></div>
+    <div class="card-body">
+      <p class="text-muted">Шаблон — это уже готовое отредактированное изображение, в которое юзеры смогут подставить своё лицо за 1 клик. Идеально для «хочешь так же?» — wow-результат + кнопка повторить.</p>
+
+      <div class="mb-3">
+        <label class="form-label">📤 Готовое изображение</label>
+        <input type="file" name="photo" accept="image/jpeg,image/png,image/webp" class="form-control" required>
+        <small class="text-muted">Картинка ≤ 10 MB, JPG/PNG/WEBP. Чёткая, с одним явным лицом — на него я подставлю лицо юзера.</small>
+      </div>
+
+      <div class="mb-3">
+        <label class="form-label">✍️ Caption (текст под фото)</label>
+        <textarea name="caption" class="form-control" rows="4" maxlength="1000"
+                  placeholder="🎭 Хочешь оказаться на обложке Time? Пришли селфи — подставлю твоё лицо."></textarea>
+        <small class="text-muted">До 1000 символов. HTML: &lt;b&gt;, &lt;i&gt;, &lt;a&gt;.</small>
+      </div>
+
+      <div class="mb-3">
+        <label class="form-label">📝 Промпт-исходник (опционально)</label>
+        <input type="text" name="prompt_used" class="form-control" maxlength="200"
+               placeholder="Например: «cover of Time magazine, professional portrait»">
+        <small class="text-muted">Показывается юзерам как подсказка/доверие («вот как это сделано»). Можно оставить пустым.</small>
+      </div>
+
+      <div class="d-flex gap-2">
+        <button type="submit" class="btn btn-primary"><i class="ti ti-cloud-upload me-1"></i>Создать шаблон</button>
+        <a href="/admin/broadcasts/photo" class="btn btn-outline-secondary">Отмена</a>
+      </div>
+      <small class="text-muted d-block mt-3">⚠ После создания шаблона ты сможешь отправить его выбранной аудитории. Перед массовой отправкой советую сделать тест на админа.</small>
+    </div>
+  </div>
+</form>
+{% endblock %}

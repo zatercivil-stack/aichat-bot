@@ -1,0 +1,55 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="row">
+  <div class="col-lg-7">
+    <form method="post" action="/admin/bulk/credits"
+          onsubmit="return confirm('Точно начислить выбранному сегменту? Действие необратимо.')">
+      <div class="card">
+        <div class="card-header"><h3 class="card-title">🎁 Бонус-кредиты сегменту</h3></div>
+        <div class="card-body">
+
+          <div class="mb-3">
+            <label class="form-label">Сегмент</label>
+            <select name="segment" class="form-select">
+              <option value="active_7d">Активные за 7 дней ({{ counts.active_7d }})</option>
+              <option value="active_14d">Активные за 14 дней ({{ counts.active_14d }})</option>
+              <option value="free">Без подписки ({{ counts.free }})</option>
+              <option value="paid">С подпиской ({{ counts.paid }})</option>
+              <option value="all">Все не-банутые ({{ counts.all }})</option>
+            </select>
+          </div>
+
+          <div class="mb-3">
+            <label class="form-label">Сумма кредитов (на юзера)</label>
+            <input type="number" name="amount" class="form-control" min="1" max="10000"
+                   value="100" required>
+          </div>
+
+          <div class="mb-3">
+            <label class="form-label">TG-уведомление (опционально, HTML)</label>
+            <textarea name="notify_text" class="form-control" rows="4"
+                      placeholder="🎁 Подарок от Нейры — спасибо что с нами!"></textarea>
+            <div class="form-hint">
+              Если пусто — кредиты начислятся молча, без сообщения. К тексту автоматически
+              добавится строка с суммой.
+            </div>
+          </div>
+
+        </div>
+        <div class="card-footer d-flex">
+          <a href="/admin/" class="btn btn-link">← На главную</a>
+          <button class="btn btn-success ms-auto">Начислить</button>
+        </div>
+      </div>
+    </form>
+  </div>
+  <div class="col-lg-5">
+    <div class="alert alert-warning">
+      Бонус идёт В <b>фоне</b>. Заблокировавшие бот юзера получат только кредиты
+      (без сообщения, оно отвалится — это нормально). Все действия пишутся в журнал
+      админов (<a href="/admin/audit">Журнал</a>).
+    </div>
+  </div>
+</div>
+{% endblock %}

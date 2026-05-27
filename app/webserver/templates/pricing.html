@@ -1,0 +1,154 @@
+{% extends "base.html" %}
+
+{% block content %}
+<form method="post" action="/admin/pricing">
+  <div class="row row-cards">
+    <div class="col-md-7">
+      <div class="card">
+        <div class="card-header"><h3 class="card-title"><i class="ti ti-cpu me-1"></i>Стоимость моделей (кредитов / запрос)</h3></div>
+        <div class="card-body">
+          <div class="row g-3">
+          {% for key, label, icon, color in model_rows %}
+            <div class="col-md-6">
+              <div class="form-label">{{ icon }} <strong>{{ label }}</strong></div>
+              <div class="input-group">
+                <input type="number" name="{{ key }}" value="{{ config.get(key, '0') }}" class="form-control" min="0">
+                <span class="input-group-text">кр</span>
+              </div>
+            </div>
+          {% endfor %}
+          </div>
+          <div class="text-muted small mt-3">
+            После пивота visual-first дорогие LLM-тарифы (GPT-5, Claude Sonnet/Opus) убраны из бота —
+            в чате осталась только DeepSeek. Старые ключи в bot_config остаются для обратной совместимости.
+          </div>
+        </div>
+      </div>
+
+      <div class="card mt-3">
+        <div class="card-header"><h3 class="card-title"><i class="ti ti-wand me-1"></i>Фото-операции (реальные цены)</h3></div>
+        <div class="card-body">
+          <div class="row g-3">
+          {% for label, cost in photo_prices %}
+            <div class="col-md-6">
+              <div class="form-label"><strong>{{ label }}</strong></div>
+              <div class="input-group">
+                <input type="number" value="{{ cost }}" class="form-control" disabled>
+                <span class="input-group-text">кр</span>
+              </div>
+            </div>
+          {% endfor %}
+          </div>
+          <div class="text-muted small mt-3">
+            Цены живут в коде (<code>MODEL_COSTS</code>). Скидку можно дать через
+            «Промо запуска» ниже — она применяется к <code>image_edit</code> и
+            <code>face_swap</code> автоматически.
+          </div>
+        </div>
+      </div>
+      <div class="card mt-3">
+        <div class="card-header"><h3 class="card-title"><i class="ti ti-coin me-1"></i>Бонусы и реферал</h3></div>
+        <div class="card-body">
+          <div class="row g-3">
+            <div class="col-md-4">
+              <div class="form-label">🎁 Подарок новичку</div>
+              <div class="input-group">
+                <input type="number" name="welcome_bonus_credits" value="{{ config.get('welcome_bonus_credits', '300') }}" class="form-control" min="0">
+                <span class="input-group-text">кр</span>
+              </div>
+              <small class="text-muted">только для прямых /start без рефера/промо</small>
+            </div>
+            <div class="col-md-4">
+              <div class="form-label">📅 Ежедневный бонус (Free)</div>
+              <div class="input-group">
+                <input type="number" name="daily_free_credits" value="{{ config.get('daily_free_credits', '15') }}" class="form-control" min="0">
+                <span class="input-group-text">кр</span>
+              </div>
+            </div>
+            <div class="col-md-4">
+              <div class="form-label">🤝 За приглашённого друга</div>
+              <div class="input-group">
+                <input type="number" name="referral_bonus" value="{{ config.get('referral_bonus', '150') }}" class="form-control" min="0">
+                <span class="input-group-text">кр</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="card mt-3">
+        <div class="card-header">
+          <h3 class="card-title"><i class="ti ti-rocket me-1"></i>Промо запуска фото-фич</h3>
+          <div class="card-actions text-muted small">скидка на image_edit и face_swap до указанной даты</div>
+        </div>
+        <div class="card-body">
+          <div class="row g-3">
+            <div class="col-md-6">
+              <div class="form-label">📅 Промо действует до (ISO)</div>
+              <input type="date" name="image_promo_until" value="{{ config.get('image_promo_until', '') }}" class="form-control">
+              <small class="text-muted">Пусто — промо выключено</small>
+            </div>
+            <div class="col-md-6">
+              <div class="form-label">💸 Скидка во время промо</div>
+              <div class="input-group">
+                <input type="number" name="image_promo_discount" value="{{ config.get('image_promo_discount', '100') }}" class="form-control" min="0">
+                <span class="input-group-text">кр</span>
+              </div>
+            </div>
+            <div class="col-12">
+              <div class="form-label">🧪 Тестовый юзер для рассылок (username без @)</div>
+              <input type="text" name="test_broadcast_username" value="{{ config.get('test_broadcast_username', '') }}" class="form-control" placeholder="grelok">
+              <small class="text-muted">Для аудитории «test user» в /broadcasts</small>
+            </div>
+            <div class="col-12">
+              <div class="form-label">🔁 YooKassa автоплатежи</div>
+              <select name="yookassa_recurring_enabled" class="form-select">
+                <option value="0" {% if config.get('yookassa_recurring_enabled', '0') != '1' %}selected{% endif %}>ВЫКЛ (по умолчанию)</option>
+                <option value="1" {% if config.get('yookassa_recurring_enabled', '0') == '1' %}selected{% endif %}>ВКЛ</option>
+              </select>
+              <small class="text-muted">
+                Включи только после того, как YooKassa активировала «автоматические платежи»
+                в кабинете магазина (запрос менеджеру). Иначе платежи будут падать с 403.
+              </small>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="col-md-5">
+      <div class="card">
+        <div class="card-header"><h3 class="card-title"><i class="ti ti-package me-1"></i>Пакеты кредитов</h3></div>
+        <div class="card-body">
+          <div class="text-muted small mb-2">Цены и состав пакетов в магазине бота:</div>
+          <div class="row g-2">
+          {% for pid, label, default_credits, default_rub in packs %}
+            <div class="col-12">
+              <div class="border rounded p-2" style="border-color:#262a44 !important">
+                <div class="form-label mb-1">{{ label }}</div>
+                <div class="input-group input-group-sm">
+                  <span class="input-group-text">Кред.</span>
+                  <input type="number" name="pack_{{ pid }}_credits" value="{{ config.get('pack_' ~ pid ~ '_credits', default_credits) }}" class="form-control">
+                  <span class="input-group-text">₽</span>
+                  <input type="number" name="pack_{{ pid }}_rub" value="{{ config.get('pack_' ~ pid ~ '_rub', default_rub) }}" class="form-control">
+                </div>
+              </div>
+            </div>
+          {% endfor %}
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="row mt-3">
+    <div class="col-12">
+      <div class="d-flex gap-2">
+        <button type="submit" class="btn btn-primary"><i class="ti ti-device-floppy me-1"></i>Сохранить все цены</button>
+        <a href="/admin/" class="btn btn-outline-secondary">Отмена</a>
+      </div>
+      <small class="text-muted d-block mt-2">⚠ Изменения применяются сразу для новых запросов. Если бот кэширует — после рестарта.</small>
+    </div>
+  </div>
+</form>
+{% endblock %}

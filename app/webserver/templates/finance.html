@@ -1,0 +1,173 @@
+{% extends "base.html" %}
+
+{% block header_actions %}
+<div class="col-auto">
+  <div class="btn-group">
+    {% for d in [7, 14, 30, 90, 180] %}
+    <a href="?days={{ d }}" class="btn btn-sm btn-outline-secondary{% if d == days %} active{% endif %}">{{ d }}д</a>
+    {% endfor %}
+  </div>
+</div>
+<div class="col-auto">
+  <a href="/admin/api/export/payments.csv" class="btn btn-outline-secondary"><i class="ti ti-file-export me-1"></i>CSV</a>
+</div>
+{% endblock %}
+
+{% block content %}
+<div class="row row-cards">
+  <div class="col-sm-6 col-lg-3">
+    <div class="card stat-card" style="--accent:linear-gradient(135deg,#22c55e,#16a34a)">
+      <div class="card-body">
+        <div class="stat-label mb-2">Сегодня</div>
+        <div class="h1 mb-0 text-success">₽{{ '{:,.0f}'.format(summary.revenue_today) }}</div>
+      </div>
+    </div>
+  </div>
+  <div class="col-sm-6 col-lg-3">
+    <div class="card stat-card">
+      <div class="card-body">
+        <div class="stat-label mb-2">7 дней</div>
+        <div class="h1 mb-0">₽{{ '{:,.0f}'.format(summary.revenue_week) }}</div>
+      </div>
+    </div>
+  </div>
+  <div class="col-sm-6 col-lg-3">
+    <div class="card stat-card">
+      <div class="card-body">
+        <div class="stat-label mb-2">30 дней</div>
+        <div class="h1 mb-0">₽{{ '{:,.0f}'.format(summary.revenue_month) }}</div>
+      </div>
+    </div>
+  </div>
+  <div class="col-sm-6 col-lg-3">
+    <div class="card stat-card" style="--accent:linear-gradient(135deg,#a855f7,#ec4899)">
+      <div class="card-body">
+        <div class="stat-label mb-2">Всё время</div>
+        <div class="h1 mb-0 gradient-text">₽{{ '{:,.0f}'.format(summary.revenue_total) }}</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="row row-cards mt-3">
+  <div class="col-sm-6 col-lg-3"><div class="card"><div class="card-body"><div class="stat-label mb-1">Платящих юзеров</div><div class="h2 mb-0">{{ '{:,}'.format(summary.paying_users) }}</div></div></div></div>
+  <div class="col-sm-6 col-lg-3"><div class="card"><div class="card-body"><div class="stat-label mb-1">Транзакций</div><div class="h2 mb-0">{{ '{:,}'.format(summary.paid_count) }}</div></div></div></div>
+  <div class="col-sm-6 col-lg-3"><div class="card"><div class="card-body"><div class="stat-label mb-1">ARPU (LTV)</div><div class="h2 mb-0">₽{{ '{:,.0f}'.format(summary.arpu) }}</div></div></div></div>
+  <div class="col-sm-6 col-lg-3"><div class="card"><div class="card-body"><div class="stat-label mb-1">Средний чек</div><div class="h2 mb-0">₽{{ '{:,.0f}'.format(summary.avg_check) }}</div></div></div></div>
+</div>
+
+<div class="row row-cards mt-3">
+  <div class="col-md-8">
+    <div class="card">
+      <div class="card-header"><h3 class="card-title">Выручка по дням ({{ days }} д)</h3></div>
+      <div class="card-body"><canvas id="revChart" height="80"></canvas></div>
+    </div>
+  </div>
+  <div class="col-md-4">
+    <div class="card h-100">
+      <div class="card-header"><h3 class="card-title">По способу оплаты</h3></div>
+      <div class="card-body p-0">
+        <table class="table table-sm mb-0">
+          <thead><tr><th>Метод</th><th class="text-end">Сумма</th><th class="text-end">Кол</th><th class="text-end">%</th></tr></thead>
+          <tbody>
+          {% for m in by_method %}
+            <tr><td>{{ m.method }}</td><td class="text-end text-success">₽{{ '{:,.0f}'.format(m.amount) }}</td><td class="text-end">{{ m.cnt }}</td><td class="text-end">{{ '{:.1f}'.format(m.amount / total_methods * 100) }}%</td></tr>
+          {% else %}
+            <tr><td colspan="4" class="empty-state">Нет данных</td></tr>
+          {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="row row-cards mt-3">
+  <div class="col-md-4">
+    <div class="card">
+      <div class="card-header"><h3 class="card-title"><i class="ti ti-funnel me-1"></i>Воронка</h3></div>
+      <div class="card-body">
+        <table class="table table-borderless mb-0">
+          <tr><td class="text-muted">Регистраций</td><td class="fw-bold text-end">{{ '{:,}'.format(funnel.total_users) }}</td></tr>
+          <tr><td class="text-muted">Активаций</td><td class="text-end">{{ '{:,}'.format(funnel.activated_users) }} <span class="text-muted small">({{ funnel.activation_rate }}%)</span></td></tr>
+          <tr><td class="text-muted">Платящих</td><td class="text-end text-success">{{ '{:,}'.format(funnel.paying_users) }} <span class="text-muted small">({{ funnel.paid_rate }}%)</span></td></tr>
+          <tr><td class="text-muted">Из активных</td><td class="text-end text-info">{{ funnel.paid_from_active }}%</td></tr>
+        </table>
+      </div>
+    </div>
+    <div class="card mt-3">
+      <div class="card-header"><h3 class="card-title">Статусы платежей ({{ days }}д)</h3></div>
+      <div class="card-body p-0">
+        <table class="table table-sm mb-0">
+          <tbody>
+          {% for k, v in status_breakdown.items() %}
+            <tr><td>
+              {% if k == 'succeeded' %}<span class="badge bg-success">{{ k }}</span>
+              {% elif k == 'pending' %}<span class="badge bg-warning">{{ k }}</span>
+              {% elif k == 'failed' %}<span class="badge bg-danger">{{ k }}</span>
+              {% else %}<span class="badge bg-secondary">{{ k }}</span>{% endif %}
+            </td><td class="text-end">{{ v }}</td></tr>
+          {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+    <div class="card mt-3">
+      <div class="card-header"><h3 class="card-title"><i class="ti ti-funnel me-1"></i>Воронка платежей ({{ days }}д)</h3></div>
+      <div class="card-body">
+        <table class="table table-borderless mb-2">
+          <tr><td class="text-muted">Создано</td><td class="text-end fw-bold">{{ '{:,}'.format(pay_funnel.total) }}</td></tr>
+          <tr><td class="text-muted">Оплачено</td><td class="text-end text-success fw-bold">{{ '{:,}'.format(pay_funnel.succeeded) }} <span class="text-muted small">({{ pay_funnel.conv_rate }}%)</span></td></tr>
+          <tr><td class="text-muted">В ожидании</td><td class="text-end text-warning">{{ '{:,}'.format(pay_funnel.pending) }}</td></tr>
+          <tr><td class="text-muted">Брошено / неудача</td><td class="text-end text-danger">{{ '{:,}'.format(pay_funnel.failed + pay_funnel.canceled) }} <span class="text-muted small">({{ pay_funnel.abandonment_rate }}%)</span></td></tr>
+        </table>
+        {% if pay_funnel.recovery_sent %}
+        <div class="divider"></div>
+        <div class="small">
+          <div class="text-muted mb-1"><i class="ti ti-mail me-1"></i>Восстановления:</div>
+          Отправлено: <strong>{{ pay_funnel.recovery_sent }}</strong> ·
+          Конверсия: <strong class="text-success">{{ pay_funnel.recovery_recovered }} ({{ pay_funnel.recovery_rate }}%)</strong>
+        </div>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+  <div class="col-md-8">
+    <div class="card">
+      <div class="card-header"><h3 class="card-title"><i class="ti ti-trophy me-1"></i>Топ-20 плательщиков</h3></div>
+      <div class="table-responsive">
+        <table class="table table-sm table-vcenter mb-0">
+          <thead><tr><th>Юзер</th><th>TG</th><th class="text-end">Сумма</th><th class="text-end">Платежей</th><th class="text-end">Кред.</th><th>Последний</th></tr></thead>
+          <tbody>
+          {% for s in spenders %}
+            <tr>
+              <td><a href="/admin/users/{{ s.user_id }}">{% if s.username %}@{{ s.username }}{% else %}{{ s.full_name or '—' }}{% endif %}</a></td>
+              <td><code class="small">{{ s.telegram_id }}</code></td>
+              <td class="text-end text-success fw-bold">₽{{ '{:,.0f}'.format(s.total) }}</td>
+              <td class="text-end">{{ s.cnt }}</td>
+              <td class="text-end">{{ '{:,}'.format(s.credits) }}</td>
+              <td class="text-muted">{{ s.last_paid|msk_strftime('%d.%m.%Y') if s.last_paid else '—' }}</td>
+            </tr>
+          {% else %}
+            <tr><td colspan="6" class="empty-state">Платежей нет</td></tr>
+          {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+const grad = document.getElementById('revChart').getContext('2d').createLinearGradient(0, 0, 0, 200);
+grad.addColorStop(0, 'rgba(34,197,94,.3)');
+grad.addColorStop(1, 'rgba(34,197,94,0)');
+new Chart(document.getElementById('revChart'), {
+  type: 'bar',
+  data: {labels: {{ daily_labels|tojson }}, datasets: [{label:'₽', data: {{ daily_amounts|tojson }}, backgroundColor: grad, borderColor: '#22c55e', borderWidth: 0, borderRadius: 6}]},
+  options: {plugins:{legend:{display:false}}, scales:{x:{grid:{color:'#262a44'}}, y:{grid:{color:'#262a44'}, beginAtZero:true}}}
+});
+</script>
+{% endblock %}

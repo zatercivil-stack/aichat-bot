@@ -1,0 +1,60 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="card mb-3">
+  <div class="card-body">
+    <form method="get" class="d-flex gap-2 align-items-end">
+      <div>
+        <label class="form-label">Действие</label>
+        <select name="action" class="form-select" style="width:200px">
+          <option value="">Все</option>
+          {% for a in actions %}
+          <option value="{{ a }}" {% if action_filter == a %}selected{% endif %}>{{ a }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <button class="btn btn-primary"><i class="ti ti-filter me-1"></i>Фильтр</button>
+      <a href="/admin/audit" class="btn btn-outline-secondary">Сбросить</a>
+    </form>
+  </div>
+</div>
+
+<div class="card">
+  <div class="card-header">
+    <h3 class="card-title">Журнал действий админов · всего <strong>{{ '{:,}'.format(total) }}</strong></h3>
+  </div>
+  <div class="table-responsive">
+    <table class="table table-vcenter table-sm mb-0">
+      <thead>
+        <tr><th>Время</th><th>Action</th><th>Юзер</th><th>IP</th><th>Payload</th></tr>
+      </thead>
+      <tbody>
+      {% for a, uname, tg_id, uid in items %}
+        <tr>
+          <td class="text-muted">{{ a.created_at|msk_strftime('%d.%m %H:%M:%S') if a.created_at else '—' }}</td>
+          <td><code>{{ a.action }}</code></td>
+          <td>
+            {% if uid %}<a href="/admin/users/{{ uid }}">{% if uname %}@{{ uname }}{% else %}{{ tg_id or '—' }}{% endif %}</a>{% else %}—{% endif %}
+          </td>
+          <td class="text-muted small">{{ a.ip or '—' }}</td>
+          <td class="text-muted small" style="max-width:500px;overflow:hidden;text-overflow:ellipsis">
+            <code style="white-space:nowrap">{{ a.payload | tojson }}</code>
+          </td>
+        </tr>
+      {% else %}
+        <tr><td colspan="5" class="empty-state">Записей нет</td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% if total_pages > 1 %}
+  <div class="card-footer d-flex justify-content-between">
+    <div class="text-muted">страница {{ page }} из {{ total_pages }}</div>
+    <ul class="pagination m-0">
+      {% if page > 1 %}<li class="page-item"><a class="page-link" href="?page={{ page-1 }}&action={{ action_filter }}">←</a></li>{% endif %}
+      {% if page < total_pages %}<li class="page-item"><a class="page-link" href="?page={{ page+1 }}&action={{ action_filter }}">→</a></li>{% endif %}
+    </ul>
+  </div>
+  {% endif %}
+</div>
+{% endblock %}

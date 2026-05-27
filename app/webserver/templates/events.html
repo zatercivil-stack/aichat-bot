@@ -1,0 +1,67 @@
+{% extends "base.html" %}
+
+{% block header_actions %}
+<div class="col-auto">
+  <div class="btn-group">
+    {% for d in [1, 7, 14, 30] %}
+    <a href="?days={{ d }}&event_type={{ event_type }}&user_tg={{ user_tg }}" class="btn btn-sm btn-outline-secondary{% if d == days %} active{% endif %}">{{ d }}д</a>
+    {% endfor %}
+  </div>
+</div>
+<div class="col-auto">
+  <a href="/admin/api/export/events.csv?event_type={{ event_type }}&days={{ days }}" class="btn btn-outline-secondary"><i class="ti ti-file-export me-1"></i>CSV</a>
+</div>
+<div class="col-auto">
+  <a href="/admin/logs" class="btn btn-primary"><i class="ti ti-activity me-1"></i>Live-логи</a>
+</div>
+{% endblock %}
+
+{% block content %}
+<div class="card mb-3">
+  <div class="card-body">
+    <form method="get" class="d-flex gap-2 align-items-end">
+      <input type="hidden" name="days" value="{{ days }}">
+      <input type="hidden" name="event_type" value="{{ event_type }}">
+      <div>
+        <label class="form-label">Telegram ID</label>
+        <input type="text" name="user_tg" value="{{ user_tg }}" placeholder="123456789" class="form-control">
+      </div>
+      <button class="btn btn-primary"><i class="ti ti-search me-1"></i>Найти</button>
+    </form>
+    <div class="mt-3 d-flex flex-wrap gap-1">
+      <a href="?days={{ days }}" class="btn btn-sm btn-outline-secondary{% if not event_type %} active{% endif %}">Все</a>
+      {% for et, cnt in type_counts %}
+      <a href="?days={{ days }}&event_type={{ et }}" class="btn btn-sm btn-outline-secondary{% if event_type == et %} active{% endif %}">
+        {{ et }} <span class="text-muted">({{ cnt }})</span>
+      </a>
+      {% endfor %}
+    </div>
+  </div>
+</div>
+
+<div class="card">
+  <div class="card-header">
+    <h3 class="card-title">События за {{ days }} д. — показано {{ items|length }}</h3>
+  </div>
+  <div class="table-responsive">
+    <table class="table table-sm table-vcenter mb-0">
+      <thead><tr><th>Время</th><th>Тип</th><th>Юзер</th><th>Модель</th><th class="text-end">Кр.</th></tr></thead>
+      <tbody>
+      {% for e, uname, tg_id, uid in items %}
+        <tr>
+          <td class="text-muted small">{{ e.created_at|msk_strftime('%d.%m %H:%M:%S') if e.created_at else '' }}</td>
+          <td><span class="log-event evt-{{ e.event_type }}">{{ e.event_type }}</span></td>
+          <td>
+            {% if uid %}<a href="/admin/users/{{ uid }}">{% if uname %}@{{ uname }}{% else %}{{ tg_id or '—' }}{% endif %}</a>{% else %}—{% endif %}
+          </td>
+          <td><code>{{ e.model_key or '—' }}</code></td>
+          <td class="text-end">{{ e.credits_spent or 0 }}</td>
+        </tr>
+      {% else %}
+        <tr><td colspan="5" class="empty-state">Нет событий</td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}

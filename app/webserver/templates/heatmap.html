@@ -1,0 +1,64 @@
+{% extends "base.html" %}
+
+{% block header_actions %}
+<div class="col-auto">
+  <div class="btn-group">
+    {% for d in [7, 14, 30, 90] %}
+    <a href="?days={{ d }}" class="btn btn-sm btn-outline-secondary{% if d == data.days %} active{% endif %}">{{ d }}д</a>
+    {% endfor %}
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_styles %}
+.hm-cell{width:34px;height:34px;display:inline-block;border-radius:4px;margin:1px;font-size:.65rem;color:#dde2f4;text-align:center;line-height:34px}
+.hm-row-label{display:inline-block;width:50px;text-align:right;padding-right:6px;color:#888fa3;font-size:.75rem;vertical-align:middle}
+.hm-hour-label{display:inline-block;width:34px;margin:1px;text-align:center;color:#666c85;font-size:.6rem}
+{% endblock %}
+
+{% block content %}
+<div class="card mb-3">
+  <div class="card-body">
+    <p class="text-muted mb-1">Активность пользователей: <code>message_sent</code> по часам и дням недели за {{ data.days }} дней.</p>
+    <p class="text-muted small mb-0">Цвет = интенсивность (от тёмного к ярко-фиолетовому). Используй для оптимизации времени рассылок и redeploy.</p>
+  </div>
+</div>
+
+<div class="card">
+  <div class="card-body" style="overflow-x:auto">
+    <div style="min-width:900px">
+      <div>
+        <span class="hm-row-label"></span>
+        {% for h in range(24) %}<span class="hm-hour-label">{{ h }}</span>{% endfor %}
+      </div>
+      {% set day_names = ['Пн','Вт','Ср','Чт','Пт','Сб','Вс'] %}
+      {% for d in range(7) %}
+      <div>
+        <span class="hm-row-label">{{ day_names[d] }}</span>
+        {% for h in range(24) %}
+          {% set v = data.grid[d][h] %}
+          {% set ratio = (v / data.max) if data.max else 0 %}
+          {% if ratio == 0 %}
+            {% set bg = '#15182b' %}
+          {% elif ratio < 0.2 %}
+            {% set bg = 'rgba(99,102,241,.15)' %}
+          {% elif ratio < 0.4 %}
+            {% set bg = 'rgba(99,102,241,.3)' %}
+          {% elif ratio < 0.6 %}
+            {% set bg = 'rgba(99,102,241,.5)' %}
+          {% elif ratio < 0.8 %}
+            {% set bg = 'rgba(168,85,247,.7)' %}
+          {% else %}
+            {% set bg = 'rgba(236,72,153,.85)' %}
+          {% endif %}
+          <span class="hm-cell" style="background:{{ bg }}" title="{{ day_names[d] }} {{ h }}:00 — {{ v }} сообщений">{% if v %}{{ v }}{% endif %}</span>
+        {% endfor %}
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+  <div class="card-footer text-muted small">
+    Максимум: <strong>{{ data.max }}</strong> сообщений в часовом слоте. Все времена в UTC.
+  </div>
+</div>
+{% endblock %}

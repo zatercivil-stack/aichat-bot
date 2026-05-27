@@ -1,0 +1,56 @@
+{% extends "base.html" %}
+
+{% block header_actions %}
+<div class="col-auto">
+  <a href="/admin/broadcasts/photo/new" class="btn btn-primary"><i class="ti ti-plus me-1"></i>Новый шаблон</a>
+</div>
+{% endblock %}
+
+{% block content %}
+<div class="card mb-3">
+  <div class="card-body">
+    <p class="text-muted mb-0">Шаблоны для виральных рассылок: «вот результат — хочешь так же?». Юзер тыкает кнопку → автоматически запускается face swap с этим шаблоном как фон. Подставляет своё лицо в готовый кадр.</p>
+  </div>
+</div>
+
+<div class="row row-cards">
+{% for t in templates %}
+  <div class="col-md-4">
+    <div class="card">
+      <div class="card-body p-2 text-center" style="min-height:200px;display:flex;align-items:center;justify-content:center">
+        <img src="/admin/broadcasts/photo/{{ t.id }}/thumb" alt="preview"
+             style="max-width:100%;max-height:220px;border-radius:.5rem"
+             onerror="this.src='data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 40 40%22%3E%3Crect width=%2240%22 height=%2240%22 fill=%22%23262a44%22/%3E%3Ctext x=%2220%22 y=%2225%22 font-size=%2218%22 text-anchor=%22middle%22 fill=%22%23666c85%22%3E📷%3C/text%3E%3C/svg%3E'">
+      </div>
+      <div class="card-body">
+        <div class="text-muted small mb-1">#{{ t.id }} · {{ t.created_at|msk_strftime('%d.%m.%Y') if t.created_at else '—' }}</div>
+        <div class="mb-2" style="font-size:.85rem;max-height:60px;overflow:hidden">{{ (t.caption or '—')[:120] }}</div>
+        <div class="d-flex justify-content-between small mb-2">
+          <span class="text-muted">отправлено</span>
+          <strong>{{ t.sent_count }}</strong>
+        </div>
+        <div class="d-flex justify-content-between small mb-2">
+          <span class="text-muted">кликов</span>
+          <strong class="text-primary">{{ t.click_count }}</strong>
+          {% if t.sent_count %}<span class="text-muted small">({{ '{:.1f}'.format(t.click_count / t.sent_count * 100) }}%)</span>{% endif %}
+        </div>
+        <div class="d-flex justify-content-between small">
+          <span class="text-muted">довели до конца</span>
+          <strong class="text-success">{{ t.conversion_count }}</strong>
+        </div>
+      </div>
+      <div class="card-footer d-flex gap-2">
+        <a href="/admin/broadcasts/photo/{{ t.id }}" class="btn btn-sm btn-outline-primary flex-fill">Детали</a>
+        <a href="/admin/broadcasts/photo/{{ t.id }}/send" class="btn btn-sm btn-primary flex-fill">Разослать</a>
+      </div>
+    </div>
+  </div>
+{% else %}
+  <div class="col-12">
+    <div class="card"><div class="card-body empty-state">
+      Пока нет шаблонов. <a href="/admin/broadcasts/photo/new">Создать первый →</a>
+    </div></div>
+  </div>
+{% endfor %}
+</div>
+{% endblock %}

@@ -1,0 +1,165 @@
+{% extends "base.html" %}
+
+{% block extra_styles %}
+<style>
+.preview-card {position:relative; transition:transform .15s}
+.preview-card:hover {transform:translateY(-2px)}
+.preview-card .preview-img {cursor:zoom-in; width:100%; height:180px; object-fit:cover}
+.preview-card .badges {position:absolute; top:6px; right:6px; display:flex; gap:4px; z-index:2}
+.preview-card .actions {opacity:0; transition:opacity .15s; position:absolute; inset:0;
+  background:rgba(0,0,0,.55); display:flex; align-items:center; justify-content:center;
+  flex-direction:column; gap:6px; padding:8px}
+.preview-card:hover .actions {opacity:1}
+/* Lightbox */
+#lightbox {position:fixed; inset:0; background:rgba(0,0,0,.92); z-index:9999;
+  display:none; align-items:center; justify-content:center; cursor:zoom-out}
+#lightbox.open {display:flex}
+#lightbox img {max-width:95vw; max-height:95vh; box-shadow:0 0 40px rgba(0,0,0,.5)}
+</style>
+{% endblock %}
+
+{% block content %}
+<form class="row g-2 mb-3" method="get">
+  <div class="col-auto">
+    <label class="form-label small mb-1">Пол</label>
+    <select name="g" class="form-select form-select-sm" onchange="this.form.submit()">
+      <option value="all"    {% if current_g == 'all' %}selected{% endif %}>оба</option>
+      <option value="female" {% if current_g == 'female' %}selected{% endif %}>только жен</option>
+      <option value="male"   {% if current_g == 'male' %}selected{% endif %}>только муж</option>
+    </select>
+  </div>
+  <div class="col-auto">
+    <label class="form-label small mb-1">Категория</label>
+    <select name="cat" class="form-select form-select-sm" onchange="this.form.submit()">
+      <option value="all" {% if current_cat == 'all' %}selected{% endif %}>все</option>
+      {% for c in categories %}
+        <option value="{{ c }}" {% if current_cat == c %}selected{% endif %}>{{ c }}</option>
+      {% endfor %}
+    </select>
+  </div>
+  <div class="col-auto">
+    <label class="form-label small mb-1">Состояние</label>
+    <select name="f" class="form-select form-select-sm" onchange="this.form.submit()">
+      <option value="all"      {% if current_f == 'all' %}selected{% endif %}>все</option>
+      <option value="missing"  {% if current_f == 'missing' %}selected{% endif %}>без превью</option>
+      <option value="custom"   {% if current_f == 'custom' %}selected{% endif %}>только custom</option>
+      <option value="featured" {% if current_f == 'featured' %}selected{% endif %}>⭐ featured</option>
+    </select>
+  </div>
+  <div class="col-auto">
+    <label class="form-label small mb-1">Сортировка</label>
+    <select name="sort" class="form-select form-select-sm" onchange="this.form.submit()">
+      <option value="alpha"  {% if current_sort == 'alpha' %}selected{% endif %}>по имени</option>
+      <option value="top"    {% if current_sort == 'top' %}selected{% endif %}>топ за 30д</option>
+      <option value="recent" {% if current_sort == 'recent' %}selected{% endif %}>недавно использовали</option>
+    </select>
+  </div>
+  <div class="col-auto ms-auto align-self-end text-muted small">{{ total }} карточек</div>
+</form>
+
+{% if not items %}
+<div class="card"><div class="card-body text-center text-muted py-5">
+  Под фильтр ничего не попало.
+</div></div>
+{% else %}
+<div class="row g-2">
+  {% for it in items %}
+    <div class="col-6 col-md-4 col-lg-3">
+      <div class="card preview-card overflow-hidden">
+
+        <div class="badges">
+          {% if it.featured %}<span class="badge bg-warning" title="Featured — первым в категории">⭐</span>{% endif %}
+          {% if it.is_custom %}<span class="badge bg-indigo-lt" title="Кастом-пресет из БД">C</span>{% endif %}
+          {% if it.female_only %}<span class="badge bg-pink-lt" title="Только для девушек">F</span>{% endif %}
+          {% if not it.has_f and not it.has_m %}<span class="badge bg-danger" title="Нет превью">!</span>{% endif %}
+        </div>
+
+        <div class="d-flex position-relative">
+          {% if it.has_f %}
+            <img class="preview-img" data-zoom="/admin/gallery/thumb/0/{{ it.key }}"
+                 src="/admin/gallery/thumb/0/{{ it.key }}"
+                 alt="{{ it.label }} жен"
+                 style="border-radius:4px 0 0 0; {% if not it.has_m %}border-radius:4px 4px 0 0{% endif %}">
+          {% endif %}
+          {% if it.has_m %}
+            <img class="preview-img" data-zoom="/admin/gallery/thumb/1/{{ it.key }}"
+                 src="/admin/gallery/thumb/1/{{ it.key }}"
+                 alt="{{ it.label }} муж"
+                 style="border-radius:0 4px 0 0; {% if not it.has_f %}border-radius:4px 4px 0 0{% endif %}">
+          {% endif %}
+          {% if not it.has_f and not it.has_m %}
+            <div class="text-center text-muted py-5" style="width:100%">— нет превью —</div>
+          {% endif %}
+
+          {# Hover-actions — главное оружие галереи #}
+          <div class="actions">
+            <form method="post" action="/admin/gallery/{{ it.key }}/regen" class="d-flex flex-column gap-1 w-100"
+                  onsubmit="return confirm('Перегенерить превью? Спишется ~$0.12 за каждое.')">
+              <select name="pos" class="form-select form-select-sm">
+                <option value="both">муж + жен ($0.24)</option>
+                <option value="female">только жен ($0.12)</option>
+                <option value="male" {% if it.female_only %}disabled{% endif %}>только муж ($0.12)</option>
+              </select>
+              <button class="btn btn-sm btn-primary">🔁 Перегенерить</button>
+            </form>
+            {% if it.has_f or it.has_m %}
+              <a href="/admin/gallery/{{ it.key }}/broadcast" class="btn btn-sm btn-success w-100">📢 Разослать…</a>
+            {% endif %}
+            <div class="btn-list w-100 mt-1">
+              {% if it.is_custom %}
+                <form method="post" action="/admin/gallery/{{ it.key }}/toggle-featured" class="d-inline">
+                  <button class="btn btn-sm btn-outline-warning">{{ '⭐ Снять' if it.featured else '⭐ Featured' }}</button>
+                </form>
+                <a href="/admin/presets/{{ it.custom_id }}/edit" class="btn btn-sm btn-outline-light">✏️</a>
+              {% endif %}
+              {% if it.has_f %}
+                <form method="post" action="/admin/gallery/{{ it.key }}/delete-thumb/0" class="d-inline"
+                      onsubmit="return confirm('Удалить женское превью? Сам пресет не пропадёт.')">
+                  <button class="btn btn-sm btn-outline-danger" title="Удалить женское превью">🗑F</button>
+                </form>
+              {% endif %}
+              {% if it.has_m %}
+                <form method="post" action="/admin/gallery/{{ it.key }}/delete-thumb/1" class="d-inline"
+                      onsubmit="return confirm('Удалить мужское превью? Сам пресет не пропадёт.')">
+                  <button class="btn btn-sm btn-outline-danger" title="Удалить мужское превью">🗑M</button>
+                </form>
+              {% endif %}
+            </div>
+          </div>
+        </div>
+
+        <div class="card-body p-2">
+          <a href="/admin/gallery/{{ it.key }}/inspect"
+             class="small fw-bold text-truncate d-block text-decoration-none text-reset"
+             title="Посмотреть актуальный промпт">{{ it.label }} <i class="ti ti-info-circle text-muted" style="font-size:.85em"></i></a>
+          <div class="d-flex justify-content-between align-items-center mt-1">
+            <code class="small text-muted text-truncate" title="{{ it.key }}">{{ it.key }}</code>
+            <span class="badge bg-blue-lt" title="Генераций за 30 дней">{{ it.gen_count_30d }}</span>
+          </div>
+          <div class="text-muted small text-truncate" title="{{ it.category }}">{{ it.category }}</div>
+        </div>
+      </div>
+    </div>
+  {% endfor %}
+</div>
+{% endif %}
+
+<div id="lightbox" onclick="this.classList.remove('open')"><img id="lightbox-img" alt=""></div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+// Lightbox: клик по превью → fullscreen
+document.querySelectorAll('.preview-img').forEach(img => {
+  img.addEventListener('click', e => {
+    e.stopPropagation();
+    const lb = document.getElementById('lightbox');
+    document.getElementById('lightbox-img').src = img.dataset.zoom || img.src;
+    lb.classList.add('open');
+  });
+});
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape') document.getElementById('lightbox').classList.remove('open');
+});
+</script>
+{% endblock %}

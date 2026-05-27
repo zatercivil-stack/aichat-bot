@@ -1,0 +1,117 @@
+{% extends "base.html" %}
+
+{% block header_actions %}
+<div class="col-auto ms-auto">
+  <a href="/admin/gallery" class="btn btn-link">← К галерее</a>
+  {% if custom %}
+    <a href="/admin/presets/{{ custom.id }}/edit" class="btn btn-primary">
+      <i class="ti ti-edit me-1"></i>Редактировать override
+    </a>
+  {% else %}
+    <form method="post" action="/admin/gallery/{{ key }}/create-override" style="display:inline"
+          onsubmit="return confirm('Создать override для этого хардкод-пресета? Все поля будут предзаполнены текущим хардкод-промптом — ты сможешь их править. Удаление override вернёт хардкод обратно.')">
+      <button class="btn btn-primary"><i class="ti ti-edit me-1"></i>Редактировать промпт</button>
+    </form>
+  {% endif %}
+</div>
+{% endblock %}
+
+{% block content %}
+<div class="row">
+  <div class="col-lg-4 mb-3">
+    <div class="card">
+      <div class="card-header"><h3 class="card-title">Превью</h3></div>
+      <div class="card-body text-center">
+        <div class="d-flex justify-content-center gap-2">
+          {% if has_female %}
+            <div>
+              <img src="/admin/gallery/thumb/0/{{ key }}" alt="жен"
+                   style="max-width:160px;border-radius:8px">
+              <div class="text-muted small mt-1">женское</div>
+            </div>
+          {% endif %}
+          {% if has_male %}
+            <div>
+              <img src="/admin/gallery/thumb/1/{{ key }}" alt="муж"
+                   style="max-width:160px;border-radius:8px">
+              <div class="text-muted small mt-1">мужское</div>
+            </div>
+          {% endif %}
+          {% if not has_female and not has_male %}
+            <div class="text-muted py-3">— нет превью —</div>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+
+    <div class="card mt-3">
+      <div class="card-body">
+        <dl class="row mb-0">
+          <dt class="col-5 text-muted">Ключ</dt><dd class="col-7"><code>{{ key }}</code></dd>
+          <dt class="col-5 text-muted">Категория</dt><dd class="col-7">{{ category }}</dd>
+          <dt class="col-5 text-muted">Режим</dt><dd class="col-7"><span class="badge bg-blue-lt">{{ quality_mode }}</span></dd>
+          <dt class="col-5 text-muted">Только жен</dt><dd class="col-7">{{ 'да' if female_only else 'нет' }}</dd>
+          <dt class="col-5 text-muted">Тип</dt><dd class="col-7">
+            {% if custom %}<span class="badge bg-indigo-lt">custom (БД)</span>
+            {% else %}<span class="badge bg-secondary-lt">хардкод</span>{% endif %}
+          </dd>
+          {% if custom %}
+            <dt class="col-5 text-muted">Featured</dt>
+            <dd class="col-7">{{ '⭐' if custom.featured else '—' }}</dd>
+            <dt class="col-5 text-muted">Включён</dt>
+            <dd class="col-7">{{ 'да' if custom.enabled else 'нет' }}</dd>
+          {% endif %}
+        </dl>
+      </div>
+    </div>
+  </div>
+
+  <div class="col-lg-8">
+    <div class="card">
+      <div class="card-header">
+        <h3 class="card-title">Основной промпт (женский вариант)</h3>
+        <div class="card-actions text-muted small">идёт в fal как есть, плюс identity-lock обёртка</div>
+      </div>
+      <div class="card-body">
+        <pre style="white-space:pre-wrap; font-size:.85rem; margin:0; padding:.75rem;
+                    background:#0f1226; border-radius:.5rem; max-height:340px; overflow:auto;">{{ prompt }}</pre>
+      </div>
+    </div>
+
+    {% if not female_only %}
+    <div class="card mt-3">
+      <div class="card-header">
+        <h3 class="card-title">Мужской вариант (что реально уходит в fal)</h3>
+        <div class="card-actions">
+          {% if male_override %}
+            <span class="badge bg-success-lt" title="Прописан explicit override в коде / БД">explicit override</span>
+          {% else %}
+            <span class="badge bg-secondary-lt" title="Override нет → к основному добавлен общий male-суффикс">основной + male-suffix</span>
+          {% endif %}
+        </div>
+      </div>
+      <div class="card-body">
+        <pre style="white-space:pre-wrap; font-size:.85rem; margin:0; padding:.75rem;
+                    background:#0f1226; border-radius:.5rem; max-height:420px; overflow:auto;">{{ male_prompt }}</pre>
+        {% if not male_override %}
+          <div class="text-muted small mt-2">
+            Это «основной + общий male-suffix» (запрет lipstick/серёг/платьев и т.п.).
+            Если в основном промпте есть жёсткие женские детали (crop top, biker shorts,
+            косички — суффикс их не отменяет), нужно прописать explicit male-override
+            (в коде для хардкод-пресетов, или в форме для custom).
+          </div>
+        {% endif %}
+      </div>
+    </div>
+    {% endif %}
+
+    <details class="mt-3">
+      <summary class="text-muted small" style="cursor:pointer">
+        🔧 Общий male-suffix (применяется ко всем мужским вариантам без override)
+      </summary>
+      <pre class="mt-2" style="white-space:pre-wrap; font-size:.8rem; padding:.5rem;
+                  background:#0f1226; border-radius:.5rem">{{ male_suffix }}</pre>
+    </details>
+  </div>
+</div>
+{% endblock %}
