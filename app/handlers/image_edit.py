@@ -2434,6 +2434,19 @@ async def receive_edit_photo(message: Message, state: FSMContext) -> None:
 async def _receive_edit_photo_impl(message: Message, state: FSMContext, file_id: str) -> None:
     data = await state.get_data()
     pending = data.get('pending_gallery_preset')
+    # Funnel-событие: юзер реально прислал селфи. Закрывает слепое пятно между
+    # регистрацией и image_edited — теперь видно где утечка (загрузил→не сгенерил).
+    try:
+        from app.database.base import AsyncSessionFactory
+        from app.database.repo.users import get_user
+        from app.database.repo.events import log_event
+        async with AsyncSessionFactory() as _s:
+            _u = await get_user(_s, message.from_user.id)
+        if _u:
+            await log_event(_u.id, 'selfie_uploaded',
+                            has_pending_preset=bool(pending))
+    except Exception as exc:
+        logger.warning('selfie_uploaded event log failed', error=str(exc)[:150])
     # Диагностический лог — увидеть в проде что именно приходит и в каком state
     doc = message.document
     logger.info('receive_edit_photo',

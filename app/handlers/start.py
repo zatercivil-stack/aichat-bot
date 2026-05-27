@@ -176,10 +176,11 @@ async def _notify_admins_new_user(bot, user, source: str, extra: str = '') -> No
 
 def _onboarding_kb() -> InlineKeyboardMarkup:
     """Для новичков: hero — каталог (юзер видит результат → проще решиться),
-    плюс face-swap. Лишнее («Свой вопрос», «Картинка с нуля») вынесено в Ещё."""
+    плюс face-swap. Лишнее («Свой вопрос», «Картинка с нуля») вынесено в Ещё.
+    Основной CTA «пришли селфи» теперь в welcome-тексте → кнопка про сцены."""
     return InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton.model_construct(
-            text='Посмотреть примеры и сделать своё',
+            text='Посмотреть готовые сцены',
             callback_data='gallery_open', icon_custom_emoji_id=PE_SPARKLES, style='success',
         )],
         [InlineKeyboardButton.model_construct(
@@ -264,6 +265,16 @@ async def cmd_start(
             language_code=tg_user.language_code or 'ru',
             referrer_id=referrer_telegram_id,
         )
+
+        # Funnel-метрика активации: каждое /start (новички и возвращающиеся).
+        # На дашборде distinct user даёт «дошли до welcome» — для замера, где
+        # утечка между регистрацией и 1-м кадром (фокусный KPI Нейры).
+        try:
+            from app.database.repo.events import log_event
+            await log_event(user.id, 'start_command', is_new_user=is_new,
+                            has_promo=bool(promo_code_arg))
+        except Exception as exc:
+            logger.warning('start_command event log failed', error=str(exc)[:150])
 
         # Запоминаем реферера в Redis — бонус выдадим при первом сообщении
         if referrer_telegram_id and redis:
