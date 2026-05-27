@@ -54,6 +54,37 @@
   </div>
 </div>
 
+{# Воронка Нейры — два главных KPI после пивота. Считаются по реальным юзерам
+   (без тех/забаненных). Активация — главная утечка; 2-я генерация — здоровье
+   continuation-loop'а после редизайна экрана результата. #}
+<div class="row row-cards mt-3">
+  <div class="col-sm-6 col-lg-6">
+    <div class="card stat-card" style="--accent:linear-gradient(135deg,#f59e0b,#dc2626)">
+      <div class="card-body">
+        <div class="stat-label mb-2"><i class="ti ti-target me-1"></i>Активация · регистр → 1-е фото</div>
+        <div class="d-flex align-items-baseline">
+          <div class="h1 me-2 mb-0">{{ stats.activation_rate }}%</div>
+          <div class="text-muted">{{ stats.users_1plus_gen }} / {{ stats.total_real }}</div>
+        </div>
+        <div class="stat-trend text-muted mt-1">главная утечка воронки — кто зашёл, но не сделал ни одного кадра</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="col-sm-6 col-lg-6">
+    <div class="card stat-card" style="--accent:linear-gradient(135deg,#06b6d4,#3b82f6)">
+      <div class="card-body">
+        <div class="stat-label mb-2"><i class="ti ti-repeat me-1"></i>2-я генерация · ≥1 → ≥2 фото</div>
+        <div class="d-flex align-items-baseline">
+          <div class="h1 me-2 mb-0">{{ stats.second_gen_rate }}%</div>
+          <div class="text-muted">{{ stats.users_2plus_gen }} / {{ stats.users_1plus_gen }}</div>
+        </div>
+        <div class="stat-trend text-muted mt-1">здоровье continuation-loop — кто сделал ещё хотя бы один кадр</div>
+      </div>
+    </div>
+  </div>
+</div>
+
 <div class="row row-cards mt-3">
   <div class="col-sm-3">
     <div class="card stat-card text-center">

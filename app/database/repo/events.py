@@ -250,6 +250,31 @@ async def get_dashboard_stats(session: AsyncSession) -> dict:
         .where(BotEvent.event_type == 'error', BotEvent.created_at >= today)
     )
 
+    # ── Главные KPI воронки Нейры: активация (регистр→≥1 фото) и continuation
+    # (≥1→≥2 фото). Считаем по реальным юзерам (без тех и забаненных).
+    total_real = await session.scalar(
+        select(func.count()).select_from(User)
+        .where(User.id.notin_(exclude_uids), User.is_banned == False)
+    ) or 0
+    users_1plus_gen = await session.scalar(
+        select(func.count(func.distinct(BotEvent.user_id)))
+        .where(BotEvent.event_type == 'image_edited',
+               BotEvent.user_id.notin_(exclude_uids))
+    ) or 0
+    _gen2_subq = (
+        select(BotEvent.user_id)
+        .where(BotEvent.event_type == 'image_edited',
+               BotEvent.user_id.notin_(exclude_uids))
+        .group_by(BotEvent.user_id)
+        .having(func.count() >= 2)
+        .subquery()
+    )
+    users_2plus_gen = await session.scalar(
+        select(func.count()).select_from(_gen2_subq)
+    ) or 0
+    activation_rate = round(100.0 * users_1plus_gen / total_real, 1) if total_real else 0.0
+    second_gen_rate = round(100.0 * users_2plus_gen / users_1plus_gen, 1) if users_1plus_gen else 0.0
+
     return {
         'total_users': total_users or 0,
         'new_today': new_today or 0,
@@ -274,6 +299,11 @@ async def get_dashboard_stats(session: AsyncSession) -> dict:
         'daily_messages': daily_messages,
         'banned_count': banned_count or 0,
         'errors_24h': errors_24h or 0,
+        'total_real': total_real,
+        'users_1plus_gen': users_1plus_gen,
+        'users_2plus_gen': users_2plus_gen,
+        'activation_rate': activation_rate,
+        'second_gen_rate': second_gen_rate,
     }
 
 
