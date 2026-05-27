@@ -1,0 +1,26 @@
+# VCS (после git init — иначе .git раздувает образ)
+.git
+.gitignore
+
+# примонтировано в рантайме (compose: ./data:/app/data) — в образе не нужно
+data/
+
+# секреты: инжектятся через env_file в рантайме, в слои образа НЕ нужны
+.env
+.env.*
+
+# python-кэш
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+
+# логи / дампы / бэкапы
+*.log
+*.sql.gz
+backups/
+
+# редактор/ОС
+.vscode/
+.idea/
+.DS_Store

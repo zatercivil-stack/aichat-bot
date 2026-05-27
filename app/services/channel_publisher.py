@@ -994,7 +994,9 @@ async def _build_post(
     # ~65% постов идут БЕЗ «+N кр»: обычный CTA в бота (?start=channel — не
     # кредитует), только контент. ~35% сохраняют бонус-приманку. cta_override
     # (ручной /channel_post) не трогаем — там бонус выставлен осознанно.
-    if cta_type != 'none' and not cta_override and random.random() < 0.65:
+    # ТОЛЬКО neyra-CTA гейтим в plain. aurum_daily (VPN-посты) и 'none' не трогаем
+    # — иначе VPN-пост получил бы Нейра-футер «фото со своим лицом» (бессмыслица).
+    if cta_type in ('neira_daily', 'neira_feature') and not cta_override and random.random() < 0.65:
         cta_type = 'neira_plain'
         cta_footer = ('—\n🎁 <a href="https://t.me/NeyraChatBot?start=channel">'
                       '<b>Хочу такой кадр со своим лицом → в Нейре</b></a>')
@@ -1023,7 +1025,7 @@ async def _build_post(
     # Если AI «забыл» строку PRESET в neyra-теме — пытаемся inferring по тексту.
     # Так посту достанется правильный preset preview + working deeplink-кнопка
     # без перегенерации (экономия 5-15 сек + токенов).
-    if not preset_key and (cta_type in ('neira_daily', 'neira_feature')):
+    if not preset_key and (cta_type in ('neira_daily', 'neira_feature', 'neira_plain')):
         inferred = _infer_preset_from_body(body)
         if inferred:
             preset_key = inferred
