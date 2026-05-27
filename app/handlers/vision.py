@@ -101,6 +101,19 @@ async def _start_edit_from_uploaded(
     сохраняем file_id как `reuse_file_id` и открываем НОВЫЙ каталог категорий.
     Юзер выбирает пресет из карточки → cb_gallery_try видит reuse_file_id и
     применяет к этому фото БЕЗ повторной загрузки селфи."""
+    # Funnel-метрика: фиксируем selfie_uploaded и в Freeform-флоу (welcome →
+    # «пришли селфи прямо сейчас» без state). До этого фикса событие логилось
+    # только в state-флоу — selfie-first юзеры выпадали из метрики активации.
+    try:
+        async with AsyncSessionFactory() as _s:
+            _u = await get_user(_s, user_tg_id)
+        if _u:
+            log_event_bg(_u.id, 'selfie_uploaded',
+                         source='freeform', via=source_label)
+    except Exception as exc:
+        logger.warning('selfie_uploaded (freeform) event log failed',
+                       error=str(exc)[:150])
+
     edit_intent = _detect_edit_intent(caption) if caption else False
 
     # Шорткат: caption-команда → запускаем редактирование сразу, один проход
