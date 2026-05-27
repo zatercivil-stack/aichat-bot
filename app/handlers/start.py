@@ -267,12 +267,16 @@ async def cmd_start(
         )
 
         # Funnel-метрика активации: каждое /start (новички и возвращающиеся).
-        # На дашборде distinct user даёт «дошли до welcome» — для замера, где
-        # утечка между регистрацией и 1-м кадром (фокусный KPI Нейры).
+        # ⚠️ Пишем ЧЕРЕЗ ТУ ЖЕ сессию — get_or_create_user сделал только flush(),
+        # без commit(); вызов log_event через отдельную сессию НЕ увидит юзера
+        # (READ COMMITTED) → FK violation → событие теряется для НОВИЧКА. Что
+        # ломает именно ту когорту, которую и замеряем (фокусный KPI).
         try:
-            from app.database.repo.events import log_event
-            await log_event(user.id, 'start_command', is_new_user=is_new,
-                            has_promo=bool(promo_code_arg))
+            from app.database.models import BotEvent
+            session.add(BotEvent(
+                user_id=user.id, event_type='start_command',
+                extra={'is_new_user': is_new, 'has_promo': bool(promo_code_arg)},
+            ))
         except Exception as exc:
             logger.warning('start_command event log failed', error=str(exc)[:150])
 

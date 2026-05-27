@@ -3392,13 +3392,20 @@ async def _run_edit(
             )])
 
     # 3) Кредиты кончились → бурн-пак (пик готовности платить сразу после WOW).
-    #    Зелёный герой, только если выше ещё нет зелёного действия.
+    #    Если юзер ещё и не платил — рядом подписка (раньше был отдельный ряд
+    #    [Паки + Подписка] — оставляем оба, чтобы не потерять конверсию).
     if low_balance:
-        keyboard_rows.append([InlineKeyboardButton.model_construct(
-            text='Докинуть кредитов · 1 500 за 99₽',
+        money_row = [InlineKeyboardButton.model_construct(
+            text='Докинуть · 1 500 за 99₽',
             callback_data='buy_pack:burn_1500_7d', icon_custom_emoji_id=PE_FIRE,
             style='success' if not keyboard_rows else 'primary',
-        )])
+        )]
+        if not paid:
+            money_row.append(InlineKeyboardButton.model_construct(
+                text='Подписка 149₽',
+                callback_data='subscription', icon_custom_emoji_id=PE_AU_GOLD,
+            ))
+        keyboard_rows.append(money_row)
 
     # 4) Один вход в каталог — заменяет ДВА прежних дубля «другой стиль» (оба вели
     #    в edit_again — был баг дублирования из-за проверки только row[0]).
