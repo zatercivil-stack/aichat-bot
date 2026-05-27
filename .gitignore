@@ -24,3 +24,15 @@ venv/
 .DS_Store
 .idea/
 .vscode/
+
+# секрет-файлы — защита от случайного авто-пуша секрета в GitHub
+*.pem
+*.key
+*.p12
+*.pfx
+id_rsa*
+id_ed25519*
+*credential*
+*secret*.json
+service-account*.json
+*.kdbx
