@@ -2884,6 +2884,51 @@ async def cb_quickscene(callback: CallbackQuery, state: FSMContext) -> None:
                     quality_mode=qmode)
 
 
+@router.callback_query(F.data.startswith('freescene:'))
+async def cb_freescene(callback: CallbackQuery, state: FSMContext) -> None:
+    """Подарок дня в один тап с экрана результата: применить сегодняшний
+    бесплатный пресет к ТОМУ ЖЕ селфи БЕЗ списания (claim + mystery_free).
+    Формат: freescene:{refine_key}. Главный драйвер 2-й генерации."""
+    refine_key = callback.data.split(':', 1)[1]
+    from app.services.mystery_preset import get_today_mystery, claim, is_used_today
+    mystery = await get_today_mystery()
+    if not mystery or mystery['preset_key'] not in EDIT_PRESETS:
+        await callback.answer('Подарок дня сейчас недоступен', show_alert=True)
+        return
+    orig = None
+    try:
+        import json as _json
+        from redis.asyncio import Redis
+        from app.config import settings as _settings
+        _redis = Redis.from_url(_settings.REDIS_URL, decode_responses=True)
+        raw = await _redis.get(f'refine:{refine_key}')
+        if raw:
+            orig = (_json.loads(raw) or {}).get('orig')
+    except Exception:
+        orig = None
+    if not orig:
+        await callback.answer('Сессия истекла — пришли фото заново', show_alert=True)
+        return
+    if await is_used_today(callback.from_user.id):
+        await callback.answer('Сегодняшний подарок уже забрал — следующий завтра 🎁', show_alert=True)
+        return
+    if not await claim(callback.from_user.id):
+        await callback.answer('Сегодняшний подарок уже забрал — следующий завтра 🎁', show_alert=True)
+        return
+    preset_key = mystery['preset_key']
+    _label, prompt = EDIT_PRESETS[preset_key]
+    qmode = PRESET_QUALITY_MAP.get(preset_key, 'quality')
+    await state.set_state(None)
+    await state.update_data(
+        file_id=orig, face_photos=[orig], preset_key=preset_key,
+        quality_mode=qmode, mystery_free=True, reuse_file_id=None,
+        pending_gallery_preset=None,
+    )
+    await callback.answer('Делаю бесплатную сцену дня…')
+    await _run_edit(callback.message, state, prompt, callback.from_user.id,
+                    quality_mode=qmode)
+
+
 @router.callback_query(F.data.startswith('retry_edit:'))
 async def cb_retry_edit(callback: CallbackQuery, state: FSMContext) -> None:
     """Повтор провалившейся правки тем же фото, но в режиме Качество.
@@ -3292,12 +3337,39 @@ async def _run_edit(
 
     keyboard_rows: list[list[InlineKeyboardButton]] = []
 
-    # ── Пост-результатный луп: 1-2 конкретные НОВЫЕ сцены в один тап,
-    # применяются к ЭТОМУ ЖЕ селфи (orig в refine-кэше). Пиковый момент для
-    # второй генерации — сразу после вау-кадра, без листания каталога.
+    # ─────────────────────────────────────────────────────────────────────
+    # Экран результата заточен под ОДНУ цель — следующая генерация (главная
+    # боль: после 1-го кадра почти никто не делает 2-й). Сверху — самые
+    # низкофрикционные способы сделать ещё кадр; лишнее убрано вниз и тихо.
+    # ─────────────────────────────────────────────────────────────────────
+
+    # 1) ГЕРОЙ — Подарок дня БЕСПЛАТНО. Снимает сразу два барьера (цена + выбор)
+    #    → сильнейший драйвер 2-й генерации. Применяется к тому же селфи одним
+    #    тапом без списания (claim + mystery_free в cb_freescene).
+    free_gift_key = None
+    if refine_key:
+        try:
+            from app.services.mystery_preset import get_today_mystery, is_used_today
+            _m = await get_today_mystery()
+            if (_m and _m['preset_key'] in EDIT_PRESETS
+                    and _m['preset_key'] != preset_key
+                    and not (user_gender == 'male' and _m['preset_key'] in _FEMALE_ONLY_PRESETS)
+                    and not await is_used_today(source_user_id)):
+                free_gift_key = _m['preset_key']
+        except Exception as exc:
+            logger.warning('result free-gift check failed', error=str(exc)[:150])
+    if free_gift_key:
+        keyboard_rows.append([InlineKeyboardButton.model_construct(
+            text=f'🎁 Сегодня бесплатно: {_label_for(free_gift_key, user_gender == "male")}',
+            callback_data=f'freescene:{refine_key}', style='success',
+        )])
+
+    # 2) Квик-сцены: 1-2 конкретные сцены в один тап к ТОМУ ЖЕ селфи. БЕЗ цены в
+    #    подписи (она в шапке — не нагнетаем расход). Полная ширина = читаемое имя
+    #    сцены (имя и продаёт клик). Только если хватает кредитов.
     if refine_key and not low_balance:
-        _suggest = [k for k in await _get_new_preset_keys(limit=10)
-                    if k != preset_key
+        _suggest = [k for k in await _get_new_preset_keys(limit=12)
+                    if k != preset_key and k != free_gift_key
                     and not (user_gender == 'male' and k in _FEMALE_ONLY_PRESETS)][:2]
         for _k in _suggest:
             keyboard_rows.append([InlineKeyboardButton.model_construct(
@@ -3306,85 +3378,34 @@ async def _run_edit(
                 icon_custom_emoji_id=PE_SPARKLES, style='success',
             )])
 
-    # ── HERO row ── (одно ярко-зелёное действие — то, что лучше всего конвертит)
-    if show_refine_btn and remaining >= swap_cost:
-        # Если лицо не идеально — самая важная кнопка чтобы спасти впечатление.
-        # Premium-иконка ROBOT (face-swap делается через AI-модель).
-        keyboard_rows.append([InlineKeyboardButton.model_construct(
-            text=f'Сделать лицо точнее · {swap_cost} кр',
-            callback_data=f'refine_face:{refine_key}',
-            icon_custom_emoji_id=PE_ROBOT, style='success',
-        )])
-    elif low_balance:
-        # Деньги кончились — момент максимальной готовности докинуть (только что
-        # испытали WOW). Bурн-пак 99₽ = ~15 сцен — самый low-friction upsell.
-        keyboard_rows.append([InlineKeyboardButton.model_construct(
-            text='Докинуть кредитов · 1 500 кр за 99₽',
-            callback_data='buy_pack:burn_1500_7d',
-            icon_custom_emoji_id=PE_FIRE, style='success',
-        )])
-    elif can_restyle:
-        # Самый липкий loop — то же фото, новый стиль (1 клик → новый WOW)
-        keyboard_rows.append([InlineKeyboardButton.model_construct(
-            text=f'Ещё стиль для этого фото · {style_cost} кр',
-            callback_data=f'edit_again:{refine_key}',
-            icon_custom_emoji_id=PE_SPARKLES, style='success',
-        )])
-    else:
-        # refine_key пропал / денег не хватает на стиль, но хватает на что-то —
-        # подсовываем каталог чтобы запустить новый цикл из готовой сцены
-        keyboard_rows.append([InlineKeyboardButton.model_construct(
-            text='Ещё одну сцену из каталога',
-            callback_data='gallery_open',
-            icon_custom_emoji_id=PE_SPARKLES, style='success',
-        )])
-
-    # ── Secondary: refine когда баланс позволяет, но hero отдан upsell'у ──
-    if show_refine_btn and remaining >= swap_cost and low_balance is False:
-        pass  # уже стоит как hero
-    elif show_refine_btn and remaining >= swap_cost:
-        keyboard_rows.append([InlineKeyboardButton.model_construct(
-            text=f'Сделать лицо точнее · {swap_cost} кр',
-            callback_data=f'refine_face:{refine_key}',
-            icon_custom_emoji_id=PE_ROBOT, style='primary',
-        )])
-
-    # ── Cross-sell #1: re-style ──
-    # (если ещё не использовался как hero, и кредитов хватает)
-    if can_restyle and not (keyboard_rows and keyboard_rows[0][0].callback_data == f'edit_again:{refine_key}'):
-        keyboard_rows.append([InlineKeyboardButton.model_construct(
-            text=f'Применить другой стиль · {style_cost} кр',
-            callback_data=f'edit_again:{refine_key}',
-            icon_custom_emoji_id=PE_SPARKLES, style='primary',
-        )])
-
-    # ── Cross-sell #2: face-swap в чужое фото ──
-    if can_faceswap:
-        keyboard_rows.append([InlineKeyboardButton.model_construct(
-            text=f'Лицо в другое фото · {swap_cost} кр',
-            callback_data='face_swap_start', icon_custom_emoji_id=PE_ROBOT,
-        )])
-
-    # ── Money row при low balance: дать выбор (срочно или вдумчиво) ──
+    # 3) Кредиты кончились → бурн-пак (пик готовности платить сразу после WOW).
+    #    Зелёный герой, только если выше ещё нет зелёного действия.
     if low_balance:
-        keyboard_rows.append([
-            InlineKeyboardButton.model_construct(
-                text='Все паки', callback_data='shop', icon_custom_emoji_id=PE_CARD,
-            ),
-            InlineKeyboardButton.model_construct(
-                text='Подписка от 149₽', callback_data='subscription', icon_custom_emoji_id=PE_AU_GOLD,
-            ),
-        ])
-    elif not paid:
-        # Платил давно / никогда — подсовываем подписку (avg-LTV выше)
         keyboard_rows.append([InlineKeyboardButton.model_construct(
-            text='Убрать водяной знак · подписка от 149₽',
+            text='Докинуть кредитов · 1 500 за 99₽',
+            callback_data='buy_pack:burn_1500_7d', icon_custom_emoji_id=PE_FIRE,
+            style='success' if not keyboard_rows else 'primary',
+        )])
+
+    # 4) Один вход в каталог — заменяет ДВА прежних дубля «другой стиль» (оба вели
+    #    в edit_again — был баг дублирования из-за проверки только row[0]).
+    keyboard_rows.append([InlineKeyboardButton.model_construct(
+        text='🎨 Все сцены каталога', callback_data='gallery_open',
+        icon_custom_emoji_id=PE_SPARKLES,
+        style='success' if not keyboard_rows else 'primary',
+    )])
+
+    # 5) Контекстная монетизация (не-low-balance): не платил → подписка/вотермарк.
+    if not low_balance and not paid:
+        keyboard_rows.append([InlineKeyboardButton.model_construct(
+            text='Убрать водяной знак · подписка 149₽',
             callback_data='subscription', icon_custom_emoji_id=PE_AU_GOLD,
         )])
 
-    # ── Viral loop: share результата = реф-кредиты юзеру ──
-    # url-кнопка с deeplink на бота. Когда друг придёт по ссылке и напишет —
-    # текущему юзеру капнет REFERRAL_BONUS (см. репо/users/grant_referral_bonus).
+    # 6) Вторичное в ОДИН ряд: позвать друга (реф-бонус) + неприметный выход.
+    #    «Меню» больше НЕ красная-жирная — не должна конкурировать с продолжением.
+    #    Face-swap убран отсюда (доступен из главного меню как отд. инструмент).
+    secondary_row: list[InlineKeyboardButton] = []
     try:
         from urllib.parse import quote
         from app.config import settings as _settings
@@ -3395,18 +3416,16 @@ async def _run_edit(
                       'Балет у статуи, Bentley, Париж в неоне. Лицо 1-в-1 твоё.')
         share_url = (f'https://t.me/share/url?url={quote(ref_link, safe="")}'
                      f'&text={quote(share_text, safe="")}')
-        keyboard_rows.append([InlineKeyboardButton.model_construct(
-            text=f'Поделиться · +{REFERRAL_BONUS} кр за друга',
+        secondary_row.append(InlineKeyboardButton.model_construct(
+            text=f'🤝 Позвать друга +{REFERRAL_BONUS}',
             url=share_url, icon_custom_emoji_id=PE_HANDSHAKE,
-        )])
+        ))
     except Exception as exc:
         logger.warning('share button build failed', error=str(exc)[:200])
-
-    # ── Footer ──
-    keyboard_rows.append([InlineKeyboardButton.model_construct(
-        text='В главное меню',
-        callback_data='main_menu', icon_custom_emoji_id=PE_BACK, style='danger',
-    )])
+    secondary_row.append(InlineKeyboardButton.model_construct(
+        text='Меню', callback_data='main_menu', icon_custom_emoji_id=PE_BACK,
+    ))
+    keyboard_rows.append(secondary_row)
 
     # Caption: для пресета — его русский label. Для свободного текстового
     # запроса НЕ дублируем промпт (24.05: юзер просил убрать — он и так видит
