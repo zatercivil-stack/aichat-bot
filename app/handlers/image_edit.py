@@ -909,7 +909,7 @@ EDIT_PRESETS: dict[str, tuple[str, str | None]] = {
         'fantasy saint, hyperreal painterly.'
     ),
     'underwater_red': (
-        '🌊 Под водой красное',
+        '🌊 Под водой в красном свете',
         'Repaint as a PHOTO-REALISTIC ethereal UNDERWATER portrait. Subject submerged just BELOW the '
         'WATER SURFACE, head and bare shoulders visible. POSE: face turned slightly upward, EYES '
         'CLOSED PEACEFULLY in deep serene meditative expression, lips closed and relaxed. LIGHTING '
