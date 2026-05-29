@@ -320,12 +320,24 @@ async def cmd_start(
                 if not channel_ok:
                     promo_fail_reason = 'channel_required'
                 else:
-                    await add_credits(session, user, promo.credits)
+                    # Ad-промо (LOVER/DEEPINS…) начисляем СГОРАЕМЫМИ (3 дня):
+                    # urgency-механика — у нас 81/106 копят неистраченные кр и не
+                    # платят; срок «сгорит» гонит делать кадры сейчас (больше
+                    # генераций), а после сгорания халявы наступает пэйвол (выручка).
+                    # Прочие промо (channel/seasonal) — вечные, как раньше.
+                    from datetime import timedelta as _td
+                    _AD_BURN_PREFIXES = ('LOVER', 'DEEPINS')
+                    _burn_at = None
+                    if promo_code_arg.upper().startswith(_AD_BURN_PREFIXES):
+                        _burn_at = datetime.now(timezone.utc) + _td(days=3)
+                    await add_credits(session, user, promo.credits, burn_expires_at=_burn_at)
                     await redeem_promo(session, user.id, promo)
-                    promo_activated = {'code': promo_code_arg, 'credits': promo.credits}
+                    promo_activated = {'code': promo_code_arg, 'credits': promo.credits,
+                                       'burn_days': 3 if _burn_at else None}
                     user.promo_activated_at = datetime.now(timezone.utc)
                     user.time_bonus_granted = False
-                    log_event_bg(user.id, 'promo_redeemed', credits_spent=-promo.credits, code=promo_code_arg)
+                    log_event_bg(user.id, 'promo_redeemed', credits_spent=-promo.credits,
+                                 code=promo_code_arg, burn=bool(_burn_at))
 
         # Welcome bonus — ВСЕМ новичкам, независимо от промо/рефера.
         # Раньше: исключали юзеров с промо/рефером → юзер из канала с SCENE200 получал
