@@ -27,8 +27,8 @@ from app.database.repo.events import log_event_bg
 from app.database.repo.users import get_user, is_paid_user
 from app.keyboards.main import (
     PE_AU_GOLD, PE_BACK, PE_CARD, PE_CITY, PE_CLIP, PE_CROSS, PE_FIRE, PE_FRAME,
-    PE_HANDSHAKE, PE_LEFT, PE_MONEY, PE_MOON_DARK, PE_PAINT, PE_RIGHT, PE_ROBOT,
-    PE_SPARKLES, PE_THEATER,
+    PE_GIFT, PE_HANDSHAKE, PE_HOME, PE_LEFT, PE_MONEY, PE_MOON_DARK, PE_PAINT,
+    PE_RIGHT, PE_ROBOT, PE_SPARKLES, PE_THEATER, PE_UNLOCK,
     buy_or_invite_kb,
 )
 from app.services import fal_image_service, image_edit_service, watermark
@@ -3371,16 +3371,20 @@ async def _run_edit(
                 free_gift_key = _m['preset_key']
         except Exception as exc:
             logger.warning('result free-gift check failed', error=str(exc)[:150])
+    # Цвета (style) расставлены по UX-иерархии: success(зелёный)=то, что хотим
+    # тапнуть больше всего (бесплатный кадр / снять знак=выручка), primary(синий)=
+    # ещё генерации, default=вторичное (друг/меню). Эмодзи — премиум (PE_*).
     if free_gift_key:
         # Короткий фикс-лейбл (имя сцены НЕ влезает в кнопку → Telegram режет).
         keyboard_rows.append([InlineKeyboardButton.model_construct(
-            text='🎁 Сегодня бесплатно',
-            callback_data=f'freescene:{refine_key}', style='success',
+            text='Сегодня бесплатно',
+            callback_data=f'freescene:{refine_key}',
+            icon_custom_emoji_id=PE_GIFT, style='success',
         )])
 
     # 2) Квик-сцены: 1-2 конкретные сцены в один тап к ТОМУ ЖЕ селфи. БЕЗ цены в
-    #    подписи (она в шапке — не нагнетаем расход). Текст кнопки = имя сцены (со
-    #    своим эмодзи) — без префикса «Ещё кадр ·», иначе длинные имена режутся.
+    #    подписи (она в шапке — не нагнетаем расход). Текст = имя сцены (со своим
+    #    эмодзи) без префикса. Синий (primary) — это «ещё генерация».
     if refine_key and not low_balance:
         _suggest = [k for k in await _get_new_preset_keys(limit=12)
                     if k != preset_key and k != free_gift_key
@@ -3389,36 +3393,38 @@ async def _run_edit(
             keyboard_rows.append([InlineKeyboardButton.model_construct(
                 text=_label_for(_k, user_gender == "male"),
                 callback_data=f'quickscene:{refine_key}:{_k}',
-                style='success',
+                style='primary',
             )])
 
     # 3) Кредиты кончились → бурн-пак (пик готовности платить сразу после WOW).
-    #    Кнопки полноширинные (в 2 колонки текст резался) — каждая своим рядом.
+    #    Зелёный герой (это и нужный экшен, и выручка). Подписка рядом — синяя.
     if low_balance:
         keyboard_rows.append([InlineKeyboardButton.model_construct(
             text='1 500 кр за 99₽',
             callback_data='buy_pack:burn_1500_7d', icon_custom_emoji_id=PE_FIRE,
-            style='success' if not keyboard_rows else 'primary',
+            style='success',
         )])
         if not paid:
             keyboard_rows.append([InlineKeyboardButton.model_construct(
                 text='Без знака · подписка 149₽',
                 callback_data='subscription', icon_custom_emoji_id=PE_AU_GOLD,
+                style='primary',
             )])
 
     # 4) Один вход в каталог — заменяет ДВА прежних дубля «другой стиль» (оба вели
     #    в edit_again — был баг дублирования из-за проверки только row[0]).
     keyboard_rows.append([InlineKeyboardButton.model_construct(
-        text='🎨 Все сцены каталога', callback_data='gallery_open',
-        icon_custom_emoji_id=PE_SPARKLES,
-        style='success' if not keyboard_rows else 'primary',
+        text='Все сцены каталога', callback_data='gallery_open',
+        icon_custom_emoji_id=PE_FRAME, style='primary',
     )])
 
-    # 5) Контекстная монетизация (не-low-balance): не платил → подписка/вотермарк.
+    # 5) Контекстная монетизация (не-low-balance): не платил → снять знак.
+    #    Зелёный (success) — это прямая выручка, делаем заметной.
     if not low_balance and not paid:
         keyboard_rows.append([InlineKeyboardButton.model_construct(
             text='Убрать водяной знак · 149₽',
-            callback_data='subscription', icon_custom_emoji_id=PE_AU_GOLD,
+            callback_data='subscription', icon_custom_emoji_id=PE_UNLOCK,
+            style='success',
         )])
 
     # 6) Вторичное в ОДИН ряд: позвать друга (реф-бонус) + неприметный выход.
@@ -3442,7 +3448,7 @@ async def _run_edit(
     except Exception as exc:
         logger.warning('share button build failed', error=str(exc)[:200])
     secondary_row.append(InlineKeyboardButton.model_construct(
-        text='Меню', callback_data='main_menu', icon_custom_emoji_id=PE_BACK,
+        text='Меню', callback_data='main_menu', icon_custom_emoji_id=PE_HOME,
     ))
     keyboard_rows.append(secondary_row)
 
