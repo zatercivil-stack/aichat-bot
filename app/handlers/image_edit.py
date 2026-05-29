@@ -175,7 +175,7 @@ PRESET_PAGES: list[dict] = [
     },
     {
         'title': '🌃 Сцены и города',
-        'subtitle': 'Улица, метро, авто, перевоплощения, смена локации. Лицо <b>1-в-1 твоё</b>.',
+        'subtitle': 'Улица, метро, авто, перевоплощения, смена локации. Лицо <b>в точности твоё</b>.',
         'price_hint': '~200 кр · 1-2 минуты',
         'items': [
             'paris_night', 'rooftop_wine', 'subway_bouquet', 'rainy_taxi',
@@ -3248,7 +3248,7 @@ async def _run_edit(
     if PRECISE_FACESWAP_ENABLED and quality_mode == 'precise' and result and fal_image_service.is_enabled():
         await status.edit_text(
             '✅ <b>Стиль применён · переношу точное лицо…</b>\n\n'
-            '<i>Финальный шаг, обычно ~1 минута. Лицо станет 1-в-1 с оригиналом.</i>'
+            '<i>Финальный шаг, обычно ~1 минута. Лицо станет в точности как на оригинале.</i>'
         )
         stop2 = asyncio.Event()
         hb_task2 = asyncio.create_task(_heartbeat_loop(
@@ -3372,40 +3372,39 @@ async def _run_edit(
         except Exception as exc:
             logger.warning('result free-gift check failed', error=str(exc)[:150])
     if free_gift_key:
+        # Короткий фикс-лейбл (имя сцены НЕ влезает в кнопку → Telegram режет).
         keyboard_rows.append([InlineKeyboardButton.model_construct(
-            text=f'🎁 Сегодня бесплатно: {_label_for(free_gift_key, user_gender == "male")}',
+            text='🎁 Сегодня бесплатно',
             callback_data=f'freescene:{refine_key}', style='success',
         )])
 
     # 2) Квик-сцены: 1-2 конкретные сцены в один тап к ТОМУ ЖЕ селфи. БЕЗ цены в
-    #    подписи (она в шапке — не нагнетаем расход). Полная ширина = читаемое имя
-    #    сцены (имя и продаёт клик). Только если хватает кредитов.
+    #    подписи (она в шапке — не нагнетаем расход). Текст кнопки = имя сцены (со
+    #    своим эмодзи) — без префикса «Ещё кадр ·», иначе длинные имена режутся.
     if refine_key and not low_balance:
         _suggest = [k for k in await _get_new_preset_keys(limit=12)
                     if k != preset_key and k != free_gift_key
                     and not (user_gender == 'male' and k in _FEMALE_ONLY_PRESETS)][:2]
         for _k in _suggest:
             keyboard_rows.append([InlineKeyboardButton.model_construct(
-                text=f'Ещё кадр · {_label_for(_k, user_gender == "male")}',
+                text=_label_for(_k, user_gender == "male"),
                 callback_data=f'quickscene:{refine_key}:{_k}',
-                icon_custom_emoji_id=PE_SPARKLES, style='success',
+                style='success',
             )])
 
     # 3) Кредиты кончились → бурн-пак (пик готовности платить сразу после WOW).
-    #    Если юзер ещё и не платил — рядом подписка (раньше был отдельный ряд
-    #    [Паки + Подписка] — оставляем оба, чтобы не потерять конверсию).
+    #    Кнопки полноширинные (в 2 колонки текст резался) — каждая своим рядом.
     if low_balance:
-        money_row = [InlineKeyboardButton.model_construct(
-            text='Докинуть · 1 500 за 99₽',
+        keyboard_rows.append([InlineKeyboardButton.model_construct(
+            text='1 500 кр за 99₽',
             callback_data='buy_pack:burn_1500_7d', icon_custom_emoji_id=PE_FIRE,
             style='success' if not keyboard_rows else 'primary',
-        )]
+        )])
         if not paid:
-            money_row.append(InlineKeyboardButton.model_construct(
-                text='Подписка 149₽',
+            keyboard_rows.append([InlineKeyboardButton.model_construct(
+                text='Без знака · подписка 149₽',
                 callback_data='subscription', icon_custom_emoji_id=PE_AU_GOLD,
-            ))
-        keyboard_rows.append(money_row)
+            )])
 
     # 4) Один вход в каталог — заменяет ДВА прежних дубля «другой стиль» (оба вели
     #    в edit_again — был баг дублирования из-за проверки только row[0]).
@@ -3418,7 +3417,7 @@ async def _run_edit(
     # 5) Контекстная монетизация (не-low-balance): не платил → подписка/вотермарк.
     if not low_balance and not paid:
         keyboard_rows.append([InlineKeyboardButton.model_construct(
-            text='Убрать водяной знак · подписка 149₽',
+            text='Убрать водяной знак · 149₽',
             callback_data='subscription', icon_custom_emoji_id=PE_AU_GOLD,
         )])
 
@@ -3433,11 +3432,11 @@ async def _run_edit(
         bot_username = _settings.BOT_USERNAME or 'NeyraChatBot'
         ref_link = f'https://t.me/{bot_username}?start=ref_{source_user_id}'
         share_text = ('Заценил Нейру — кидаешь селфи, получаешь себя в любой сцене. '
-                      'Балет у статуи, Bentley, Париж в неоне. Лицо 1-в-1 твоё.')
+                      'Балет у статуи, Bentley, Париж в неоне. Лицо в точности твоё.')
         share_url = (f'https://t.me/share/url?url={quote(ref_link, safe="")}'
                      f'&text={quote(share_text, safe="")}')
         secondary_row.append(InlineKeyboardButton.model_construct(
-            text=f'🤝 Позвать друга +{REFERRAL_BONUS}',
+            text=f'Друг +{REFERRAL_BONUS}',  # без 🤝 в тексте — он уже в иконке (был дубль)
             url=share_url, icon_custom_emoji_id=PE_HANDSHAKE,
         ))
     except Exception as exc:
@@ -3462,7 +3461,7 @@ async def _run_edit(
         caption_parts.append(scene_line)
     caption_parts.append(f'\n💰 Баланс: <b>{remaining:,} кр</b>')
     if precise_swap_done:
-        caption_parts.append('<i>🛡 Лицо перенесено 1-в-1 — авто-swap уже применён.</i>')
+        caption_parts.append('<i>🛡 Лицо перенесено в точности — авто-swap уже применён.</i>')
     elif show_refine_btn:
         caption_parts.append('<i>💡 Если лицо не идеально — жми «🔄 Сделать лицо точнее».</i>')
     if low_balance:
