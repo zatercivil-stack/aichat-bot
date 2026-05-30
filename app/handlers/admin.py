@@ -7,7 +7,7 @@ from datetime import datetime, timedelta, timezone
 import structlog
 from aiogram import F, Router
 from aiogram.filters import Command
-from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup, Message
+from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup, Message
 
 from app.config import settings
 from app.database.base import AsyncSessionFactory
@@ -364,6 +364,66 @@ _WINBACK_MSGS: list[str] = [
 ]
 
 _daily_push_scheduler = None
+
+
+# ─────────────────────────────────────────────────────────────────────────
+# Опрос активации: «почему не сделал фото?» для спящих (зарегистрировались,
+# но 0 генераций). Цель — НЕ продать, а понять, где ломается онбординг (это
+# чинит активацию для будущего платного трафика). Ответы → bot_events
+# (event_type='activation_survey', extra.reason). Тест сначала на @grelok.
+# ─────────────────────────────────────────────────────────────────────────
+_SURVEY_TEXT = (
+    '👋 <b>Привет, это Нейра.</b>\n\n'
+    'Ты когда-то заглянул, но так и не сделал фото — и это окей. '
+    'Помоги мне стать лучше: что тогда остановило? Одна кнопка — и спасибо 🙏'
+)
+_SURVEY_KB = InlineKeyboardMarkup(inline_keyboard=[
+    [InlineKeyboardButton.model_construct(
+        text='Не понял, что бот делает', callback_data='whyq:not_clear')],
+    [InlineKeyboardButton.model_construct(
+        text='Не хотел отправлять своё лицо', callback_data='whyq:face_fear')],
+    [InlineKeyboardButton.model_construct(
+        text='Заходил только за кредитами', callback_data='whyq:just_credits')],
+    [InlineKeyboardButton.model_construct(
+        text='Показалось сложно или долго', callback_data='whyq:too_complex')],
+    [InlineKeyboardButton.model_construct(
+        text='Другое', callback_data='whyq:other')],
+])
+
+
+async def send_activation_survey(bot_instance, tg_id: int) -> bool:
+    """Отправить опрос одному юзеру. True если ушло."""
+    try:
+        await bot_instance.send_message(
+            tg_id, _SURVEY_TEXT, parse_mode='HTML', reply_markup=_SURVEY_KB)
+        return True
+    except Exception as exc:
+        logger.warning('survey send failed', tg_id=tg_id, error=str(exc)[:150])
+        return False
+
+
+@router.callback_query(F.data.startswith('whyq:'))
+async def cb_activation_survey(callback: CallbackQuery) -> None:
+    reason = callback.data.split(':', 1)[1]
+    try:
+        from app.database.repo.users import get_user
+        from app.database.repo.events import log_event
+        async with AsyncSessionFactory() as s:
+            u = await get_user(s, callback.from_user.id)
+        if u:
+            await log_event(u.id, 'activation_survey', reason=reason)
+    except Exception as exc:
+        logger.warning('survey log failed', error=str(exc)[:150])
+    await callback.answer('Спасибо! 🙏')
+    try:
+        await callback.message.edit_text(
+            '🙏 <b>Спасибо — это правда помогает.</b>\n\n'
+            'А если захочешь попробовать: пришли одно селфи — и через минуту '
+            'получишь фото с твоим лицом в любой сцене.',
+            parse_mode='HTML',
+        )
+    except Exception:
+        pass
 
 
 async def dispatch_scheduled_broadcasts() -> None:
