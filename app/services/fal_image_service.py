@@ -336,7 +336,17 @@ async def edit_image(
         '- If you are unsure how to interpret the request, lean toward making '
         'the change MORE pronounced, not less.\n'
         '- Preserve the input aspect ratio and crop exactly.\n\n'
-        f'EDIT INSTRUCTIONS:\n{prompt.strip()}'
+        f'EDIT INSTRUCTIONS:\n{prompt.strip()}\n\n'
+        # Recency-reminder: модели сильнее весят КОНЕЦ промпта. Стилевые кластеры
+        # сцены (твид/signet/«editorial» → «солидный мужчина в возрасте») неявно
+        # дрейфуют лицо по возрасту/чертам, даже без слова «old». Это финальное
+        # напоминание прямо перебивает scene-driven дрейф.
+        'FINAL REMINDER (highest priority): the face must remain the SAME real '
+        'person as the input photo — identical facial features, identical AGE, '
+        'identical hair colour and length. Do NOT stylise, age, rejuvenate, '
+        'beautify or idealise the face. If the outfit, props or mood above imply '
+        'an older, younger or different-looking person, IGNORE that and keep the '
+        'input face and age exactly as they are.'
     )
     # image_size=None → авто-детект aspect_ratio из ВХОДНОЙ картинки и шлём его
     # явно. Раньше пробовал не слать aspect — nano-banana по умолчанию выдавал
