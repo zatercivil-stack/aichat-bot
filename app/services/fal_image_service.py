@@ -304,9 +304,24 @@ async def edit_image(
     # Identity-lock wrapper: жёстко описываем АНАТОМИЮ лица + «99% identical»
     # framing. Без триггерных слов вроде «ethnicity» / «deepfake» — safety
     # фильтр Gemini пропускает, а identity-preservation становится сильнее.
+    # Если ракурсов несколько — явно велим использовать ВСЕ для реконструкции лица
+    # (мульти-ракурс = самый сильный рычаг сходства). Singular-формулировка не
+    # давала модели понять, что доп. фото — это то же лицо с других сторон.
+    _n_inputs = len(image_bytes_list)
+    if _n_inputs > 1:
+        _identity_intro = (
+            f'The input includes {_n_inputs} self-portrait photos of the SAME real '
+            'person from different angles. Study ALL of them together to reconstruct '
+            'that exact face in 3D, then depict the SAME person — like another real '
+            'photo of them, not a similar-looking model.'
+        )
+    else:
+        _identity_intro = (
+            'The input image is the user\'s own self-portrait. The output must depict '
+            'the SAME person — like a different photo of them, not a similar-looking model.'
+        )
     wrapped_prompt = (
-        'The input image is the user\'s own self-portrait. The output must depict the SAME '
-        'person — like a different photo of them, not a similar-looking model.\n\n'
+        _identity_intro + '\n\n'
         'FACE IS 99% IDENTICAL TO INPUT:\n'
         '- Exact same eye shape, iris colour, and pupil position\n'
         '- Exact same eyebrow shape, thickness and arch\n'
