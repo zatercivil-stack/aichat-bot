@@ -874,9 +874,14 @@ def start_daily_push_scheduler(bot_instance):
     )
     # Mystery Push (12:00 МСК) — главный retention-крючок. Зовёт активных
     # юзеров за «Подарок дня» — бесплатный пресет в главном меню.
+    # 30.05: ежедневный пуш убран → 3×/нед (Вт/Чт/Сб). Данные: аудитория 21 чел,
+    # claim'ов за всё время 1 → ежедневный пуш = усталость/блоки ради ~нуля.
+    # Реже = «подарок» снова событие, меньше риск блока. Сам Подарок дня остаётся
+    # доступным каждый день в меню — просто не пушим его ежедневно.
     _daily_push_scheduler.add_job(
         send_mystery_push,
-        trigger=CronTrigger(hour=12, minute=0, timezone=settings.tz),
+        trigger=CronTrigger(day_of_week='tue,thu,sat', hour=12, minute=0,
+                            timezone=settings.tz),
         args=[bot_instance],
         id='mystery_push',
         replace_existing=True,
