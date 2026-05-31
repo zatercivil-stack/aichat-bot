@@ -22,10 +22,11 @@ logger = structlog.get_logger(__name__)
 
 
 _RECOVERY_TEXT = (
-    '💳 <b>Незавершённая оплата</b>\n\n'
-    'Платёж был начат, но не завершён.\n'
-    'Если передумали — это сообщение можно проигнорировать.\n'
-    'Если просто отвлеклись — продолжите в магазине 👇'
+    '💳 <b>Оплата не завершилась</b>\n\n'
+    'Заметил, что платёж был начат, но не прошёл.\n\n'
+    '💡 <b>Частая причина — включённый VPN:</b> из-за него страница оплаты '
+    'YooKassa не открывается. Выключи VPN и попробуй снова — обычно помогает.\n\n'
+    'Если просто передумал — это сообщение можно проигнорировать 🙂'
 )
 
 # Не шлём повторное recovery если уже отправляли в последние 24 часа
@@ -34,7 +35,10 @@ RECOVERY_COOLDOWN = timedelta(hours=24)
 
 async def run_payment_recovery(bot_instance) -> None:
     now = datetime.now(timezone.utc)
-    too_recent = now - timedelta(hours=1)   # дайте 1 час на завершение
+    # 31.05: было 1ч. Слишком поздно — VPN-абандонеры уходят за минуты, а
+    # YooKassa отменяет pending примерно за час → нудж не успевал (платёж уже
+    # canceled, из выборки выпал). 20 мин = ловим, пока ещё PENDING и юзер тёплый.
+    too_recent = now - timedelta(minutes=20)
     too_old = now - timedelta(hours=24)     # >24ч — поздно, отметим failed
     cooldown_cutoff = now - RECOVERY_COOLDOWN
 

@@ -1032,7 +1032,7 @@ def start_daily_push_scheduler(bot_instance):
     from app.services.payment_recovery import run_payment_recovery
     _daily_push_scheduler.add_job(
         run_payment_recovery,
-        trigger=CronTrigger(minute='*/30'),
+        trigger=CronTrigger(minute='*/15'),  # чаще → ловим VPN-абандон вовремя
         args=[bot_instance],
         id='payment_recovery',
         replace_existing=True,
