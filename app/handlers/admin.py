@@ -968,33 +968,40 @@ def start_daily_push_scheduler(bot_instance):
     # misfire_grace_time=3600: если бот лежал в момент слота (ребут/апдейт —
     # инцидент 23.05) и поднялся в течение часа, пост всё равно опубликуется,
     # а не потеряется навсегда.
+    # 31.05: АВТО-ПУБЛИКАТОР ВЫКЛЮЧЕН по решению владельца. Авто-генерация
+    # регулярно ставила картинку, не соответствующую тексту (превью пресета ≠
+    # тема LLM-текста), и владельцу приходилось удалять посты. До починки
+    # photo↔text mismatch ничего в канал НЕ постим автоматически — только
+    # вручную (черновик в личку → «ок» → publish_pending_channel_post).
+    # Чтобы вернуть авто-постинг — поставить флаг в True и пересобрать.
+    _CHANNEL_AUTOPOST_ENABLED = False
     _channel_morning_minute = random.randint(3, 12)
-    _daily_push_scheduler.add_job(
-        run_scheduled_feature_post,
-        trigger=CronTrigger(
-            hour=11,
-            minute=_channel_morning_minute,
-            timezone=settings.tz,
-        ),
-        args=[bot_instance],
-        id='channel_morning_publish',
-        replace_existing=True,
-        misfire_grace_time=3600,
-    )
-    # Сохраняем имя переменной для финального лог-вывода (см. ниже).
     _channel_publish_minute = random.randint(3, 17)
-    _daily_push_scheduler.add_job(
-        run_scheduled_post,
-        trigger=CronTrigger(
-            hour=19,
-            minute=_channel_publish_minute,
-            timezone=settings.tz,
-        ),
-        args=[bot_instance],
-        id='channel_evening_publish',
-        replace_existing=True,
-        misfire_grace_time=3600,
-    )
+    if _CHANNEL_AUTOPOST_ENABLED:
+        _daily_push_scheduler.add_job(
+            run_scheduled_feature_post,
+            trigger=CronTrigger(
+                hour=11,
+                minute=_channel_morning_minute,
+                timezone=settings.tz,
+            ),
+            args=[bot_instance],
+            id='channel_morning_publish',
+            replace_existing=True,
+            misfire_grace_time=3600,
+        )
+        _daily_push_scheduler.add_job(
+            run_scheduled_post,
+            trigger=CronTrigger(
+                hour=19,
+                minute=_channel_publish_minute,
+                timezone=settings.tz,
+            ),
+            args=[bot_instance],
+            id='channel_evening_publish',
+            replace_existing=True,
+            misfire_grace_time=3600,
+        )
     _daily_push_scheduler.add_job(
         check_error_spike,
         trigger=CronTrigger(minute='*/15'),  # every 15 min
