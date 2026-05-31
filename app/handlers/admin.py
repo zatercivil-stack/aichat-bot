@@ -960,37 +960,40 @@ def start_daily_push_scheduler(bot_instance):
         id='time_bonus',
         replace_existing=True,
     )
-    # Channel auto-publisher: вечерний daily-пост Пн/Вт/Чт/Пт/Сб в 19:03–19:17 МСК.
-    # Среда и Воскресенье ИСКЛЮЧЕНЫ — там обеденный feature-пост (см. ниже).
-    # Получаем 1 пост в день, никаких двойных публикаций.
-    # Явно фиксируем timezone — иначе scheduler возьмёт UTC (=22 МСК).
+    # Channel auto-publisher: 2 поста в день КАЖДЫЙ день (раскрутка канала 31.05).
+    #   • УТРО ~11:00 МСК — «образ»: feature-режим (showcase-сцены, визуал ведёт,
+    #     ловит трафик с рекламы, который зашёл на канал днём).
+    #   • ВЕЧЕР ~19:00 МСК — «польза»: daily-режим (кейс/совет/приём + CTA).
+    # Явно фиксируем timezone — иначе scheduler возьмёт UTC (=+3ч к МСК).
+    # misfire_grace_time=3600: если бот лежал в момент слота (ребут/апдейт —
+    # инцидент 23.05) и поднялся в течение часа, пост всё равно опубликуется,
+    # а не потеряется навсегда.
+    _channel_morning_minute = random.randint(3, 12)
+    _daily_push_scheduler.add_job(
+        run_scheduled_feature_post,
+        trigger=CronTrigger(
+            hour=11,
+            minute=_channel_morning_minute,
+            timezone=settings.tz,
+        ),
+        args=[bot_instance],
+        id='channel_morning_publish',
+        replace_existing=True,
+        misfire_grace_time=3600,
+    )
+    # Сохраняем имя переменной для финального лог-вывода (см. ниже).
     _channel_publish_minute = random.randint(3, 17)
     _daily_push_scheduler.add_job(
         run_scheduled_post,
         trigger=CronTrigger(
-            day_of_week='mon,tue,thu,fri,sat',  # без ср/вс — там feature
             hour=19,
             minute=_channel_publish_minute,
             timezone=settings.tz,
         ),
         args=[bot_instance],
-        id='channel_auto_publish',
+        id='channel_evening_publish',
         replace_existing=True,
-    )
-    # Feature posts (Нейра-focused): Ср + Вс в 12:25–12:35 МСК (lunch slot).
-    # Trackable CTA с deep-link на /start promo_CHAN_FEAT.
-    _feature_minute = random.randint(25, 35)
-    _daily_push_scheduler.add_job(
-        run_scheduled_feature_post,
-        trigger=CronTrigger(
-            day_of_week='wed,sun',
-            hour=12,
-            minute=_feature_minute,
-            timezone=settings.tz,
-        ),
-        args=[bot_instance],
-        id='channel_feature_publish',
-        replace_existing=True,
+        misfire_grace_time=3600,
     )
     _daily_push_scheduler.add_job(
         check_error_spike,
@@ -1119,7 +1122,9 @@ def start_daily_push_scheduler(bot_instance):
     logger.info(
         'Daily push scheduler started',
         schedule='10:00 MSK daily / 11:00 MSK sub-expiry / hourly time-bonus',
-        channel_publish_minute=_channel_publish_minute,
+        channel_morning_minute=_channel_morning_minute,
+        channel_evening_minute=_channel_publish_minute,
+        channel_schedule='morning 11:0X + evening 19:0X MSK, every day',
     )
     return _daily_push_scheduler
 

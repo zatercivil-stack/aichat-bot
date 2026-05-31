@@ -404,6 +404,8 @@ async def cb_choose_plan(callback: CallbackQuery) -> None:
             f"• <b>+{plan_dict['daily_bonus']} кр</b> ежедневно 30 дней\n\n"
             f"{recurring_line}"
             f"⏱ <i>Зачисление автоматически в течение 1 минуты после оплаты.</i>\n\n"
+            f"💡 <i>Если страница оплаты не открывается — выключи VPN "
+            f"и нажми кнопку снова.</i>\n\n"
             f"Жми кнопку ниже 👇",
             reply_markup=kb,
         )

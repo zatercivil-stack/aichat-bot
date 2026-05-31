@@ -308,6 +308,15 @@ AI-новость) — НЕ пиши PRESET строку, оставь пуст�
 
 Заголовок можно цеплять переформулировать (даже жёстко), но смысл обещания обязан сохраниться.
 
+ЖЕЛАНИЕ > ОБУЧЕНИЕ (КРИТИЧНО для этого канала):
+Канал — витрина результата, а не блог про нейросети. Заголовок и пост должны
+вызывать ЖЕЛАНИЕ получить такой кадр, а не «объяснять индустрию».
+- ПИШИ: «ТЫ — НА ОБЛОЖКЕ VOGUE ЗА МИНУТУ», «ГОНЩИК НА КАПОТЕ — ЭТО ТЫ».
+- НЕ ПИШИ: «что изменилось в новой модели», «AI против фотографа», «как
+  работают нейросети», «почему AI ещё не умеет X». Читателю не интересно
+  устройство — ему интересен ОН САМ в крутом кадре.
+Каждый пост = одна конкретная сцена/образ, который хочется примерить на себя.
+
 ═══════════════════════════════════════════════
 ОБЯЗАТЕЛЬНАЯ СТРУКТУРА (4 БЛОКА, СТРОГО):
 ═══════════════════════════════════════════════
@@ -593,6 +602,27 @@ def _neyra_cta_footer(cta_type: str, preset_key: str | None, promo_code: str) ->
     return (f'—\n🎁 <a href="{url}"><b>Хочу такой кадр со своим лицом '
             f'→ забрать {bonus} в подарок</b></a>')
 
+
+def _neyra_cta_footer_nobonus(preset_key: str | None, promo_code: str) -> str:
+    """CTA-ссылка БЕЗ упоминания бонуса (правило «дефицит ценности» 27.05),
+    но всё равно через ТРЕК-КОД promo_CHAN_<PRESET>_* — ссылка трекается в
+    /admin/promos и открывает нужный пресет. Отличие от старого ?start=channel:
+    тут click-through атрибутируется и юзер попадает сразу в карточку пресета.
+
+    Используется для ~половины авто-постов (промо создаётся с credits=0:
+    активация ничего не начисляет, просто отмечает источник + ведёт в пресет).
+    """
+    url = _neyra_link(promo_code)
+    if preset_key:
+        from app.handlers.image_edit import EDIT_PRESETS
+        label = EDIT_PRESETS.get(preset_key, ('', ''))[0]
+        clean = _strip_label_emoji(label)
+        if clean:
+            return (f'—\n🟣 <a href="{url}"><b>Хочу «{clean}» со своим лицом '
+                    f'→ в Нейре</b></a>')
+    return ('—\n🟣 <a href="' + url + '"><b>Хочу такой кадр со своим лицом '
+            '→ в Нейре</b></a>')
+
 # ── Секретные промо ─────────────────────────────────────────────────────
 # ~15% постов получают спрятанный под спойлером промокод на Нейру.
 # Уникальный, на 24 часа, лимит 50 активаций. Виральный mechanic —
@@ -753,6 +783,30 @@ _WEEKDAY_PILLARS: dict[int, str] = {
 }
 
 
+# «Индустриальные» темы — про устройство нейросетей, сравнения моделей, тренды.
+# Канал = витрина результата, не блог про AI (правило «желание > обучение», 31.05).
+# Авто-ротация (daily+feature) ИХ ИСКЛЮЧАЕТ. Темы остаются в пулах для ручных
+# постов через /channel_post. Фильтр по подстрокам в тексте темы (lowercase).
+_AUTO_TOPIC_BLACKLIST = (
+    'nano-banana', 'gpt-5', 'dall-e', 'flux', 'midjourney vs', 'vs nano',
+    'identity preservation', 'под капотом', 'face detection', 'face swap —',
+    'что изменилось в новой', 'новой версии', 'сравнение:', 'чем модели',
+    'чем платный фотограф', 'где быстрее', 'photoshop vs', 'open-source',
+    'edge ai', 'multimodal', 'куда движутся llm', 'тренда без воды',
+    'как работают', 'почему все нейросет', 'почему ai', 'почему нейросет',
+    'few-shot', 'системный промпт', 'структура промпта', 'role + context',
+    'клонировать свой голос', 'озвуч', 'резюме с ai', 'анализ pdf',
+    'ai-репетитор', 'ai для переговоров', 'видео из одного фото',
+    'когда стоит платить',
+)
+
+
+def _is_auto_allowed(topic: str) -> bool:
+    """True если тему можно публиковать в авто-режиме (не «индустриальная»)."""
+    t = topic.lower()
+    return not any(bad in t for bad in _AUTO_TOPIC_BLACKLIST)
+
+
 async def _pick_topic(mode: str = 'daily') -> str:
     """Pick a topic from the appropriate pool, avoiding the last 30 used.
 
@@ -760,6 +814,9 @@ async def _pick_topic(mode: str = 'daily') -> str:
                      (см. _WEEKDAY_PILLARS). Если в текущем столпе всё уже
                      использовалось — fallback на общий пул.
     mode='feature' → FEATURE_TOPICS (Neyra-focused, Wed+Sun lunch slot)
+
+    Авто-режим исключает «индустриальные» темы (_AUTO_TOPIC_BLACKLIST) —
+    канал про результат, а не про устройство AI.
     """
     from app.services.channel_topics import TOPICS_BY_PILLAR
 
@@ -783,12 +840,15 @@ async def _pick_topic(mode: str = 'daily') -> str:
     if recent_raw:
         recent = [t for t in recent_raw.split("|||") if t]
 
-    available = [t for t in pool if t not in recent[-30:]]
+    available = [t for t in pool if t not in recent[-30:] and _is_auto_allowed(t)]
     if not available:
         # В этом столпе все темы недавно использовались — берём из общего пула
-        # чтобы не повторяться.
+        # чтобы не повторяться (тоже с фильтром «индустриальных»).
         logger.info('pillar pool exhausted, falling back to full pool')
-        available = [t for t in CHANNEL_TOPICS if t not in recent[-30:]] or list(CHANNEL_TOPICS)
+        available = [t for t in CHANNEL_TOPICS
+                     if t not in recent[-30:] and _is_auto_allowed(t)]
+        if not available:
+            available = [t for t in CHANNEL_TOPICS if _is_auto_allowed(t)] or list(CHANNEL_TOPICS)
 
     topic = random.choice(available)
 
@@ -991,15 +1051,14 @@ async def _build_post(
         cta_type, cta_footer = _cta_for_topic(topic)
 
     # Бонус НЕ в каждом посте — ценность через дефицит (правило владельца 27.05).
-    # ~65% постов идут БЕЗ «+N кр»: обычный CTA в бота (?start=channel — не
-    # кредитует), только контент. ~35% сохраняют бонус-приманку. cta_override
-    # (ручной /channel_post) не трогаем — там бонус выставлен осознанно.
-    # ТОЛЬКО neyra-CTA гейтим в plain. aurum_daily (VPN-посты) и 'none' не трогаем
-    # — иначе VPN-пост получил бы Нейра-футер «фото со своим лицом» (бессмыслица).
-    if cta_type in ('neira_daily', 'neira_feature') and not cta_override and random.random() < 0.65:
-        cta_type = 'neira_plain'
-        cta_footer = ('—\n🎁 <a href="https://t.me/NeyraChatBot?start=channel">'
-                      '<b>Хочу такой кадр со своим лицом → в Нейре</b></a>')
+    # НО: трек-код (CHAN_<PRESET>_*) создаём ВСЕГДА (см. блок per-post promo ниже),
+    # чтобы ссылка трекалась в /admin/promos и вела сразу в пресет. Здесь только
+    # решаем, ПОКАЗЫВАТЬ ли «+N кр» в футере. ~50% постов без бонуса (дефицит),
+    # ~50% с бонусом-приманкой. cta_override (ручной /channel_post) всегда с бонусом
+    # — там он выставлен осознанно.
+    # Раньше тут 65% постов уходили в ?start=channel (без кода, без трекинга, без
+    # пресета) — это и сломало воронку промокодов (последний CHAN-код ~26.05).
+    show_bonus = bool(cta_override) or random.random() < 0.50
 
     # Опциональный веб-контекст из Brave Search — реальные факты вместо
     # AI-галлюцинаций. Особенно важно для нейтральных постов где репутация
@@ -1025,7 +1084,7 @@ async def _build_post(
     # Если AI «забыл» строку PRESET в neyra-теме — пытаемся inferring по тексту.
     # Так посту достанется правильный preset preview + working deeplink-кнопка
     # без перегенерации (экономия 5-15 сек + токенов).
-    if not preset_key and (cta_type in ('neira_daily', 'neira_feature', 'neira_plain')):
+    if not preset_key and (cta_type in ('neira_daily', 'neira_feature')):
         inferred = _infer_preset_from_body(body)
         if inferred:
             preset_key = inferred
