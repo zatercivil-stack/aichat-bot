@@ -8,21 +8,18 @@
     </div>
   {% endfor %}
 {% endif %}
+
+{# ── Главные KPI ── #}
 <div class="row row-cards">
   <div class="col-sm-6 col-lg-3">
     <div class="card stat-card" style="--accent:linear-gradient(135deg,#6366f1,#a855f7)">
       <div class="card-body">
         <div class="stat-label mb-2">Всего пользователей</div>
-        <div class="d-flex align-items-baseline">
-          <div class="h1 me-2 mb-0">{{ '{:,}'.format(stats.total_users) }}</div>
-        </div>
-        <div class="stat-trend trend-up mt-1">
-          <i class="ti ti-trending-up"></i> +{{ stats.new_today }} сегодня
-        </div>
+        <div class="h1 mb-0">{{ '{:,}'.format(stats.total_users) }}</div>
+        <div class="stat-trend trend-up mt-1"><i class="ti ti-trending-up"></i> +{{ stats.new_today }} сегодня · +{{ stats.new_week }} за 7д</div>
       </div>
     </div>
   </div>
-
   <div class="col-sm-6 col-lg-3">
     <div class="card stat-card" style="--accent:linear-gradient(135deg,#22c55e,#16a34a)">
       <div class="card-body">
@@ -32,17 +29,6 @@
       </div>
     </div>
   </div>
-
-  <div class="col-sm-6 col-lg-3">
-    <div class="card stat-card" style="--accent:linear-gradient(135deg,#3b82f6,#1d4ed8)">
-      <div class="card-body">
-        <div class="stat-label mb-2">Сообщений сегодня</div>
-        <div class="h1 mb-0">{{ '{:,}'.format(stats.messages_today) }}</div>
-        <div class="stat-trend text-muted mt-1">{{ '{:,}'.format(stats.messages_week) }} за 7 дней</div>
-      </div>
-    </div>
-  </div>
-
   <div class="col-sm-6 col-lg-3">
     <div class="card stat-card" style="--accent:linear-gradient(135deg,#ec4899,#db2777)">
       <div class="card-body">
@@ -52,13 +38,22 @@
       </div>
     </div>
   </div>
+  <div class="col-sm-6 col-lg-3">
+    <div class="card stat-card" style="border-left:3px solid {% if fal_balance_usd is none %}#6b7280{% elif fal_balance_usd < 1 %}#ef4444{% elif fal_balance_usd < 5 %}#f59e0b{% else %}#22c55e{% endif %}">
+      <div class="card-body">
+        <div class="stat-label mb-2"><i class="ti ti-wallet me-1"></i>fal-баланс</div>
+        <div class="h1 mb-0">{% if fal_balance_usd is none %}—{% else %}${{ '{:.2f}'.format(fal_balance_usd) }}{% endif %}</div>
+        <form method="post" action="/admin/api/fal-sync" class="mt-1">
+          <button class="btn btn-sm btn-ghost-primary" title="Запросить реальный баланс у fal API"><i class="ti ti-refresh"></i> Синхр.</button>
+        </form>
+      </div>
+    </div>
+  </div>
 </div>
 
-{# Воронка Нейры — два главных KPI после пивота. Считаются по реальным юзерам
-   (без тех/забаненных). Активация — главная утечка; 2-я генерация — здоровье
-   continuation-loop'а после редизайна экрана результата. #}
+{# ── Воронка продукта: активация + повторная генерация (по реальным юзерам) ── #}
 <div class="row row-cards mt-3">
-  <div class="col-sm-6 col-lg-6">
+  <div class="col-md-6">
     <div class="card stat-card" style="--accent:linear-gradient(135deg,#f59e0b,#dc2626)">
       <div class="card-body">
         <div class="stat-label mb-2"><i class="ti ti-target me-1"></i>Активация · регистр → 1-е фото</div>
@@ -66,12 +61,11 @@
           <div class="h1 me-2 mb-0">{{ stats.activation_rate }}%</div>
           <div class="text-muted">{{ stats.users_1plus_gen }} / {{ stats.total_real }}</div>
         </div>
-        <div class="stat-trend text-muted mt-1">главная утечка воронки — кто зашёл, но не сделал ни одного кадра</div>
+        <div class="stat-trend text-muted mt-1">главная утечка — кто зашёл, но не сделал ни одного кадра</div>
       </div>
     </div>
   </div>
-
-  <div class="col-sm-6 col-lg-6">
+  <div class="col-md-6">
     <div class="card stat-card" style="--accent:linear-gradient(135deg,#06b6d4,#3b82f6)">
       <div class="card-body">
         <div class="stat-label mb-2"><i class="ti ti-repeat me-1"></i>2-я генерация · ≥1 → ≥2 фото</div>
@@ -79,14 +73,50 @@
           <div class="h1 me-2 mb-0">{{ stats.second_gen_rate }}%</div>
           <div class="text-muted">{{ stats.users_2plus_gen }} / {{ stats.users_1plus_gen }}</div>
         </div>
-        <div class="stat-trend text-muted mt-1">здоровье continuation-loop — кто сделал ещё хотя бы один кадр</div>
+        <div class="stat-trend text-muted mt-1">здоровье continuation-loop — кто сделал ещё хотя бы кадр</div>
       </div>
     </div>
   </div>
 </div>
 
+{# ── Канал → Бот → Выручка: конвертит ли канал-трафик в реальное дело ── #}
+{% set cf = stats.channel_funnel %}
 <div class="row row-cards mt-3">
-  <div class="col-sm-3">
+  <div class="col-12">
+    <div class="card">
+      <div class="card-header">
+        <h3 class="card-title"><i class="ti ti-arrow-guide me-1"></i> Канал → Бот → Выручка</h3>
+        <div class="card-actions text-muted small">отслежено с 25.05 · показывает качество канал-трафика, а не число подписчиков</div>
+      </div>
+      <div class="card-body">
+        <div class="row text-center align-items-stretch g-2">
+          <div class="col">
+            <div class="funnel-step"><div class="funnel-num">{{ '{:,}'.format(cf.joined) }}</div><div class="funnel-lbl">вступили в канал</div></div>
+          </div>
+          <div class="col-auto d-flex align-items-center text-muted"><i class="ti ti-chevron-right"></i></div>
+          <div class="col">
+            <div class="funnel-step"><div class="funnel-num text-info">{{ '{:,}'.format(cf.in_bot) }}</div><div class="funnel-lbl">дошли до бота</div>
+              <div class="funnel-conv">{% if cf.joined %}{{ (100.0 * cf.in_bot / cf.joined) | round(1) }}%{% else %}—{% endif %}</div></div>
+          </div>
+          <div class="col-auto d-flex align-items-center text-muted"><i class="ti ti-chevron-right"></i></div>
+          <div class="col">
+            <div class="funnel-step"><div class="funnel-num gradient-text">{{ '{:,}'.format(cf.generated) }}</div><div class="funnel-lbl">сделали фото</div>
+              <div class="funnel-conv">{% if cf.in_bot %}{{ (100.0 * cf.generated / cf.in_bot) | round(1) }}%{% else %}—{% endif %}</div></div>
+          </div>
+          <div class="col-auto d-flex align-items-center text-muted"><i class="ti ti-chevron-right"></i></div>
+          <div class="col">
+            <div class="funnel-step"><div class="funnel-num text-success">{{ '{:,}'.format(cf.paid) }}</div><div class="funnel-lbl">оплатили</div>
+              <div class="funnel-conv">{% if cf.generated %}{{ (100.0 * cf.paid / cf.generated) | round(1) }}%{% else %}—{% endif %}</div></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+{# ── Активность фото ── #}
+<div class="row row-cards mt-3">
+  <div class="col-sm-6">
     <div class="card stat-card text-center">
       <div class="card-body">
         <div class="stat-label mb-2"><i class="ti ti-wand me-1"></i>Правок фото (7д)</div>
@@ -95,7 +125,7 @@
       </div>
     </div>
   </div>
-  <div class="col-sm-3">
+  <div class="col-sm-6">
     <div class="card stat-card text-center">
       <div class="card-body">
         <div class="stat-label mb-2"><i class="ti ti-mask me-1"></i>Face-swap (7д)</div>
@@ -103,43 +133,18 @@
       </div>
     </div>
   </div>
-  <div class="col-sm-3">
-    <div class="card stat-card text-center">
-      <div class="card-body">
-        <div class="stat-label mb-2"><i class="ti ti-microphone me-1"></i>Голосовых (7д)</div>
-        <div class="h1 mb-0 gradient-text">{{ '{:,}'.format(stats.voice_week) }}</div>
-      </div>
-    </div>
-  </div>
-  <div class="col-sm-3">
-    <div class="card stat-card text-center"
-         style="border-left:3px solid {% if fal_balance_usd is none %}#6b7280{% elif fal_balance_usd < 1 %}#ef4444{% elif fal_balance_usd < 5 %}#f59e0b{% else %}#22c55e{% endif %}">
-      <div class="card-body">
-        <div class="stat-label mb-2"><i class="ti ti-wallet me-1"></i>fal-баланс</div>
-        <div class="h1 mb-0">
-          {% if fal_balance_usd is none %}—{% else %}${{ '{:.2f}'.format(fal_balance_usd) }}{% endif %}
-        </div>
-        <form method="post" action="/admin/api/fal-sync" class="mt-1">
-          <button class="btn btn-sm btn-ghost-primary" title="Запросить реальный баланс у fal API">
-            <i class="ti ti-refresh"></i> Синхр.
-          </button>
-        </form>
-      </div>
-    </div>
-  </div>
 </div>
 
+{# ── Действия + таблицы ── #}
 <div class="row row-cards mt-3">
   <div class="col-md-4">
     <div class="card">
-      <div class="card-header">
-        <h3 class="card-title"><i class="ti ti-bolt me-1"></i> Быстрые действия</h3>
-      </div>
+      <div class="card-header"><h3 class="card-title"><i class="ti ti-bolt me-1"></i> Быстрые действия</h3></div>
       <div class="card-body">
         <div class="d-grid gap-2">
           <a href="/admin/broadcast" class="btn btn-primary"><i class="ti ti-send me-1"></i>Запустить рассылку</a>
-          <a href="/admin/promos" class="btn btn-outline-secondary"><i class="ti ti-ticket me-1"></i>Создать промокод</a>
-          <a href="/admin/pricing" class="btn btn-outline-secondary"><i class="ti ti-tag me-1"></i>Изменить цены</a>
+          <a href="/admin/promos" class="btn btn-outline-secondary"><i class="ti ti-ticket me-1"></i>Промокоды</a>
+          <a href="/admin/pricing" class="btn btn-outline-secondary"><i class="ti ti-tag me-1"></i>Цены</a>
           <a href="/admin/logs" class="btn btn-outline-secondary"><i class="ti ti-activity me-1"></i>Live-логи</a>
         </div>
       </div>
@@ -175,7 +180,7 @@
   </div>
 
   <div class="col-md-4">
-    <div class="card">
+    <div class="card h-100">
       <div class="card-header">
         <h3 class="card-title"><i class="ti ti-trophy me-1"></i> Топ промокодов</h3>
         <div class="card-actions"><a href="/admin/promos" class="btn btn-ghost-primary btn-sm">Все →</a></div>
@@ -215,11 +220,7 @@
               <td class="text-end fw-semibold">{{ '{:,}'.format(p.cnt) }}</td>
             </tr>
           {% else %}
-            <tr><td colspan="2" class="empty-state small">
-              Пока нет данных за 7 дней.<br>
-              <span class="text-muted">Топ начнёт заполняться с новых генераций
-              (preset_key пишется с 22.05.2026). Тех-юзеры (админ, @grelok) не считаются.</span>
-            </td></tr>
+            <tr><td colspan="2" class="empty-state small">Пока нет данных за 7 дней.</td></tr>
           {% endfor %}
           </tbody>
         </table>
@@ -228,31 +229,30 @@
   </div>
 </div>
 
+{# ── Графики ── #}
 <div class="row row-cards mt-3">
   <div class="col-md-7">
     <div class="card">
-      <div class="card-header">
-        <h3 class="card-title"><i class="ti ti-user-plus me-1"></i> Новые пользователи (14 дней)</h3>
-      </div>
-      <div class="card-body">
-        <canvas id="usersChart" height="80"></canvas>
-      </div>
+      <div class="card-header"><h3 class="card-title"><i class="ti ti-user-plus me-1"></i> Новые пользователи (14 дней)</h3></div>
+      <div class="card-body"><canvas id="usersChart" height="80"></canvas></div>
     </div>
   </div>
   <div class="col-md-5">
     <div class="card">
-      <div class="card-header">
-        <h3 class="card-title"><i class="ti ti-wand me-1"></i> Правки фото (14 дней)</h3>
-      </div>
-      <div class="card-body">
-        <canvas id="editsChart" height="120"></canvas>
-      </div>
+      <div class="card-header"><h3 class="card-title"><i class="ti ti-wand me-1"></i> Правки фото (14 дней)</h3></div>
+      <div class="card-body"><canvas id="editsChart" height="120"></canvas></div>
     </div>
   </div>
 </div>
 {% endblock %}
 
 {% block scripts %}
+<style>
+.funnel-step{padding:.5rem .25rem}
+.funnel-num{font-size:1.9rem;font-weight:700;line-height:1.1}
+.funnel-lbl{font-size:.8rem;color:var(--tblr-secondary,#9ba3b4);margin-top:.15rem}
+.funnel-conv{font-size:.75rem;color:#9ba3b4;margin-top:.25rem;font-weight:600}
+</style>
 <script>
 const days = {{ chart_days|tojson }};
 const newUsers = {{ chart_new_users|tojson }};
@@ -265,8 +265,6 @@ new Chart(document.getElementById('usersChart'), {
   options: {plugins: {legend: {display: false}}, scales: {x: {grid: {color: '#262a44'}}, y: {grid: {color: '#262a44'}, beginAtZero: true}}}
 });
 
-// Правки фото (14 дней) — заменил прежний график «Сообщения», т.к. фото-правка
-// теперь главная фишка, а чат — вторичное действие.
 const editGrad = document.getElementById('editsChart').getContext('2d').createLinearGradient(0, 0, 0, 200);
 editGrad.addColorStop(0, 'rgba(236,72,153,.3)');
 editGrad.addColorStop(1, 'rgba(236,72,153,0)');

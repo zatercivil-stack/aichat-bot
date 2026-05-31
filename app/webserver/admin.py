@@ -160,10 +160,7 @@ async def dashboard(admin_session: Optional[str] = Cookie(default=None), msg: st
 
     days = [d['day'] for d in stats['daily_new_users']]
     new_user_counts = [d['cnt'] for d in stats['daily_new_users']]
-    msg_days = [d['day'] for d in stats['daily_messages']]
-    msg_counts = [d['cnt'] for d in stats['daily_messages']]
-    # Фото-правки за 14 дней — заменили donut «Использование моделей» (LLM-чарт
-    # стал мёртвым после пивота: чат теперь = одна DeepSeek, метрика не нужна).
+    # Фото-правки за 14 дней — главный график после пивота.
     edit_days = [d['day'] for d in stats['daily_image_edits']]
     edit_counts = [d['cnt'] for d in stats['daily_image_edits']]
     # Подтягиваем человеко-читаемые названия пресетов из рантайм-каталога
@@ -185,8 +182,6 @@ async def dashboard(admin_session: Optional[str] = Cookie(default=None), msg: st
         alerts=alerts,
         chart_days=days,
         chart_new_users=new_user_counts,
-        chart_msg_days=msg_days,
-        chart_msg_counts=msg_counts,
         chart_edit_days=edit_days,
         chart_edit_counts=edit_counts,
     )

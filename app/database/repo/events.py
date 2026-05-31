@@ -127,16 +127,6 @@ async def get_dashboard_stats(session: AsyncSession) -> dict:
         .where(BotEvent.event_type == 'message_sent', BotEvent.created_at >= week_ago)
     )
 
-    # Messages
-    messages_today = await session.scalar(
-        select(func.count()).select_from(BotEvent)
-        .where(BotEvent.event_type == 'message_sent', BotEvent.created_at >= today)
-    )
-    messages_week = await session.scalar(
-        select(func.count()).select_from(BotEvent)
-        .where(BotEvent.event_type == 'message_sent', BotEvent.created_at >= week_ago)
-    )
-
     # Revenue
     revenue_today = await session.scalar(
         select(func.sum(Payment.amount))
@@ -146,29 +136,6 @@ async def get_dashboard_stats(session: AsyncSession) -> dict:
         select(func.sum(Payment.amount))
         .where(Payment.status == PaymentStatus.SUCCEEDED, Payment.created_at >= month_ago)
     ) or 0
-
-    # Model usage (7d)
-    model_rows = await session.execute(
-        select(BotEvent.model_key, func.count().label('cnt'))
-        .where(BotEvent.event_type == 'message_sent', BotEvent.created_at >= week_ago, BotEvent.model_key.isnot(None))
-        .group_by(BotEvent.model_key)
-        .order_by(func.count().desc())
-    )
-    model_usage = {row.model_key: row.cnt for row in model_rows}
-
-    # Voice + vision + images (7d)
-    voice_week = await session.scalar(
-        select(func.count()).select_from(BotEvent)
-        .where(BotEvent.event_type == 'voice_sent', BotEvent.created_at >= week_ago)
-    )
-    vision_week = await session.scalar(
-        select(func.count()).select_from(BotEvent)
-        .where(BotEvent.event_type == 'vision_analyzed', BotEvent.created_at >= week_ago)
-    )
-    images_week = await session.scalar(
-        select(func.count()).select_from(BotEvent)
-        .where(BotEvent.event_type == 'image_generated', BotEvent.created_at >= week_ago)
-    )
 
     # Фото-правки (главная фишка после пивота). Тех-юзеры исключены через
     # exclude_uids — иначе тестер @grelok с сотнями генераций забивает топ.
@@ -227,17 +194,26 @@ async def get_dashboard_stats(session: AsyncSession) -> dict:
     )
     daily_new_users = [{'day': str(r.day)[:10], 'cnt': r.cnt} for r in daily_rows]
 
-    # Daily messages (last 14 days for chart)
-    daily_msg_rows = await session.execute(
-        select(
-            func.date_trunc('day', BotEvent.created_at).label('day'),
-            func.count().label('cnt'),
-        )
-        .where(BotEvent.event_type == 'message_sent', BotEvent.created_at >= today - timedelta(days=13))
-        .group_by(text('1'))
-        .order_by(text('1'))
-    )
-    daily_messages = [{'day': str(r.day)[:10], 'cnt': r.cnt} for r in daily_msg_rows]
+    # ── Канал → Бот → Выручка: из ОТСЛЕЖЕННЫХ вступлений в канал (channel_traffic,
+    # с 25.05) — сколько дошло до бота, сгенерило, оплатило. Показывает, конвертит
+    # ли канал-трафик (в т.ч. мотивированный) в дело, а не в vanity-подписки.
+    try:
+        ch = (await session.execute(text("""
+            WITH ch AS (SELECT DISTINCT user_tg_id FROM channel_traffic WHERE event='join'),
+            bot_u AS (SELECT id, telegram_id FROM users WHERE id NOT IN (1,2,3,6) AND is_banned=false),
+            ch_bot AS (SELECT b.id FROM bot_u b WHERE b.telegram_id IN (SELECT user_tg_id FROM ch)),
+            gen AS (SELECT DISTINCT user_id FROM bot_events WHERE event_type='image_edited')
+            SELECT
+              (SELECT count(*) FROM ch) AS joined,
+              (SELECT count(*) FROM ch_bot) AS in_bot,
+              (SELECT count(*) FROM ch_bot WHERE id IN (SELECT user_id FROM gen)) AS generated,
+              (SELECT count(*) FROM ch_bot WHERE id IN
+                 (SELECT user_id FROM payments WHERE status='succeeded')) AS paid
+        """))).mappings().first()
+        channel_funnel = {'joined': ch['joined'] or 0, 'in_bot': ch['in_bot'] or 0,
+                          'generated': ch['generated'] or 0, 'paid': ch['paid'] or 0}
+    except Exception:
+        channel_funnel = {'joined': 0, 'in_bot': 0, 'generated': 0, 'paid': 0}
 
     # Banned users count
     banned_count = await session.scalar(
@@ -282,21 +258,14 @@ async def get_dashboard_stats(session: AsyncSession) -> dict:
         'new_month': new_month or 0,
         'active_today': active_today or 0,
         'active_week': active_week or 0,
-        'messages_today': messages_today or 0,
-        'messages_week': messages_week or 0,
         'revenue_today': float(revenue_today),
         'revenue_month': float(revenue_month),
-        'model_usage': model_usage,
-        'voice_week': voice_week or 0,
-        'vision_week': vision_week or 0,
-        'images_week': images_week or 0,
         'image_edits_today': image_edits_today,
         'image_edits_week': image_edits_week,
         'face_swaps_week': face_swaps_week,
         'daily_image_edits': daily_image_edits,
         'top_presets_week': top_presets_week,
         'daily_new_users': daily_new_users,
-        'daily_messages': daily_messages,
         'banned_count': banned_count or 0,
         'errors_24h': errors_24h or 0,
         'total_real': total_real,
@@ -304,6 +273,7 @@ async def get_dashboard_stats(session: AsyncSession) -> dict:
         'users_2plus_gen': users_2plus_gen,
         'activation_rate': activation_rate,
         'second_gen_rate': second_gen_rate,
+        'channel_funnel': channel_funnel,
     }
 
 
