@@ -271,11 +271,14 @@ async def cmd_start(
         # без commit(); вызов log_event через отдельную сессию НЕ увидит юзера
         # (READ COMMITTED) → FK violation → событие теряется для НОВИЧКА. Что
         # ломает именно ту когорту, которую и замеряем (фокусный KPI).
+        # source = сырой start-параметр (?start=<X>). Любая посевная/трекинг-
+        # ссылка (seed_*, и т.п.) попадает сюда → считаем воронку по источнику.
         try:
             from app.database.models import BotEvent
             session.add(BotEvent(
                 user_id=user.id, event_type='start_command',
-                extra={'is_new_user': is_new, 'has_promo': bool(promo_code_arg)},
+                extra={'is_new_user': is_new, 'has_promo': bool(promo_code_arg),
+                       'source': (ref_arg or '')[:64]},
             ))
         except Exception as exc:
             logger.warning('start_command event log failed', error=str(exc)[:150])
