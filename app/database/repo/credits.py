@@ -18,7 +18,7 @@ MODEL_COSTS: dict[str, int] = {
     'ultra': 80,  # Claude Opus 4.7 (поднято 60→80 для здоровой маржи)
     'image': 60,             # генерация с нуля (FLUX.2 Klein)
     'image_edit_fast': 40,   # быстрая правка (gpt-5-image-mini, $0.005) — стиль/фон/цвет
-    'image_edit': 200,       # качественная правка (nano-banana-2, cost ~$0.05) — лицо ~80%
+    'image_edit': 200,       # качественная правка (nano-banana-2/edit @2K = $0.12, verified 2026-05-22) — лицо ~80%
     'image_edit_precise': 300,  # edit + auto face-swap: лицо 1в1 (cost ~$0.15). Для «сцен».
     'face_swap': 200,        # подставить лицо отдельным шагом (fal-ai/face-swap)
     'voice': 2,         # транскрипция voice (плюс к стоимости текстового ответа)
