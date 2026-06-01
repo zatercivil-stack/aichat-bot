@@ -62,6 +62,23 @@ def product_info(product_id: str) -> dict | None:
     return None
 
 
+def _invoice_copy(info: dict) -> tuple[str, str]:
+    """Премиальные title+description для инвойса (Stars/крипта).
+    Без сухих «500 кр (вечный)» — бренд + понятная польза (фото, перки)."""
+    credits = info['credits']
+    cr = f"{credits:,}".replace(',', ' ')  # 6 000 — пробел только в числе
+    photos = max(1, credits // 200)
+    if info['kind'] == 'subscription':
+        title = f"Подписка {info['plan_name']} · Нейра"[:32]
+        desc = (f"{cr} кр/мес + бонус кредитов каждый день. "
+                f"Без водяного знака · приоритет · все сцены")
+    else:
+        title = "Нейра — AI Фотостудия"
+        desc = (f"{cr} кредитов ≈ {photos} фото с твоим лицом в любой "
+                f"сцене. Зачисление за минуту, без водяного знака")
+    return title, desc
+
+
 async def _create_pending(user_id: int, user_tg_id: int, product_id: str,
                           info: dict, method: str) -> int:
     """Создаёт PENDING Payment с extra, который понимает process_succeeded_payment.
@@ -95,15 +112,15 @@ async def send_stars_invoice(bot, chat_id: int, user_id: int, user_tg_id: int,
     if not info:
         return False
     pid = await _create_pending(user_id, user_tg_id, product_id, info, 'stars')
+    title, desc = _invoice_copy(info)
     try:
         await bot.send_invoice(
             chat_id=chat_id,
-            title=info['title'][:32],
-            description=f"{info['credits']:,} кр".replace(',', ' ') + (
-                ' + подписка 30 дней' if info['kind'] == 'subscription' else ''),
+            title=title,
+            description=desc,
             payload=f'altpay:{pid}',
             currency='XTR',
-            prices=[LabeledPrice(label=info['title'][:32], amount=info['stars'])],
+            prices=[LabeledPrice(label='Нейра · доступ', amount=info['stars'])],
         )
         return True
     except Exception as exc:
@@ -139,11 +156,12 @@ async def create_crypto_invoice(user_id: int, user_tg_id: int, product_id: str,
     if not info:
         return None
     pid = await _create_pending(user_id, user_tg_id, product_id, info, 'cryptobot')
+    _, _desc = _invoice_copy(info)
     res = await _crypto_request('createInvoice', {
         'currency_type': 'fiat',
         'fiat': 'RUB',
         'amount': str(info['rub']),
-        'description': f"Нейра: {info['title']}",
+        'description': _desc[:200],
         'payload': f'altpay:{pid}',
         'paid_btn_name': 'openBot',
         'paid_btn_url': f'https://t.me/{bot_username}',
