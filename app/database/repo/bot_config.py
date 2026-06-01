@@ -32,15 +32,13 @@ DEFAULT_CONFIG: dict[str, tuple[str, str]] = {
     # (запрос менеджеру про «автоматические платежи»). Без этого save_payment_method
     # возвращает 403 ForbiddenError. Поставь '1' когда YooKassa подключит recurring.
     'yookassa_recurring_enabled': ('0', 'Enable save_payment_method=true on subscription payments (1/0)'),
-    # Credit packs (price + amount)
-    'pack_pack_500_credits':   ('500',   'Pack 500 — credit count'),
-    'pack_pack_500_rub':       ('99',    'Pack 500 — RUB price'),
+    # Credit packs (price + amount) — справочно; источник правды CREDIT_PACKS
     'pack_pack_2000_credits':  ('2000',  'Pack 2000 — credit count'),
     'pack_pack_2000_rub':      ('290',   'Pack 2000 — RUB price'),
     'pack_pack_6000_credits':  ('6000',  'Pack 6000 — credit count'),
     'pack_pack_6000_rub':      ('690',   'Pack 6000 — RUB price'),
     'pack_pack_20000_credits': ('20000', 'Pack 20000 — credit count'),
-    'pack_pack_20000_rub':     ('1890',  'Pack 20000 — RUB price'),
+    'pack_pack_20000_rub':     ('1790',  'Pack 20000 — RUB price'),
     # Editable bot texts
     'text_welcome': (WELCOME_TEXT, 'Welcome message shown on /start (HTML)'),
     'text_help':    (HELP_TEXT,    'Help message shown on /help (HTML)'),

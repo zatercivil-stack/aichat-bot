@@ -744,17 +744,16 @@ async def pricing_page(admin_session: Optional[str] = Cookie(default=None), msg:
         ('model_cost_voice',  'Голос (транскрипция)',   '🎤', 'success'),
     ]
     # Подсветим РЕАЛЬНЫЕ текущие цены фото-операций (read-only, идут из кода).
-    from app.database.repo.credits import MODEL_COSTS
+    from app.database.repo.credits import MODEL_COSTS, ALL_PACKS
     photo_prices = [
         ('Правка фото · quality (2K)', MODEL_COSTS.get('image_edit', 0)),
         ('Правка фото · fast',         MODEL_COSTS.get('image_edit_fast', 0)),
         ('Face-swap',                   MODEL_COSTS.get('face_swap', 0)),
     ]
+    # Строим из реальных ALL_PACKS — таблица не дрейфует при смене витрины.
     packs = [
-        ('pack_500',   '⚡ Стартер',     '500',   '99'),
-        ('pack_2000',  '🔥 Популярный', '2000',  '290'),
-        ('pack_6000',  '🚀 Выгодный',   '6000',  '690'),
-        ('pack_20000', '💎 Максимум',   '20000', '1890'),
+        (p['id'], f"{p['emoji']} {p['name']}", str(p['credits']), str(p['rub']))
+        for p in ALL_PACKS
     ]
     return render('pricing.html', title='Цены и модели', active='pricing', msg=msg,
                   config=config, model_rows=model_rows, packs=packs,

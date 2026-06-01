@@ -25,7 +25,8 @@ def shop_kb() -> InlineKeyboardMarkup:
     # ── СРОЧНЫЕ паки (раньше «BURN», акцент на выгоде) ──
     for pack in BURN_PACKS:
         days = pack.get('expires_days') or 7
-        label = f"{pack['credits']:,} кр / {pack['rub']}₽ · {days} дн"
+        photos = pack['credits'] // 200
+        label = f"{photos} фото — {pack['rub']}₽ · {days} дн"
         rows.append([InlineKeyboardButton.model_construct(
             text=label,
             callback_data=f"buy_pack:{pack['id']}",
@@ -35,7 +36,8 @@ def shop_kb() -> InlineKeyboardMarkup:
     for pack in CREDIT_PACKS:
         is_best = pack['credits'] == 6000
         marker = '🏆 ' if is_best else ''
-        label = f"{marker}{pack['credits']:,} кр / {pack['rub']}₽ · вечно"
+        photos = pack['credits'] // 200
+        label = f"{marker}{photos} фото — {pack['rub']}₽ · вечно"
         pe_id = _PACK_PE.get(pack['emoji'])
         if pe_id:
             rows.append([InlineKeyboardButton.model_construct(

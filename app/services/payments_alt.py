@@ -26,9 +26,10 @@ from app.database.repo.payments import create_payment, update_payment
 
 logger = structlog.get_logger(__name__)
 
-# Сколько Stars за 1₽ (пользователь покупает Stars ~1.8₽/шт). 0.6 ≈ честно с
-# лёгкой премией за удобство. Меняй при нужде. Stars-цены показываются юзеру.
-STARS_PER_RUB = 0.6
+# Сколько Stars за 1₽. 0.8: Telegram выкупает звёзды обратно ~$0.013/шт, при
+# 0.6 на выводе теряли ~28% от рублёвой цены — 0.8 покрывает комиссию платформы
+# (99₽ → 79⭐ ≈ 95₽ net). Stars-цены показываются юзеру.
+STARS_PER_RUB = 0.8
 
 _CRYPTO_API = 'https://pay.crypt.bot/api'
 
