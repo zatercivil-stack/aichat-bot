@@ -100,7 +100,7 @@ async def mark_conversion(user_id: int, event: str) -> None:
             if rows:
                 await session.commit()
     except Exception as exc:
-        logger.warning('mark_conversion failed', user_id=user_id, event=event, error=str(exc)[:200])
+        logger.warning('mark_conversion failed', user_id=user_id, exp_event=event, error=str(exc)[:200])
 
 
 async def get_experiment_results(

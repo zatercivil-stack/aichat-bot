@@ -109,7 +109,9 @@ async def yookassa_webhook(request: Request) -> Response:
     logger.info('YooKassa webhook received')
 
     if event != 'payment.succeeded':
-        logger.info('YooKassa webhook: event not payment.succeeded', event=event)
+        # ВАЖНО: ключ не 'event' — structlog уже занимает его под текст лога
+        # (иначе TypeError → 500 → YooKassa ретраит не-succeeded вебхуки).
+        logger.info('YooKassa webhook: event not payment.succeeded', yk_event=event)
         return Response(status_code=200)
 
     obj = data.get('object', {})
