@@ -51,6 +51,9 @@ class Settings(BaseSettings):
     STARS_BASIC_MONTHLY: int = 250
     STARS_PRO_MONTHLY: int = 600
 
+    # CryptoBot (Crypto Pay API) — оплата криптой. Токен из @CryptoBot → My Apps.
+    CRYPTOBOT_TOKEN: str = ''
+
     # Admin dashboard
     ADMIN_TOKEN: str = 'change_me_in_env'
     ADMIN_SECRET_KEY: str = 'admin_sessions_secret'

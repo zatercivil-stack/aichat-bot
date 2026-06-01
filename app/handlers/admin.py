@@ -1074,6 +1074,16 @@ def start_daily_push_scheduler(bot_instance):
         id='wheel_ready_notifier',
         replace_existing=True,
     )
+    # CryptoBot: поллинг оплаченных крипто-инвойсов каждую минуту (быстрое
+    # подтверждение). Лёгкий — запрос к API только если есть pending cryptobot.
+    from app.services.payments_alt import poll_crypto_payments
+    _daily_push_scheduler.add_job(
+        poll_crypto_payments,
+        trigger=CronTrigger(minute='*'),
+        args=[bot_instance],
+        id='cryptobot_poll',
+        replace_existing=True,
+    )
     # Phase 2: payment recovery every 30 min
     from app.services.payment_recovery import run_payment_recovery
     _daily_push_scheduler.add_job(

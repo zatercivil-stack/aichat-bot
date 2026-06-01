@@ -383,11 +383,19 @@ async def cb_choose_plan(callback: CallbackQuery) -> None:
             if recurring_enabled else ''
         )
 
+        from app.services.payments_alt import product_info as _pinfo
+        _info = _pinfo(plan_dict['id'])
+        _stars = _info['stars'] if _info else None
         kb = InlineKeyboardMarkup(inline_keyboard=[
             [InlineKeyboardButton.model_construct(
-                text='Перейти к оплате', url=pay_url,
+                text='💳 Картой — перейти к оплате', url=pay_url,
                 icon_custom_emoji_id=PE_CARD, style='success',
             )],
+            [InlineKeyboardButton.model_construct(
+                text=f'⭐ Telegram Stars{f" ({_stars})" if _stars else ""}',
+                callback_data=f'payst:{plan_dict["id"]}', style='primary'),
+             InlineKeyboardButton.model_construct(
+                text='💎 Криптой', callback_data=f'paycr:{plan_dict["id"]}', style='primary')],
             [InlineKeyboardButton.model_construct(
                 text='Назад', callback_data='subscription',
                 icon_custom_emoji_id=PE_BACK, style='danger',
@@ -403,10 +411,8 @@ async def cb_choose_plan(callback: CallbackQuery) -> None:
             f"• <b>{plan_dict['credits_monthly']:,} кредитов</b> сразу\n"
             f"• <b>+{plan_dict['daily_bonus']} кр</b> ежедневно 30 дней\n\n"
             f"{recurring_line}"
-            f"⏱ <i>Зачисление автоматически в течение 1 минуты после оплаты.</i>\n\n"
-            f"💡 <i>Если страница оплаты не открывается — выключи VPN "
-            f"и нажми кнопку снова.</i>\n\n"
-            f"Жми кнопку ниже 👇",
+            f"⏱ <i>Зачисление автоматически в течение 1 минуты.</i>\n\n"
+            f"Выбери способ оплаты 👇 <i>(Stars и крипта работают без VPN)</i>",
             reply_markup=kb,
         )
 

@@ -158,12 +158,20 @@ async def cb_pay_rub(callback: CallbackQuery) -> None:
         pay_url = yk_payment.confirmation.confirmation_url
 
         from app.keyboards.main import PE_BACK
+        from app.services.payments_alt import product_info as _pinfo
+        _info = _pinfo(pack['id'])
+        _stars = _info['stars'] if _info else None
         kb = InlineKeyboardMarkup(inline_keyboard=[
             [InlineKeyboardButton.model_construct(
-                text='Перейти к оплате',
+                text='💳 Картой — перейти к оплате',
                 url=pay_url,
                 icon_custom_emoji_id=PE_CARD, style='success',
             )],
+            [InlineKeyboardButton.model_construct(
+                text=f'⭐ Telegram Stars{f" ({_stars})" if _stars else ""}',
+                callback_data=f'payst:{pack["id"]}', style='primary'),
+             InlineKeyboardButton.model_construct(
+                text='💎 Криптой', callback_data=f'paycr:{pack["id"]}', style='primary')],
             [InlineKeyboardButton.model_construct(
                 text='Назад', callback_data='shop',
                 icon_custom_emoji_id=PE_BACK, style='danger',
@@ -177,10 +185,9 @@ async def cb_pay_rub(callback: CallbackQuery) -> None:
             f"💳 <b>Оплата: {pack['credits']:,} кредитов за {pack['rub']}₽</b>\n\n"
             f"✅ После оплаты <b>{pack['credits']:,} кредитов</b> зачислятся на твой баланс\n"
             f"⏱ <i>Автоматически за 1 минуту</i>\n\n"
-            f"🔔 Пришлю уведомление как только кредиты придут.\n\n"
-            f"💡 <i>Если страница оплаты не открывается — выключи VPN "
-            f"и нажми кнопку снова.</i>\n\n"
-            f"Нажми кнопку ниже 👇",
+            f"Выбери способ оплаты 👇 <i>(Stars и крипта работают без VPN)</i>\n"
+            f"💡 <i>Если страница карты не открывается — выключи VPN или плати "
+            f"через Stars/крипту.</i>",
             reply_markup=kb,
         )
 

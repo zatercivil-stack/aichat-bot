@@ -275,9 +275,13 @@ async def cmd_start(
         # ссылка (seed_*, и т.п.) попадает сюда → считаем воронку по источнику.
         try:
             from app.database.models import BotEvent
+            # ⚠️ Логируем ПАРАМЕТР is_new_user (от middleware), а НЕ локальный
+            # is_new из get_or_create_user. Middleware создаёт юзера с commit()
+            # ДО cmd_start → здешний get_or_create видит существующего →
+            # is_new=False ВСЕГДА. Раньше поле в аналитике врало (всегда false).
             session.add(BotEvent(
                 user_id=user.id, event_type='start_command',
-                extra={'is_new_user': is_new, 'has_promo': bool(promo_code_arg),
+                extra={'is_new_user': is_new_user, 'has_promo': bool(promo_code_arg),
                        'source': (ref_arg or '')[:64]},
             ))
         except Exception as exc:
@@ -520,6 +524,24 @@ async def cmd_start(
             note = f'❌ Промокод <b>{promo_code_arg}</b> не найден или недействителен.'
         await message.answer(note, reply_markup=main_menu_kb())
         return
+
+    # Рекламный посев (?start=seedN, без промокода): отдельная посадочная под
+    # креатив вместо дефолтного welcome — иначе обещание ролика теряется.
+    # Новичкам welcome-бонус уже начислен выше; здесь только лог + admin-нотис.
+    from app.handlers.image_edit import SEED_LANDING_HERO, send_seed_landing
+    if ref_arg in SEED_LANDING_HERO:
+        if is_new_user:
+            log_event_bg(user_db_id, 'user_registered')
+            await _notify_admins_new_user(
+                message.bot, user, source=f'креатив <code>{ref_arg}</code>',
+            )
+        # Воронка посева: показ посадочной. Дальше — seed_gender_chosen,
+        # затем image_edited. Лифт меряем по source=seedN в bot_events.
+        log_event_bg(user_db_id, 'seed_landing_shown',
+                     source=ref_arg, is_new=is_new_user)
+        if await send_seed_landing(message, ref_arg,
+                                   gift=welcome_bonus if is_new_user else 0):
+            return
 
     async with AsyncSessionFactory() as session:
         base_welcome = await get_text(session, 'text_welcome', WELCOME_TEXT)

@@ -1,9 +1,10 @@
 from __future__ import annotations
 
 import structlog
-from aiogram import Router
-from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup, Message, PreCheckoutQuery
+from aiogram import F, Router
+from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup, Message, PreCheckoutQuery
 
+from app.config import settings
 from app.database.base import AsyncSessionFactory
 from app.database.repo.credits import add_credits, get_pack_by_id
 from app.database.repo.users import get_user
@@ -26,11 +27,66 @@ async def successful_payment(message: Message) -> None:
     stars = payment_info.total_amount
     charge_id = payment_info.telegram_payment_charge_id
 
+    # Новый единый путь: altpay:<payment_id> (Stars через payments_alt) →
+    # активация через process_succeeded_payment (кредиты/подписка, идемпотентно).
+    if payload.startswith('altpay:'):
+        try:
+            pid = int(payload.split(':', 1)[1])
+        except ValueError:
+            await message.answer('⚠️ Ошибка платежа. Напиши в поддержку.')
+            return
+        from app.services.payment_processing import process_succeeded_payment
+        ok = await process_succeeded_payment(pid, external_id=charge_id, bot=message.bot)
+        if not ok:
+            await message.answer('⚠️ Оплата прошла, но активация не удалась. '
+                                 'Напиши в поддержку — начислим вручную.')
+        return
+
     if parts[0] == 'credits' and len(parts) >= 2:
         await _handle_credits_payment(message, int(parts[1]), stars, charge_id)
     else:
         logger.error('Unknown payment payload', payload=payload)
         await message.answer('⚠️ Ошибка обработки платежа. Напишите в поддержку.')
+
+
+# ── Кнопки альт-оплаты: Stars (⭐) и Крипта (CryptoBot) ──────────────────────
+@router.callback_query(F.data.startswith('payst:'))
+async def cb_pay_stars(callback: CallbackQuery) -> None:
+    product_id = callback.data.split(':', 1)[1]
+    async with AsyncSessionFactory() as s:
+        user = await get_user(s, callback.from_user.id)
+    if not user:
+        await callback.answer('Нажми /start', show_alert=True)
+        return
+    from app.services.payments_alt import send_stars_invoice
+    ok = await send_stars_invoice(callback.bot, callback.message.chat.id, user.id,
+                                  callback.from_user.id, product_id)
+    await callback.answer('Открываю оплату Stars…' if ok else 'Не вышло, попробуй позже',
+                          show_alert=not ok)
+
+
+@router.callback_query(F.data.startswith('paycr:'))
+async def cb_pay_crypto(callback: CallbackQuery) -> None:
+    product_id = callback.data.split(':', 1)[1]
+    async with AsyncSessionFactory() as s:
+        user = await get_user(s, callback.from_user.id)
+    if not user:
+        await callback.answer('Нажми /start', show_alert=True)
+        return
+    from app.services.payments_alt import create_crypto_invoice
+    bot_username = settings.BOT_USERNAME or 'NeyraChatBot'
+    url = await create_crypto_invoice(user.id, callback.from_user.id, product_id, bot_username)
+    if not url:
+        await callback.answer('Крипта-оплата временно недоступна', show_alert=True)
+        return
+    await callback.answer()
+    kb = InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton.model_construct(
+        text='💎 Оплатить криптой', url=url)]])
+    await callback.message.answer(
+        '💎 <b>Счёт создан.</b> Оплати в CryptoBot — кредиты зачислятся '
+        'автоматически в пару минут после оплаты.\n\n'
+        '<i>Если кнопка не открывается — обнови Telegram.</i>',
+        parse_mode='HTML', reply_markup=kb)
 
 
 async def _handle_credits_payment(

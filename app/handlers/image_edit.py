@@ -1936,6 +1936,124 @@ async def open_catalog_from_message(message: Message, user_tg_id: int,
     await _send_catalog_header(message, premium_text(text), kb)
 
 
+# ── Посадочные под рекламные посевы (?start=seedN) ──────────────────────────
+# Bare ?start=seedN не несёт промокода → раньше падал в дефолтный welcome, и
+# обещание ролика терялось (воронка: 9 кликов → 1 селфи → 0 генераций). Теперь:
+# hero под текст конкретного креатива → вопрос пола → ВЕСЬ каталог сцен,
+# отфильтрованный под пол (в роликах сцен много — не фиксируем набор).
+# Превью берутся из preset_previews — новых генераций fal НЕ требуется.
+SEED_LANDING_HERO: dict[str, str] = {
+    'seed2': (  # Ж-креатив «Эстетичная лента»
+        '🔥 <b>Эстетичная лента — без единой фотосессии.</b>\n\n'
+        'Кидаешь селфи → получаешь готовые кадры для сторис и профиля: '
+        'глянец, Париж, неон. Лицо <b>в точности твоё</b>, не чужая модель. '
+        'Минута на каждый.\n\n'
+        '<b>Собери ленту, на которую подписываются 👇</b>'
+    ),
+    'seed3': (  # М+Ж-креатив «Окажись где угодно»
+        '🐹 <b>Окажись где угодно — не вставая с дивана.</b>\n\n'
+        'Крыша небоскрёба, неон ночного города, кино-кадр. Одно селфи — и ты там. '
+        'Лицо <b>в точности твоё</b>, не чужая модель.\n\n'
+        '<b>Выбери, где хочешь оказаться 👇</b>'
+    ),
+    'seed1': (  # М-креатив «Перестань выглядеть как все» (посев остановлен,
+                # посадочная — на случай перезапуска с новым хуком)
+        '⚠️ <b>Перестань выглядеть как все.</b>\n\n'
+        'Селфи в зеркале проигрывает, даже когда ты круче. Нейра даёт фото '
+        'уровня, который тебя реально продаёт: неон, авто, ночной город. '
+        'Лицо <b>твоё</b>.\n\n'
+        '<b>Подними планку 👇</b>'
+    ),
+}
+
+
+def _seed_gender_kb(seed: str) -> InlineKeyboardMarkup:
+    """Вопрос пола на посадочной посева. Пол + seed несутся в callback, чтобы
+    после ответа открыть каталог под нужный пол, не теряя контекст креатива."""
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton.model_construct(
+            text='Я девушка', callback_data=f'seedg:{seed}:female',
+            icon_custom_emoji_id=PE_SPARKLES, style='success')],
+        [InlineKeyboardButton.model_construct(
+            text='Я парень', callback_data=f'seedg:{seed}:male',
+            icon_custom_emoji_id=PE_ROBOT, style='primary')],
+        [InlineKeyboardButton.model_construct(
+            text='Не важно — покажи всё', callback_data=f'seedg:{seed}:any')],
+    ])
+
+
+async def send_seed_landing(message: Message, seed: str, gift: int = 0) -> bool:
+    """Посадочная под рекламный посев: hero-текст креатива + вопрос пола.
+    gift — подарок новичку (для строки «+N кр»). Возвращает False если seed
+    неизвестен (вызывающий тогда покажет дефолтный welcome)."""
+    hero = SEED_LANDING_HERO.get(seed)
+    if not hero:
+        return False
+    gift_line = (
+        f'\n\n🎁 <b>+{gift} кредитов в подарок</b> — хватит на пару кадров.'
+        if gift >= 200 else ''
+    )
+    text = premium_text(
+        hero + gift_line +
+        '\n\n<i>Сначала — для кого делаем фото? Подберу сцены под тебя.</i>'
+    )
+    # Коллаж-шапка как в welcome — живее голого текста (фолбэк на текст).
+    fid = None
+    try:
+        from app.database.repo.bot_config import get_config_value as _gcv
+        async with AsyncSessionFactory() as _s:
+            fid = await _gcv(_s, 'showcase_collage_fid')
+        if not fid:
+            from app.services.welcome_collage import get_or_build_welcome_collage_fid
+            fid = await get_or_build_welcome_collage_fid(message.bot)
+    except Exception:
+        fid = None
+    kb = _seed_gender_kb(seed)
+    if fid:
+        try:
+            await message.answer_photo(fid, caption=text, parse_mode='HTML',
+                                       reply_markup=kb)
+            return True
+        except Exception:
+            pass
+    await message.answer(text, parse_mode='HTML', reply_markup=kb)
+    return True
+
+
+@router.callback_query(F.data.startswith('seedg:'))
+async def cb_seed_gender(callback: CallbackQuery) -> None:
+    """Пол выбран на посадочной посева → сохраняем и открываем каталог под пол.
+    Каталог gender-aware: мужчинам прячем женские пресеты и берём мужские
+    превью. Так юзер видит ВСЕ релевантные сцены, а не фикс-набор."""
+    parts = callback.data.split(':')
+    seed = parts[1] if len(parts) > 1 else ''
+    g = parts[2] if len(parts) > 2 else 'any'
+    if g not in ('male', 'female', 'any'):
+        g = 'any'
+    uid = None
+    async with AsyncSessionFactory() as session:
+        user = await get_user(session, callback.from_user.id)
+        if user:
+            uid = user.id
+            user.gender = g
+            await session.commit()
+    # Воронка посева: пол выбран. Source=seedN связывает с seed_landing_shown.
+    if uid is not None:
+        log_event_bg(uid, 'seed_gender_chosen', source=seed, gender=g)
+    await callback.answer('Запомнил 👌')
+    try:
+        await callback.message.delete()
+    except Exception:
+        pass
+    kb = await _categories_kb(is_male=(g == 'male'))
+    intro = premium_text(
+        '✨ <b>Лови сцены под тебя</b>\n\n'
+        '<i>Открой раздел, листай готовые кадры и пришли селфи — верну фото '
+        'с твоим лицом за минуту. Свежие сцены сверху 👇</i>'
+    )
+    await _send_catalog_header(callback.message, intro, kb)
+
+
 @router.callback_query(F.data == 'gallery_open')
 async def cb_gallery_open(callback: CallbackQuery) -> None:
     """Открыть каталог из главного меню (2 уровня: категории → карусель)."""
