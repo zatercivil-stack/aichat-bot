@@ -62,8 +62,15 @@ def shop_kb() -> InlineKeyboardMarkup:
 
 
 def confirm_pack_kb(pack_id: str) -> InlineKeyboardMarkup:
+    # 3 способа оплаты ПРЯМО на карточке (без промежуточного экрана). Один
+    # премиум-эмодзи на кнопку (без дублей). Stars-цена показывается.
+    from app.services.payments_alt import product_info
+    _info = product_info(pack_id)
+    _stars = _info['stars'] if _info else None
     return InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton.model_construct(text='Оплатить картой', callback_data=f'pay_rub:{pack_id}', icon_custom_emoji_id=PE_CARD, style='success')],
+        [InlineKeyboardButton.model_construct(text='Картой', callback_data=f'pay_rub:{pack_id}', icon_custom_emoji_id=PE_CARD, style='success')],
+        [InlineKeyboardButton.model_construct(text=f'⭐ Stars{f" · {_stars}" if _stars else ""}', callback_data=f'payst:{pack_id}', style='primary'),
+         InlineKeyboardButton.model_construct(text='💎 Крипта', callback_data=f'paycr:{pack_id}', style='primary')],
         [InlineKeyboardButton.model_construct(text='Выбрать другой пакет', callback_data='shop', icon_custom_emoji_id=PE_BACK, style='danger')],
     ])
 

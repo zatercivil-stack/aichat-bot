@@ -73,20 +73,27 @@ async def cb_pay_crypto(callback: CallbackQuery) -> None:
     if not user:
         await callback.answer('Нажми /start', show_alert=True)
         return
-    from app.services.payments_alt import create_crypto_invoice
+    from app.services.payments_alt import create_crypto_invoice, product_info
+    await callback.answer('Создаю счёт…')
     bot_username = settings.BOT_USERNAME or 'NeyraChatBot'
     url = await create_crypto_invoice(user.id, callback.from_user.id, product_id, bot_username)
     if not url:
         await callback.answer('Крипта-оплата временно недоступна', show_alert=True)
         return
-    await callback.answer()
-    kb = InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton.model_construct(
-        text='💎 Оплатить криптой', url=url)]])
-    await callback.message.answer(
-        '💎 <b>Счёт создан.</b> Оплати в CryptoBot — кредиты зачислятся '
-        'автоматически в пару минут после оплаты.\n\n'
-        '<i>Если кнопка не открывается — обнови Telegram.</i>',
-        parse_mode='HTML', reply_markup=kb)
+    from app.keyboards.main import PE_BACK
+    info = product_info(product_id)
+    back = 'subscription' if (info and info.get('kind') == 'subscription') else f'buy_pack:{product_id}'
+    kb = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton.model_construct(
+            text='💎 Оплатить криптой', url=url, style='success')],
+        [InlineKeyboardButton.model_construct(
+            text='Назад', callback_data=back, icon_custom_emoji_id=PE_BACK, style='danger')],
+    ])
+    # Редактируем ТЕКУЩЕЕ сообщение (без нового) — меньше шума.
+    try:
+        await callback.message.edit_reply_markup(reply_markup=kb)
+    except Exception:
+        await callback.message.answer('💎 Счёт создан — оплати:', reply_markup=kb)
 
 
 async def _handle_credits_payment(

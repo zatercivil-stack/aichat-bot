@@ -388,14 +388,14 @@ async def cb_choose_plan(callback: CallbackQuery) -> None:
         _stars = _info['stars'] if _info else None
         kb = InlineKeyboardMarkup(inline_keyboard=[
             [InlineKeyboardButton.model_construct(
-                text='💳 Картой — перейти к оплате', url=pay_url,
+                text='Картой — перейти к оплате', url=pay_url,
                 icon_custom_emoji_id=PE_CARD, style='success',
             )],
             [InlineKeyboardButton.model_construct(
-                text=f'⭐ Telegram Stars{f" ({_stars})" if _stars else ""}',
+                text=f'⭐ Stars{f" · {_stars}" if _stars else ""}',
                 callback_data=f'payst:{plan_dict["id"]}', style='primary'),
              InlineKeyboardButton.model_construct(
-                text='💎 Криптой', callback_data=f'paycr:{plan_dict["id"]}', style='primary')],
+                text='💎 Крипта', callback_data=f'paycr:{plan_dict["id"]}', style='primary')],
             [InlineKeyboardButton.model_construct(
                 text='Назад', callback_data='subscription',
                 icon_custom_emoji_id=PE_BACK, style='danger',

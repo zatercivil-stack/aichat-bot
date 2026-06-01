@@ -158,36 +158,25 @@ async def cb_pay_rub(callback: CallbackQuery) -> None:
         pay_url = yk_payment.confirmation.confirmation_url
 
         from app.keyboards.main import PE_BACK
-        from app.services.payments_alt import product_info as _pinfo
-        _info = _pinfo(pack['id'])
-        _stars = _info['stars'] if _info else None
+        # Метод уже выбран (карта) — показываем только ссылку YooKassa.
         kb = InlineKeyboardMarkup(inline_keyboard=[
             [InlineKeyboardButton.model_construct(
-                text='💳 Картой — перейти к оплате',
-                url=pay_url,
+                text='Перейти к оплате', url=pay_url,
                 icon_custom_emoji_id=PE_CARD, style='success',
             )],
             [InlineKeyboardButton.model_construct(
-                text=f'⭐ Telegram Stars{f" ({_stars})" if _stars else ""}',
-                callback_data=f'payst:{pack["id"]}', style='primary'),
-             InlineKeyboardButton.model_construct(
-                text='💎 Криптой', callback_data=f'paycr:{pack["id"]}', style='primary')],
-            [InlineKeyboardButton.model_construct(
-                text='Назад', callback_data='shop',
+                text='Назад', callback_data=f'buy_pack:{pack["id"]}',
                 icon_custom_emoji_id=PE_BACK, style='danger',
             )],
         ])
-        # 24.05: было answer (создавало 3-е сообщение в чате). Теперь edit —
-        # оплата живёт в том же экране, что и выбор пака → меньше шума.
         from app.utils import safe_edit_or_answer
         await safe_edit_or_answer(
             callback,
-            f"💳 <b>Оплата: {pack['credits']:,} кредитов за {pack['rub']}₽</b>\n\n"
-            f"✅ После оплаты <b>{pack['credits']:,} кредитов</b> зачислятся на твой баланс\n"
-            f"⏱ <i>Автоматически за 1 минуту</i>\n\n"
-            f"Выбери способ оплаты 👇 <i>(Stars и крипта работают без VPN)</i>\n"
-            f"💡 <i>Если страница карты не открывается — выключи VPN или плати "
-            f"через Stars/крипту.</i>",
+            f"💳 <b>Оплата картой: {pack['credits']:,} кр за {pack['rub']}₽</b>\n\n"
+            f"Нажми «Перейти к оплате» 👇 Кредиты зачислятся автоматически "
+            f"за минуту.\n\n"
+            f"💡 <i>Если страница не открывается — выключи VPN, либо вернись "
+            f"и выбери Stars/крипту (работают без VPN).</i>",
             reply_markup=kb,
         )
 
