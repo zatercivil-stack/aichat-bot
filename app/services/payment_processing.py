@@ -160,16 +160,6 @@ async def process_succeeded_payment(
             session, payment.id, PaymentStatus.SUCCEEDED,
             external_id=external_id or payment.external_id,
         )
-        # Юзер завершил покупку → гасим его ПРОЧИЕ pending-платежи (брошенные
-        # попытки другим способом — напр. pre-created YooKassa при оплате через
-        # Stars/крипту), чтобы recovery-нудж не слал «незавершённая оплата».
-        await session.execute(
-            sa_update(Payment)
-            .where(Payment.user_id == user.id,
-                   Payment.status == PaymentStatus.PENDING,
-                   Payment.id != payment.id)
-            .values(status=PaymentStatus.CANCELED)
-        )
         await session.commit()
 
     # 4. Уведомление юзеру (после commit — даже если упадёт, активация уже в БД)

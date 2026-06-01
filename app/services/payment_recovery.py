@@ -59,6 +59,16 @@ async def run_payment_recovery(bot_instance) -> None:
             result = await session.execute(stmt)
             rows = result.all()
 
+            # Юзеры с недавним УСПЕШНЫМ платежом (оплатили другим способом —
+            # Stars/крипта, пока pre-created YooKassa-pending висел) — НЕ нудлим
+            # «незавершённой оплатой», иначе шлём ложь уже после покупки.
+            paid_uids = set((await session.execute(
+                select(Payment.user_id).where(
+                    Payment.status == PaymentStatus.SUCCEEDED,
+                    Payment.created_at > too_old,
+                )
+            )).scalars().all())
+
             # Группируем pending по юзеру: один юзер → max 1 нотификация за run.
             by_user: dict[int, list[Payment]] = {}
             for payment, user in rows:
@@ -66,6 +76,10 @@ async def run_payment_recovery(bot_instance) -> None:
 
             for tg_id, items in by_user.items():
                 user = items[0][1]
+                # Уже оплатил недавно (другим способом) → пропускаем нудж.
+                if user.id in paid_uids:
+                    skipped_dup += 1
+                    continue
                 # 1. Все «too old» помечаем failed
                 user_payments_to_notify: list[Payment] = []
                 last_recovery_dt: datetime | None = None

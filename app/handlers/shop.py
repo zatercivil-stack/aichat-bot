@@ -6,7 +6,7 @@ from decimal import Decimal
 import structlog
 from aiogram import Router
 from aiogram.filters import Command
-from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup, LabeledPrice, Message
+from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup, Message
 
 from app.config import settings
 from app.database.base import AsyncSessionFactory
@@ -64,16 +64,15 @@ async def cb_buy_pack(callback: CallbackQuery) -> None:
     # Шапка зависит от типа пака
     if is_burn:
         header = (
-            f"🔥 <b>Срочный пак {cr:,} кредитов · {expires_days} дней</b>\n"
-            f"<i>В 2-3 раза БОЛЬШЕ кредитов за ту же цену — но сгорят через "
-            f"{expires_days} дн. Бери если планируешь использовать сразу.</i>\n\n"
+            f"🔥 <b>{photos} фото за {pack['rub']}₽ · {expires_days} дней</b>\n"
+            f"<i>Самый выгодный вход — но кредиты сгорят через {expires_days} дн. "
+            f"Бери, если планируешь пользоваться сразу.</i>\n\n"
         )
         expire_line = f"⏱ <b>Срок:</b> сгорят через {expires_days} дней\n"
     else:
         header = (
-            f"{pack['emoji']} <b>ВЕЧНЫЙ пак {cr:,} кредитов</b>\n"
-            f"<i>Никаких сроков — лежат годами. Слегка дороже на кредит,\n"
-            f"зато спокойно — не торопишься.</i>\n\n"
+            f"{pack['emoji']} <b>{photos} фото · вечные кредиты</b>\n"
+            f"<i>Без сроков — лежат годами. Платишь один раз.</i>\n\n"
         )
         expire_line = f"✓ Кредиты <b>не сгорают</b> никогда\n"
 
@@ -183,26 +182,6 @@ async def cb_pay_rub(callback: CallbackQuery) -> None:
     except Exception as e:
         logger.error('YooKassa payment creation failed', error=e, exc_info=True)
         await callback.message.answer('❌ Ошибка создания платежа. Попробуйте позже.')
-
-
-@router.callback_query(lambda c: c.data and c.data.startswith('confirm_pack:'))
-async def cb_confirm_pack(callback: CallbackQuery) -> None:
-    pack_id = callback.data.split(':', 1)[1]
-    pack = get_pack_by_id(pack_id)
-    if not pack:
-        await callback.answer('Пакет не найден.', show_alert=True)
-        return
-
-    payload = f"credits:{pack['credits']}:{callback.from_user.id}"
-    await callback.message.answer_invoice(
-        title=f"Нейра — {pack['emoji']} {pack['name']}",
-        description=f"Нейра: {pack['credits']:,} кредитов · фото-сцены, face-swap, стили",
-        payload=payload,
-        provider_token='',
-        currency='XTR',
-        prices=[LabeledPrice(label=f"{pack['credits']:,} кредитов", amount=pack['stars'])],
-    )
-    await callback.answer()
 
 
 @router.callback_query(lambda c: c.data == 'complete_pending')
