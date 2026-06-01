@@ -434,7 +434,12 @@ async def cb_sec_rotate(callback: CallbackQuery) -> None:
     if callback.from_user.id not in settings.admin_ids_list:
         return
     from app.webserver.admin import rotate_admin_token
-    new = await rotate_admin_token()
+    try:
+        new = await rotate_admin_token()
+    except Exception as exc:
+        logger.error('token rotate failed', error=str(exc)[:200])
+        await callback.answer('Ошибка смены токена — попробуй ещё раз', show_alert=True)
+        return
     await callback.answer('Токен сменён')
     try:
         await callback.message.edit_reply_markup(reply_markup=None)

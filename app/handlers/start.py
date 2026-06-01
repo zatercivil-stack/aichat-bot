@@ -540,7 +540,16 @@ async def cmd_start(
 
     if is_new_user:
         log_event_bg(user_db_id, 'user_registered')
-        source = 'реферальная ссылка' if referrer_telegram_id else 'органика'
+        # Источник для админ-уведомления. Приоритет: реферал → сырой start-param
+        # (креатив/посев вроде ?start=seed2, ?start=ads_xxx) → органика.
+        # Раньше любой нестандартный start-param проваливался в «органику» —
+        # креатив, по которому реально пришёл юзер, терялся в уведомлении.
+        if referrer_telegram_id:
+            source = 'реферальная ссылка'
+        elif ref_arg.strip():
+            source = f'креатив <code>{ref_arg.strip()[:64]}</code>'
+        else:
+            source = 'органика'
         await _notify_admins_new_user(message.bot, user, source=source)
         # Подарок настроен в bot_config.welcome_bonus_credits. Если новичок пришёл
         # с рефером/промо — там свой бонус, поэтому welcome_bonus здесь 0.
