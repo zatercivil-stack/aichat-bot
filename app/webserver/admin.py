@@ -52,6 +52,97 @@ def _redirect_login() -> RedirectResponse:
     return RedirectResponse('/admin/login', status_code=302)
 
 
+# ── LOGIN SECURITY: реальный IP, рейт-лимит, детект нового IP, TG-алерт ──────────
+_LOGIN_FAIL_LIMIT = 5
+_LOGIN_FAIL_WINDOW = 900  # 15 минут
+
+
+def _client_ip(request: Request) -> str:
+    """Реальный IP за Caddy (reverse_proxy ставит X-Forwarded-For; request.client
+    был бы 127.0.0.1)."""
+    xff = request.headers.get('x-forwarded-for')
+    if xff:
+        return xff.split(',')[0].strip()
+    return request.headers.get('x-real-ip') or (
+        request.client.host if request.client else 'unknown')
+
+
+async def _login_blocked(ip: str) -> bool:
+    try:
+        r = Redis.from_url(settings.REDIS_URL, decode_responses=True)
+        try:
+            n = await r.get(f'login_fails:{ip}')
+            return int(n or 0) >= _LOGIN_FAIL_LIMIT
+        finally:
+            await r.aclose()
+    except Exception:
+        return False  # fail-open: не лочим владельца, если Redis недоступен
+
+
+async def _login_record_fail(ip: str) -> None:
+    try:
+        r = Redis.from_url(settings.REDIS_URL, decode_responses=True)
+        try:
+            k = f'login_fails:{ip}'
+            if await r.incr(k) == 1:
+                await r.expire(k, _LOGIN_FAIL_WINDOW)
+        finally:
+            await r.aclose()
+    except Exception:
+        pass
+
+
+async def _login_clear_fails(ip: str) -> None:
+    try:
+        r = Redis.from_url(settings.REDIS_URL, decode_responses=True)
+        try:
+            await r.delete(f'login_fails:{ip}')
+        finally:
+            await r.aclose()
+    except Exception:
+        pass
+
+
+async def _is_new_admin_ip(ip: str) -> bool:
+    """True если вход с НОВОГО IP (и регистрирует его в списке известных)."""
+    from app.database.repo.bot_config import get_config_value
+    try:
+        async with AsyncSessionFactory() as s:
+            raw = await get_config_value(s, 'admin_known_ips')
+            known = json.loads(raw) if raw else []
+            if ip in known:
+                return False
+            known = (known + [ip])[-50:]
+            await set_config_value(s, 'admin_known_ips', json.dumps(known))
+            await s.commit()
+        return True
+    except Exception:
+        return False
+
+
+async def _alert_new_login(ip: str) -> None:
+    """TG-алерт владельцу об успешном входе в панель с НОВОГО IP."""
+    try:
+        from aiogram import Bot
+        from aiogram.client.default import DefaultBotProperties
+        from aiogram.enums import ParseMode
+        bot = Bot(token=settings.BOT_TOKEN,
+                  default=DefaultBotProperties(parse_mode=ParseMode.HTML))
+        try:
+            for aid in settings.admin_ids_list:
+                await bot.send_message(
+                    aid,
+                    '🔐 <b>Вход в админ-панель с НОВОГО IP</b>\n\n'
+                    f'IP: <code>{ip}</code>\n'
+                    f'Время: {datetime.now(timezone.utc):%Y-%m-%d %H:%M} UTC\n\n'
+                    'Если это <b>не ты</b> — скажи мне «смени токен».',
+                )
+        finally:
+            await bot.session.close()
+    except Exception as exc:
+        logger.warning('new-login alert failed', error=str(exc)[:150])
+
+
 # ── REDIS HELPER (lazy) ───────────────────────────────────────────────────────
 
 _redis_client: Redis | None = None
@@ -72,9 +163,24 @@ async def login_page():
 
 
 @router.post('/login')
-async def login(token: str = Form(...)):
+async def login(request: Request, token: str = Form(...)):
+    ip = _client_ip(request)
+    # Рейт-лимит: 5 неудач / 15 мин с одного IP.
+    if await _login_blocked(ip):
+        logger.warning('admin login BLOCKED (rate limit)', ip=ip)
+        return render('login.html',
+                      error='Слишком много попыток. Подожди 15 минут.')
     if token != settings.ADMIN_TOKEN:
+        await _login_record_fail(ip)
+        logger.warning('admin login FAILED', ip=ip)
+        log_action_bg('unknown', 'admin_login_failed', ip=ip)
         return render('login.html', error='Неверный токен')
+    # Успех: чистим счётчик, аудит, алерт если IP новый.
+    await _login_clear_fails(ip)
+    logger.info('admin login OK', ip=ip)
+    log_action_bg('owner', 'admin_login_ok', ip=ip)
+    if await _is_new_admin_ip(ip):
+        await _alert_new_login(ip)
     resp = RedirectResponse('/admin/', status_code=302)
     # secure=True — кука уходит только по HTTPS (дашборд за Caddy/TLS на
     # admin.example.com). Без флага утекала бы по plain HTTP (24.05 фикс).
