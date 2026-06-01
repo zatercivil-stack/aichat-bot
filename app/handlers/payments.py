@@ -78,14 +78,14 @@ async def cb_pay_crypto(callback: CallbackQuery) -> None:
     bot_username = settings.BOT_USERNAME or 'NeyraChatBot'
     url = await create_crypto_invoice(user.id, callback.from_user.id, product_id, bot_username)
     if not url:
-        await callback.answer('Крипта-оплата временно недоступна', show_alert=True)
+        await callback.answer('Оплата Cryptobot временно недоступна', show_alert=True)
         return
     from app.keyboards.main import PE_BACK
     info = product_info(product_id)
     back = 'subscription' if (info and info.get('kind') == 'subscription') else f'buy_pack:{product_id}'
     kb = InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton.model_construct(
-            text='💎 Оплатить криптой', url=url, style='success')],
+            text='💎 Оплатить через Cryptobot', url=url, style='success')],
         [InlineKeyboardButton.model_construct(
             text='Назад', callback_data=back, icon_custom_emoji_id=PE_BACK, style='danger')],
     ])

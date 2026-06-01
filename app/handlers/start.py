@@ -12,7 +12,7 @@ from aiogram.fsm.context import FSMContext
 from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup, Message
 
 from app.config import settings
-from app.constants import HELP_TEXT, MODEL_LABEL, REFERRAL_BONUS, WELCOME_TEXT, build_help_text
+from app.constants import REFERRAL_BONUS, WELCOME_TEXT, build_help_text
 from app.database.base import AsyncSessionFactory
 from app.database.models import Plan
 from app.database.repo.bot_config import get_text
@@ -26,7 +26,7 @@ from app.database.repo.users import add_referral_bonus, get_or_create_user, get_
 from app.keyboards.main import (
     PE_BACK, PE_CHECK, PE_GEAR, PE_HANDSHAKE, PE_HOME, PE_MEGAPHONE, PE_MONEY,
     PE_ROBOT, PE_SPARKLES, PE_SPEAKER,
-    main_menu_kb, model_selection_kb,
+    main_menu_kb,
 )
 from app.keyboards.subscription import plans_kb
 from app.utils import plural_ru, premium_text
@@ -627,65 +627,9 @@ async def cmd_help(message: Message) -> None:
     await message.answer(help_text, reply_markup=main_menu_kb())
 
 
-@router.message(Command('history'))
-async def cmd_history(message: Message) -> None:
-    """Экспортирует историю чата пользователя в TXT-файл."""
-    from aiogram.types import BufferedInputFile
-    from sqlalchemy import select
-    from app.database.models import ChatMessage
-    from app.database.repo.users import get_user
-
-    tg_id = message.from_user.id
-    async with AsyncSessionFactory() as session:
-        user = await get_user(session, tg_id)
-        if not user:
-            await message.answer('Нажми /start для начала работы.')
-            return
-        result = await session.execute(
-            select(ChatMessage)
-            .where(ChatMessage.user_id == user.id)
-            .order_by(ChatMessage.created_at.asc())
-        )
-        messages = result.scalars().all()
-
-    if not messages:
-        await message.answer(
-            'ℹ️ <b>История пока пуста</b>\n\n'
-            'Я начала запоминать диалоги недавно — пиши вопросы, '
-            'и через какое-то время сможешь скачать всю переписку.',
-        )
-        return
-
-    lines = [
-        f'# История диалога с Нейрой',
-        f'# Пользователь: @{user.username or user.telegram_id}',
-        f'# Всего сообщений: {len(messages)}',
-        '',
-    ]
-    for m in messages:
-        ts = m.created_at.strftime('%Y-%m-%d %H:%M:%S') if m.created_at else ''
-        prefix = '👤 Я' if m.role == 'user' else f'🤖 Нейра'
-        lines.append(f'[{ts}] {prefix}:')
-        lines.append(m.content)
-        lines.append('')
-
-    body = '\n'.join(lines).encode('utf-8')
-    fname = f'neyra-history-{tg_id}.txt'
-    await message.answer_document(
-        BufferedInputFile(body, filename=fname),
-        caption=f'📜 <b>Твоя история ({len(messages)} сообщений)</b>',
-    )
-
-
 @router.message(Command('status'))
 async def cmd_status(message: Message, redis=None) -> None:
     await _show_status(message, redis=redis)
-
-
-@router.message(Command('selectmodel'))
-async def cmd_select_model(message: Message) -> None:
-    from app.handlers.chat import show_model_selection
-    await show_model_selection(message)
 
 
 @router.message(Command('ref'))
@@ -786,14 +730,6 @@ async def cb_main_menu(callback: CallbackQuery) -> None:
     await callback.answer()
 
 
-@router.callback_query(lambda c: c.data == 'img_hint')
-async def cb_img_hint(callback: CallbackQuery) -> None:
-    await callback.answer(
-        'Напиши /img и описание картинки. Пример:\n/img закат над горами, масло',
-        show_alert=True,
-    )
-
-
 @router.callback_query(lambda c: c.data == 'ref_menu')
 async def cb_ref_menu(callback: CallbackQuery) -> None:
     tg_id = callback.from_user.id
@@ -814,93 +750,12 @@ async def cb_my_status(callback: CallbackQuery, redis=None) -> None:
     await _show_status(callback.message, edit=True, redis=redis)
 
 
-@router.callback_query(lambda c: c.data == 'new_chat')
-async def cb_new_chat(callback: CallbackQuery, redis=None) -> None:
-    """Кнопка 'Новый чат' — очищает контекст и показывает приятное подтверждение."""
-    user_tg_id = callback.from_user.id
-    if redis:
-        from app.services import context_service
-        await context_service.clear_context(redis, user_tg_id)
-    text = (
-        '🔄 <b>Новый чат начат</b>\n\n'
-        'Память очищена — я забыл предыдущий разговор.\n'
-        'Можешь начинать с новой темы.\n\n'
-        '💡 Просто напиши свой вопрос.'
-    )
-    from app.utils import safe_edit_or_answer
-    await safe_edit_or_answer(callback, text, reply_markup=main_menu_kb())
-    await callback.answer('Память очищена ✨', show_alert=False)
-
-
 @router.callback_query(lambda c: c.data == 'help')
 async def cb_help(callback: CallbackQuery) -> None:
     from app.keyboards.main import settings_menu_kb
     from app.utils import safe_edit_or_answer
     help_text = await build_help_text()
     await safe_edit_or_answer(callback, help_text, reply_markup=settings_menu_kb())
-    await callback.answer()
-
-
-@router.callback_query(lambda c: c.data == 'onboard_ask')
-async def cb_onboard_ask(callback: CallbackQuery) -> None:
-    await callback.message.answer(
-        premium_text(
-            '🗣 <b>Напиши свой вопрос — я отвечу за секунды.</b>\n\n'
-            'Можно текстом, можно голосовым — мне всё равно.'
-        ),
-        parse_mode='HTML',
-    )
-    await callback.answer()
-
-
-@router.callback_query(lambda c: c.data == 'onboard_advice')
-async def cb_onboard_advice(callback: CallbackQuery) -> None:
-    await callback.message.answer(
-        premium_text(
-            '⚡ <b>Расскажи о ситуации — подскажу как поступить.</b>\n\n'
-            'Например: «Что подарить на годовщину?», «Как договориться о повышении?», '
-            '«Чем занять ребёнка в дождь?»'
-        ),
-        parse_mode='HTML',
-    )
-    await callback.answer()
-
-
-@router.callback_query(lambda c: c.data == 'onboard_write')
-async def cb_onboard_write(callback: CallbackQuery) -> None:
-    await callback.message.answer(
-        premium_text(
-            '🎁 <b>Опиши что нужно написать — сделаю.</b>\n\n'
-            'Письмо, пост, поздравление, резюме, объявление — '
-            'просто скажи о чём и для кого.'
-        ),
-        parse_mode='HTML',
-    )
-    await callback.answer()
-
-
-@router.callback_query(lambda c: c.data == 'onboard_translate')
-async def cb_onboard_translate(callback: CallbackQuery) -> None:
-    await callback.message.answer(
-        premium_text(
-            '🌍 <b>Пришли любой иностранный текст — переведу.</b>\n\n'
-            'Можно текстом, картинкой с текстом, или голосовым сообщением на любом языке.\n\n'
-            'Я понимаю английский, испанский, немецкий, китайский, японский, и ещё 50+ языков.'
-        ),
-        parse_mode='HTML',
-    )
-    await callback.answer()
-
-
-@router.callback_query(lambda c: c.data == 'voice_hint')
-async def cb_voice_hint(callback: CallbackQuery) -> None:
-    await callback.message.answer(
-        premium_text(
-            '🎤 Просто запиши голосовое — я расшифрую и отвечу тоже текстом или голосом.\n\n'
-            'Удобно когда печатать лень.'
-        ),
-        parse_mode='HTML',
-    )
     await callback.answer()
 
 
