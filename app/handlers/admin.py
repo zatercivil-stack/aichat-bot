@@ -426,6 +426,40 @@ async def cb_activation_survey(callback: CallbackQuery) -> None:
         pass
 
 
+# ── Кнопки из алерта о входе в панель с нового IP ──────────────────────────
+@router.callback_query(F.data == 'sec:rotate')
+async def cb_sec_rotate(callback: CallbackQuery) -> None:
+    """«Это не я» — мгновенно ротируем токен (чужая сессия слетает), новый
+    токен присылаем владельцу сюда же (его личка = надёжное место)."""
+    if callback.from_user.id not in settings.admin_ids_list:
+        return
+    from app.webserver.admin import rotate_admin_token
+    new = await rotate_admin_token()
+    await callback.answer('Токен сменён')
+    try:
+        await callback.message.edit_reply_markup(reply_markup=None)
+    except Exception:
+        pass
+    await callback.message.answer(
+        '🔒 <b>Токен сменён — все прежние сессии сброшены.</b>\n\n'
+        'Новый токен (нажми, чтобы скопировать; сохрани в менеджер паролей):\n'
+        f'<code>{new}</code>\n\n'
+        '🔗 Войди заново: https://admin.example.com/admin/login',
+        parse_mode='HTML', disable_web_page_preview=True,
+    )
+
+
+@router.callback_query(F.data == 'sec:trust')
+async def cb_sec_trust(callback: CallbackQuery) -> None:
+    if callback.from_user.id not in settings.admin_ids_list:
+        return
+    await callback.answer('Ок — IP уже в доверенных')
+    try:
+        await callback.message.edit_reply_markup(reply_markup=None)
+    except Exception:
+        pass
+
+
 async def dispatch_scheduled_broadcasts() -> None:
     """Минутный диспатчер: берёт ScheduledBroadcast.status='pending' с send_at<=now,
     помечает 'running' и зовёт _do_preset_broadcast. Импорт ленивый — модуль

@@ -41,11 +41,45 @@ router = APIRouter(prefix='/admin', tags=['admin'])
 
 COOKIE_NAME = 'admin_session'
 
+# Активный токен: дефолт из .env, но может быть заменён на лету через
+# rotate_admin_token() (кнопка «сменить токен» в TG-алерте). Хранится в
+# bot_config['admin_token_active'] → переживает рестарт (load_active_token).
+# Бот и вебсервер — ОДИН процесс (webhook_task в main.py), поэтому модульная
+# переменная видна и хендлеру бота, и роутам панели.
+_ACTIVE_TOKEN: str = settings.ADMIN_TOKEN
+
 
 # ── AUTH HELPERS ──────────────────────────────────────────────────────────────
 
 def _check_auth(token: str | None) -> bool:
-    return bool(token and token == settings.ADMIN_TOKEN)
+    return bool(token and token == _ACTIVE_TOKEN)
+
+
+async def load_active_token() -> None:
+    """Подтянуть активный токен из bot_config (если ротировался ранее). Зовётся
+    на старте приложения — чтобы ротация пережила рестарт."""
+    global _ACTIVE_TOKEN
+    try:
+        from app.database.repo.bot_config import get_config_value
+        async with AsyncSessionFactory() as s:
+            v = await get_config_value(s, 'admin_token_active')
+        if v:
+            _ACTIVE_TOKEN = v
+    except Exception as exc:
+        logger.warning('load_active_token failed', error=str(exc)[:150])
+
+
+async def rotate_admin_token() -> str:
+    """Новый токен → bot_config → активный. Старые cookie сразу не подходят."""
+    global _ACTIVE_TOKEN
+    import secrets
+    new = secrets.token_urlsafe(36)
+    async with AsyncSessionFactory() as s:
+        await set_config_value(s, 'admin_token_active', new)
+        await s.commit()
+    _ACTIVE_TOKEN = new
+    logger.warning('ADMIN TOKEN ROTATED via TG button')
+    return new
 
 
 def _redirect_login() -> RedirectResponse:
@@ -126,6 +160,13 @@ async def _alert_new_login(ip: str) -> None:
         from aiogram import Bot
         from aiogram.client.default import DefaultBotProperties
         from aiogram.enums import ParseMode
+        from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
+        kb = InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text='🔒 Это НЕ я — сменить токен',
+                                  callback_data='sec:rotate')],
+            [InlineKeyboardButton(text='✅ Это я — доверять IP',
+                                  callback_data='sec:trust')],
+        ])
         bot = Bot(token=settings.BOT_TOKEN,
                   default=DefaultBotProperties(parse_mode=ParseMode.HTML))
         try:
@@ -135,7 +176,9 @@ async def _alert_new_login(ip: str) -> None:
                     '🔐 <b>Вход в админ-панель с НОВОГО IP</b>\n\n'
                     f'IP: <code>{ip}</code>\n'
                     f'Время: {datetime.now(timezone.utc):%Y-%m-%d %H:%M} UTC\n\n'
-                    'Если это <b>не ты</b> — скажи мне «смени токен».',
+                    'Если это <b>не ты</b> — жми «сменить токен»: чужая сессия '
+                    'сбросится, новый токен пришлю сюда же.',
+                    reply_markup=kb,
                 )
         finally:
             await bot.session.close()
@@ -170,7 +213,7 @@ async def login(request: Request, token: str = Form(...)):
         logger.warning('admin login BLOCKED (rate limit)', ip=ip)
         return render('login.html',
                       error='Слишком много попыток. Подожди 15 минут.')
-    if token != settings.ADMIN_TOKEN:
+    if token != _ACTIVE_TOKEN:
         await _login_record_fail(ip)
         logger.warning('admin login FAILED', ip=ip)
         log_action_bg('unknown', 'admin_login_failed', ip=ip)

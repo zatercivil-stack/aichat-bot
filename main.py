@@ -141,6 +141,14 @@ async def main() -> None:
         await ensure_bot_config(session)
     logger.info('Bot config defaults ensured')
 
+    # Активный токен админ-панели: если ранее ротировали через TG-кнопку —
+    # подтянуть из bot_config (иначе сбросился бы на .env при рестарте).
+    try:
+        from app.webserver.admin import load_active_token
+        await load_active_token()
+    except Exception as exc:
+        logger.warning('load_active_token at startup failed', error=str(exc)[:150])
+
     # Мёржим custom-пресеты из дашборда в рантайм-каталог (без правки кода).
     try:
         from app.handlers.image_edit import reload_custom_presets
