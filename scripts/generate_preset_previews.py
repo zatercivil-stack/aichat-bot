@@ -60,6 +60,28 @@ EXISTING_DEMO_FILES: dict[str, str] = {
 # сцене» — идеально для preview-каталога.
 TEXT2IMG_PROMPTS: dict[str, tuple[str, str]] = {
     # (size, prompt) — image_size из fal.ai (portrait_4_3 default)
+    'suit_smoke': ('portrait_4_3',
+        'Moody high-fashion editorial portrait. A young blonde woman against a distressed grey '
+        'concrete wall in an abandoned industrial space, three-quarter framing. She wears an '
+        'oversized navy-black mens tailored overcoat with wide lapels over a crisp white shirt and '
+        'a thin black tie, black leather belt with silver buckle, dark trousers — oversized '
+        'borrowed-from-the-boys tailoring. One hand raised to her lips holding a thin lit cigarette '
+        'with a faint wisp of smoke, long almond near-black manicure. Loose low bun with '
+        'face-framing strands, bold defined brows, smoky eyes, dark wine lipstick, lips slightly '
+        'parted, cool gaze off-camera. Soft diffused overcast daylight, low contrast, desaturated '
+        'cool palette, 50-85mm lens, shallow depth of field, fine film grain, quiet-luxury grunge '
+        'editorial, photorealistic.'),
+    'trunk_pov': ('portrait_4_3',
+        'Cinematic wide-angle scene shot from inside an open car trunk looking up and out, the '
+        'burgundy trunk carpet in the foreground. A stylish young woman in a burgundy 1970s blazer '
+        'over a small-patterned paisley shirt leans over the open trunk, one hand gripping the '
+        'raised trunk lid at the top of the frame, the other reaching toward the camera, looming '
+        'large in exaggerated fisheye perspective, intense slightly startled expression looking '
+        'down. Behind: bright blue sky with wispy clouds, an American strip-mall with a red '
+        '"RETAIL OUTLET" sign and street lamps, a woman in a bright orange dress by the storefront '
+        'with her hands raised to her head in shock. Ultra-wide fisheye lens, strong barrel '
+        'distortion, harsh bright midday sun, highly saturated colour, 1970s crime-comedy film '
+        'aesthetic, photorealistic, slight film grain.'),
     'cinema': ('portrait_4_3',
         'Dark cinematic editorial close-up portrait using chiaroscuro lighting. A sharp '
         'diagonal beam of natural light cuts through deep blackness, illuminating only '

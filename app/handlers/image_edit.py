@@ -178,6 +178,7 @@ PRESET_PAGES: list[dict] = [
         'subtitle': 'Улица, метро, авто, перевоплощения, смена локации. Лицо <b>в точности твоё</b>.',
         'price_hint': '~200 кр · 1-2 минуты',
         'items': [
+            'trunk_pov',
             'paris_night', 'rooftop_wine', 'subway_bouquet', 'rainy_taxi',
             'vintage_rain', 'berlin_metro', 'vintage_car', 'lion_steps',
             'tennis_70s', 'warrior', 'fisheye_paris', 'y2k_attitude',
@@ -189,6 +190,7 @@ PRESET_PAGES: list[dict] = [
         'subtitle': 'Дерзкие кадры, обложки, арт-портреты, неон и стихии. Бунт и характер.',
         'price_hint': '~200 кр',
         'items': [
+            'suit_smoke',
             'fisheye_porsche', 'y2k_fridge', 'macro_watermelon', 'night_racing',
             'bold_red_studio', 'magazine_vibe', 'doll_porcelain',
             'graffiti_zine', 'clockwork_text', 'korean_red_wall', 'cyber_neon',
@@ -246,6 +248,30 @@ _MALE_STYLE_SUFFIX = (
 # сам промпт / слишком сильны (по фидбэку владельца). Identity-lock добавит
 # edit_image — здесь только сцена, уже мужская.
 _MALE_PRESET_OVERRIDES: dict[str, str] = {
+    'suit_smoke': (
+        'Editorial portrait of a confident MAN standing against a distressed grey concrete wall '
+        'in an abandoned industrial space, three-quarter body framing. Oversized navy-black '
+        'tailored overcoat with wide lapels over a crisp white shirt and a thin black necktie, '
+        'folded cuffs with a subtle pinstripe lining, black leather belt with a silver buckle, '
+        'dark trousers — oversized menswear tailoring. One hand raised to his lips holding a thin '
+        'lit cigarette with a faint wisp of smoke. Masculine short slicked or tousled hair, strong '
+        'jaw, cool detached gaze turned off-camera. Soft diffused overcast daylight, low contrast, '
+        'desaturated cool palette, 50-85mm lens, shallow depth of field, fine film grain, '
+        'quiet-luxury grunge editorial. Clearly male, NO makeup, NO lipstick, NO earrings.'
+    ),
+    'trunk_pov': (
+        'Cinematic wide-angle scene shot from INSIDE an open car trunk, looking up and out, the '
+        'burgundy trunk carpet filling the foreground. A MAN in a burgundy 1970s suit jacket over '
+        'a small-patterned paisley shirt, with dark wavy medium-length hair and a moustache, leans '
+        'over the open trunk: one hand raised gripping the trunk lid at the top of the frame, the '
+        'other reaching down toward the camera, looming large in exaggerated fisheye perspective. '
+        'Intense, slightly menacing expression looking down into the trunk. Behind him: bright blue '
+        'sky with wispy clouds, an American strip-mall with a red "RETAIL OUTLET" sign and street '
+        'lamps; a woman in a bright orange dress by the storefront with her hands raised to her head '
+        'in shock. Ultra-wide fisheye lens, strong barrel distortion, harsh bright midday sun, '
+        'highly saturated colour, 1970s crime-comedy film aesthetic, photorealistic, slight film '
+        'grain. Clearly male, masculine, NO makeup, NO earrings.'
+    ),
     'fisheye_porsche': (
         'A confident MAN leaning on the hood of a sports coupe, shot with a wide '
         'low angle — he is large in the foreground, the car recedes behind him. '
@@ -374,6 +400,41 @@ _FEMALE_ONLY_PRESETS = {
 
 
 EDIT_PRESETS: dict[str, tuple[str, str | None]] = {
+    # ── Новинки 01.06 (из мудборда) ──
+    'suit_smoke': (
+        '🖤 Костюм и сигарета',
+        'Restyle the input photo as a moody high-fashion editorial portrait. The subject stands '
+        'against a distressed grey concrete wall in an abandoned industrial space, three-quarter '
+        'body framing. She wears an oversized navy-black mens tailored overcoat with wide lapels '
+        'over a crisp white shirt and a thin black necktie; folded cuffs reveal a subtle pinstripe '
+        'lining; a black leather belt with a silver buckle and dark trousers — borrowed-from-the-boys '
+        'oversized tailoring. One hand is raised to her lips holding a thin lit cigarette with a faint '
+        'wisp of smoke; long almond near-black manicure. Blonde hair in a loose low bun with '
+        'face-framing strands, bold defined brows, smoky eye makeup, dark wine lipstick, lips '
+        'slightly parted, gaze turned coolly off-camera.\n\n'
+        'CRITICAL: This is the SAME person from the input photo. Keep the exact same face — '
+        'eye shape and colour, nose, lips, jawline, skin tone. Only the styling, wardrobe, pose '
+        'and setting change.\n\n'
+        'Soft diffused overcast daylight, low contrast, desaturated cool palette, 50-85mm lens, '
+        'shallow depth of field, fine film grain, quiet-luxury grunge editorial mood.'
+    ),
+    'trunk_pov': (
+        '🚗 Кадр из багажника',
+        'Restyle the input photo into a cinematic wide-angle scene shot from INSIDE an open car '
+        'trunk, looking up and out. The trunks burgundy carpet lining fills the foreground. The '
+        'subject — a stylish woman in a burgundy 1970s blazer over a small-patterned paisley shirt — '
+        'leans over the open trunk: one hand raised gripping the open trunk lid at the top of the '
+        'frame, the other reaching down toward the camera, looming large in exaggerated fisheye '
+        'perspective. Intense, slightly startled expression looking down into the trunk. Behind her: '
+        'bright blue sky with wispy clouds, an American strip-mall with a red "RETAIL OUTLET" sign '
+        'and street lamps; a second woman in a bright orange dress stands by the storefront with her '
+        'hands raised to her head in shock.\n\n'
+        'CRITICAL: This is the SAME person from the input photo. Keep the exact same face — '
+        'eye shape and colour, nose, lips, jawline, skin tone. Only the scene, wardrobe and '
+        'composition change.\n\n'
+        'Ultra-wide fisheye lens, strong barrel distortion, harsh bright midday sun, highly '
+        'saturated colour, 1970s crime-comedy film aesthetic, photorealistic, slight film grain.'
+    ),
     # ── Стилизации ──── (one-click, длинные качественные промпты)
     'cinema': (
         '🎬 Кино-нуар',
