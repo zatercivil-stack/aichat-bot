@@ -68,6 +68,7 @@
       <div class="card preview-card overflow-hidden">
 
         <div class="badges">
+          {% if it.is_new %}<span class="badge bg-green" title="Сейчас в разделе «🆕 Новинки»">🆕</span>{% endif %}
           {% if it.featured %}<span class="badge bg-warning" title="Featured — первым в категории">⭐</span>{% endif %}
           {% if it.is_custom %}<span class="badge bg-indigo-lt" title="Кастом-пресет из БД">C</span>{% endif %}
           {% if it.female_only %}<span class="badge bg-pink-lt" title="Только для девушек">F</span>{% endif %}
@@ -106,6 +107,12 @@
               <a href="/admin/gallery/{{ it.key }}/broadcast" class="btn btn-sm btn-success w-100">📢 Разослать…</a>
             {% endif %}
             <div class="btn-list w-100 mt-1">
+              {% if not it.is_new %}
+                <form method="post" action="/admin/gallery/{{ it.key }}/mark-new" class="d-inline"
+                      onsubmit="return confirm('Снова сделать новым? Появится в «🆕 Новинки» на окно свежести.')">
+                  <button class="btn btn-sm btn-outline-success" title="Снова сделать новым (launched_at = сейчас)">🆕 Сделать новым</button>
+                </form>
+              {% endif %}
               {% if it.is_custom %}
                 <form method="post" action="/admin/gallery/{{ it.key }}/toggle-featured" class="d-inline">
                   <button class="btn btn-sm btn-outline-warning">{{ '⭐ Снять' if it.featured else '⭐ Featured' }}</button>

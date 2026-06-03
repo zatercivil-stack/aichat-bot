@@ -379,17 +379,40 @@ def _male_adapt(preset_key: str | None, prompt: str) -> str:
 
 
 # Мужские названия для гендерных пресетов (Валькирия→Викинг, святая→святой).
+# Оверрайды названий под пол. Базовый лейбл (EDIT_PRESETS[key][0]) бывает
+# female-дефолтным (тогда нужен мужской вариант) ИЛИ male-дефолтным (нужен
+# женский). Правим ТОЛЬКО там, где имя привязано к ЧЕЛОВЕКУ (Бунтарка/Викинг),
+# а не к стилю/предмету (Мраморный панк — нейтрально для обоих).
 _MALE_LABEL_OVERRIDES: dict[str, str] = {
     'warrior': '🛡 Викинг',
     'skull_saint': '💀 Череп-святой',
+    'bold_red_studio': '🥊 Бунтарь в красном',   # жен-дефолт «Бунтарка»
+    'fashion_doll': '🪆 Гламурный образ',          # жен-дефолт «Гламурная кукла»
+}
+
+_FEMALE_LABEL_OVERRIDES: dict[str, str] = {
+    'gold_coffee': '☕ Кофе по-светски',           # муж-дефолт «по-джентльменски»
+    'rebel_poster': '🔴 Постер бунтарки',          # муж-дефолт «Постер бунтаря»
 }
 
 
-def _label_for(preset_key: str, is_male: bool) -> str:
-    """Название пресета с учётом пола."""
+def _gender_label(preset_key: str, is_male: bool) -> str:
+    """Базовое название пресета под пол (БЕЗ 🆕-бейджа). Учитывает оба оверрайда:
+    мужской (для female-дефолтных лейблов) и женский (для male-дефолтных) — чтобы
+    ни «Бунтарка» не смотрела на мужчин, ни «по-джентльменски» на женщин."""
     if is_male and preset_key in _MALE_LABEL_OVERRIDES:
         return _MALE_LABEL_OVERRIDES[preset_key]
-    return EDIT_PRESETS[preset_key][0]
+    if not is_male and preset_key in _FEMALE_LABEL_OVERRIDES:
+        return _FEMALE_LABEL_OVERRIDES[preset_key]
+    return EDIT_PRESETS.get(preset_key, (preset_key, ''))[0]
+
+
+def _label_for(preset_key: str, is_male: bool) -> str:
+    """Название пресета с учётом пола + бейдж «🆕» для свежих (внутри окна
+    новизны); бейдж виден и в тематических категориях, затухает сам когда
+    пресет «выпускается» из Новинок (_BADGE_KEYS пересчитывается по TTL)."""
+    base = _gender_label(preset_key, is_male)
+    return f'{base} 🆕' if preset_key in _BADGE_KEYS else base
 
 # Жёстко-женские пресеты — мужчинам прячем из каталога (платья/мех/балет/дамский
 # образ; мужской суффикс их не спасает). Остальные считаем unisex.
@@ -1135,6 +1158,21 @@ async def reload_custom_presets() -> int:
     _FEMALE_ONLY_PRESETS.clear(); _FEMALE_ONLY_PRESETS.update(new_female)
     PRESET_PAGES[:] = new_pages
     _CUSTOM_KEYS.clear(); _CUSTOM_KEYS.update(new_custom_keys)
+
+    # Реестр даты запуска: регистрируем ВСЕ актуальные ключи (и код-, и DB-).
+    # Новые получают дату: DB → created_at, хардкод → now() (первое появление).
+    # Существующие не трогаются (ON CONFLICT DO NOTHING). Так «новизна» больше
+    # не зависит от регенерации превью. Падение не должно ломать reload.
+    try:
+        from app.database.repo.preset_launch import ensure_launch_rows
+        created_at_map = {r.key: r.created_at for r in rows if r.created_at}
+        async with AsyncSessionFactory() as session:
+            await ensure_launch_rows(session, list(EDIT_PRESETS.keys()), created_at_map)
+    except Exception as exc:
+        logger.warning('ensure_launch_rows failed', error=str(exc)[:200])
+
+    # Свежий набор зависит от EDIT_PRESETS + реестра дат → форс-пересчёт.
+    await refresh_fresh_presets(force=True)
     return len(rows)
 
 
@@ -1653,17 +1691,89 @@ async def _get_top_preset_keys(limit: int = 7) -> list[str]:
         return real[:limit]
 
 
-async def _get_new_preset_keys(limit: int = 12) -> list[str]:
-    """Самые свежедобавленные custom-пресеты (новейшие сверху), у которых есть
-    превью. Для категории «🆕 Новинки» и для пост-результатных подсказок —
-    чтобы клиент сразу видел новое, а не думал «всё уже смотрел»."""
-    from app.database.repo.custom_presets import list_custom_presets
-    from app.database.repo.preset_previews import list_presets_with_previews
+# ── Раздел «🆕 Новинки»: окно свежести + graduation ─────────────────────────
+# Пресет «новый» ОГРАНИЧЕННОЕ время (NEW_WINDOW_DAYS), затем сам «выпускается»
+# из Новинок в свою тематическую категорию. Иначе раздел = «N самых свежих за
+# всё время», и пресет 2-месячной давности вечно числится новым. Параметры —
+# в bot_config (крутятся без передеплоя). Свежесть — launched_at из реестра
+# preset_launch (единая дата запуска для код- и DB-пресетов, не зависит от
+# регенерации превью).
+_NEW_DEFAULT_WINDOW_DAYS = 14
+_NEW_DEFAULT_MIN = 4    # пол: добиваем до этого числа, чтобы раздел не «умирал»
+_NEW_DEFAULT_MAX = 12   # потолок раздела
+
+# Кэш — «Новинки» и бейдж «🆕» это ОДНО множество (состав раздела), чтобы
+# бейдж был ограничен потолком (≤ MAX) и осмыслен. Иначе при массовой
+# генерации превью одним днём «внутри окна» оказываются почти все пресеты, и
+# бейдж лепится на всё = шум. Пересчёт: при reload_custom_presets и лениво по
+# TTL (чтобы пресеты «выпускались» без рестарта).
+_NEW_SECTION: list[str] = []            # состав раздела «Новинки», новейшие сверху
+_BADGE_KEYS: set[str] = set()           # = set(_NEW_SECTION); для _label_for (sync)
+_FRESH_CACHE_TS: float = 0.0
+_FRESH_CACHE_TTL = 3600                  # 1ч
+
+
+async def _read_int_config(key: str, default: int) -> int:
+    from app.database.repo.bot_config import get_config_value
     try:
         async with AsyncSessionFactory() as session:
-            rows = await list_custom_presets(session, only_enabled=True)  # created_at desc
-            keys_with = set(await list_presets_with_previews(session))
-        return [r.key for r in rows if r.key in EDIT_PRESETS and r.key in keys_with][:limit]
+            raw = (await get_config_value(session, key) or '').strip()
+        return max(0, int(raw)) if raw else default
+    except Exception:
+        return default
+
+
+async def refresh_fresh_presets(force: bool = False) -> None:
+    """Пересчитать состав раздела «Новинки» (окно свежести + пол/потолок).
+    Логика graduation:
+      • свежих (launched_at внутри окна NEW_WINDOW_DAYS) ≥ MIN → берём, срез MAX;
+      • свежих мало → добиваем следующими по дате до MIN (раздел не пустеет);
+      • всегда срез по MAX.
+    Свежесть — launched_at из реестра preset_launch (единая дата запуска для
+    код- и DB-пресетов, не зависит от регенерации превью).
+    Дёшево. Лениво по TTL; force=True при reload/правках."""
+    global _NEW_SECTION, _BADGE_KEYS, _FRESH_CACHE_TS
+    if not force and _FRESH_CACHE_TS and (time.monotonic() - _FRESH_CACHE_TS) < _FRESH_CACHE_TTL:
+        return
+    from datetime import datetime, timezone, timedelta
+    from app.database.repo.preset_launch import get_launch_map
+    from app.database.repo.preset_previews import list_presets_with_previews
+    try:
+        window_days = await _read_int_config('new_window_days', _NEW_DEFAULT_WINDOW_DAYS)
+        min_n = await _read_int_config('new_section_min', _NEW_DEFAULT_MIN)
+        max_n = await _read_int_config('new_section_max', _NEW_DEFAULT_MAX)
+        cap = max(1, max_n or _NEW_DEFAULT_MAX)
+        cutoff = datetime.now(timezone.utc) - timedelta(days=window_days)
+        async with AsyncSessionFactory() as session:
+            launch_map = await get_launch_map(session)
+            preview_keys = set(await list_presets_with_previews(session))
+        # Кандидаты: показываемы в каталоге (в EDIT_PRESETS) + есть превью +
+        # известна дата запуска. Сортируем по launched_at (новейшие сверху).
+        cand = [(k, launch_map[k]) for k in EDIT_PRESETS
+                if k in preview_keys and launch_map.get(k) is not None]
+        cand.sort(key=lambda kv: kv[1], reverse=True)
+        recent = [k for k, _ in cand]
+        fresh_in_order = [k for k, ts in cand if ts >= cutoff]
+        if len(fresh_in_order) >= min_n:
+            section = fresh_in_order[:cap]
+        else:  # backfill до пола, но не выше потолка
+            section = recent[:max(min_n, len(fresh_in_order))][:cap]
+        _NEW_SECTION = section
+        _BADGE_KEYS = set(section)
+        _FRESH_CACHE_TS = time.monotonic()
+    except Exception as exc:
+        logger.warning('refresh_fresh_presets failed', error=str(exc)[:200])
+
+
+async def _get_new_preset_keys(limit: int | None = None) -> list[str]:
+    """Состав раздела «🆕 Новинки» (новейшие сверху). См. refresh_fresh_presets
+    для логики окна/graduation. По умолчанию (limit=None) возвращает ВЕСЬ раздел
+    (_NEW_SECTION уже ограничен new_section_max) — чтобы он совпадал с набором
+    бейджей _BADGE_KEYS. limit задают только суженные surface'ы (напр. подсказки
+    после результата), где показать меньше — ок."""
+    try:
+        await refresh_fresh_presets()
+        return list(_NEW_SECTION) if limit is None else _NEW_SECTION[:limit]
     except Exception as exc:
         logger.warning('new preset query failed', error=str(exc)[:200])
         return []
@@ -1679,6 +1789,7 @@ async def _build_gallery_list(page_idx=None,
     is_male прячет _FEMALE_ONLY_PRESETS и берёт мужское превью (с фолбэком
     на женское если мужского ещё нет)."""
     from app.database.repo.preset_previews import list_presets_with_previews, get_preview_file_id
+    await refresh_fresh_presets()  # обновить бейдж «🆕» для _label_for (лениво по TTL)
     if page_idx == 'top':
         top_keys = await _get_top_preset_keys()
         # Превращаем в pages-like структуру с одной страницей
@@ -1844,8 +1955,9 @@ async def _categories_kb(is_male: bool = False) -> InlineKeyboardMarkup:
 
     # 0. «🆕 Новинки» — свежедобавленные сцены ПЕРВОЙ строкой, новейшие сверху.
     #    Чтобы вернувшийся клиент сразу видел новое, а не думал «всё уже смотрел»
-    #    (видя знакомые старые на входе). Кап 12 — это именно «свежее».
-    new_keys = await _get_new_preset_keys(limit=12)
+    #    (видя знакомые старые на входе). Весь раздел = набор бейджей (потолок —
+    #    new_section_max в конфиге).
+    new_keys = await _get_new_preset_keys()
     if is_male:
         new_keys = [k for k in new_keys if k not in _FEMALE_ONLY_PRESETS]
     if new_keys:
@@ -2115,10 +2227,44 @@ async def cb_seed_gender(callback: CallbackQuery) -> None:
     await _send_catalog_header(callback.message, intro, kb)
 
 
-@router.callback_query(F.data == 'gallery_open')
-async def cb_gallery_open(callback: CallbackQuery) -> None:
-    """Открыть каталог из главного меню (2 уровня: категории → карусель)."""
+@router.callback_query(F.data.startswith('gallery_open'))
+async def cb_gallery_open(callback: CallbackQuery, state: FSMContext) -> None:
+    """Открыть каталог (2 уровня: категории → карусель).
+
+    Два входа:
+    • plain `gallery_open` (меню/колесо/старт) — каталог с нуля, фото ещё нет.
+    • `gallery_open:{refine_key}` (кнопка «Все сцены каталога» на экране
+      результата) — подтягиваем ОРИГИНАЛ селфи из refine-кэша в reuse_file_id,
+      чтобы выбранный из каталога пресет применился к тому же фото без
+      повторной загрузки (как делают quickscene-кнопки). Раньше handler не
+      принимал state и фото терялось после state.clear() в _run_edit → юзера
+      просили заново прислать селфи. Это и был сломанный «выбор нового пресета».
+    """
     await callback.answer()
+    # Разбираем опциональный refine_key из callback_data.
+    refine_key = callback.data.split(':', 1)[1] if ':' in callback.data else None
+    orig = None
+    if refine_key:
+        try:
+            import json as _json
+            from redis.asyncio import Redis
+            from app.config import settings as _settings
+            _redis = Redis.from_url(_settings.REDIS_URL, decode_responses=True)
+            raw = await _redis.get(f'refine:{refine_key}')
+            await _redis.aclose()
+            if raw:
+                orig = (_json.loads(raw) or {}).get('orig')
+        except Exception as exc:
+            logger.warning('gallery_open refine read failed', error=str(exc)[:150])
+    if orig:
+        # Тот же оригинал → пресет из каталога применится сразу.
+        await state.update_data(reuse_file_id=orig, face_photos=[],
+                                pending_gallery_preset=None)
+    else:
+        # Каталог открыт без фото-контекста — гасим возможный «прилипший»
+        # reuse_file_id от прошлой брошенной сессии, иначе пресет применился бы
+        # к чужому/устаревшему фото вместо запроса нового селфи.
+        await state.update_data(reuse_file_id=None)
     # Фикс мёртвой серии (24.05): юзеры заходят, тапают «Сделать фото» и
     # никогда не вызывают /start или /status — update_streak ни разу не
     # дёргался. Серии у всех = 1 навсегда. Теперь дёргаем тихо на любом
@@ -2321,8 +2467,8 @@ async def cb_mystery_today(callback: CallbackQuery, state: FSMContext) -> None:
 
     Один раз в сутки, без списания кредитов. Атомарно claim'им через Redis
     SETNX до отправки превью — если юзер передумает, день «сгорает» (это
-    осознанная цена за защиту от спама). Превью карточки не показываем —
-    юзер УВИДЕЛ название в кнопке главного меню, дальше сразу селфи."""
+    осознанная цена за защиту от спама). Показываем превью ЭТОГО же пресета
+    (пол-aware) — юзер видит, что именно получит, а не угадывает по названию."""
     from app.services.mystery_preset import get_today_mystery, claim, is_used_today
 
     mystery = await get_today_mystery()
@@ -2340,7 +2486,6 @@ async def cb_mystery_today(callback: CallbackQuery, state: FSMContext) -> None:
     if not await claim(callback.from_user.id):
         await callback.answer('Уже забрал сегодня 🎲', show_alert=True)
         return
-    label = preset[0]
     preset_mode = PRESET_QUALITY_MAP.get(key, 'quality')
 
     await state.set_state(ImageEditState.waiting_photo)
@@ -2352,15 +2497,40 @@ async def cb_mystery_today(callback: CallbackQuery, state: FSMContext) -> None:
         await callback.message.delete()
     except Exception:
         pass
-    await callback.message.answer(
-        premium_text(
-            f'🎲 <b>Сюрприз дня: {label}</b> — бесплатно ✨\n\n'
-            f'<b>Пришли селфи или портрет</b> — применю за минуту.\n\n'
-            f'<i>Сегодня без списания кредитов. Завтра — новый сюрприз.</i>'
-        ),
-        parse_mode='HTML',
-        reply_markup=_CANCEL_KB,
+
+    # Превью того же пресета, привязанное к выбранному полу (position 1=муж,
+    # 0=жен; фолбэк на женское если мужского нет, затем на текст). Юзер видит
+    # конкретный результат сюрприза, а не угадывает по названию.
+    gender = await _get_gender(callback.from_user.id)
+    is_male = (gender == 'male')
+    position = 1 if is_male else 0
+    # Название тоже под пол (оба оверрайда): «Валькирия»→«Викинг» и т.п. Без
+    # 🆕-бейджа — контекст сюрприза, не каталог.
+    disp_label = _gender_label(key, is_male)
+    file_id = None
+    try:
+        from app.database.repo.preset_previews import get_preview_file_id
+        async with AsyncSessionFactory() as session:
+            file_id = await get_preview_file_id(session, key, position=position)
+            if not file_id and position == 1:
+                file_id = await get_preview_file_id(session, key, position=0)
+    except Exception as exc:
+        logger.warning('mystery preview lookup failed', key=key, error=str(exc)[:150])
+
+    caption = premium_text(
+        f'🎲 <b>Сюрприз дня: {disp_label}</b> — бесплатно ✨\n\n'
+        f'<b>Пришли селфи или портрет</b> — применю за минуту.\n\n'
+        f'<i>Сегодня без списания кредитов. Завтра — новый сюрприз.</i>'
     )
+    if file_id:
+        try:
+            await callback.message.answer_photo(
+                file_id, caption=caption, parse_mode='HTML', reply_markup=_CANCEL_KB,
+            )
+            return
+        except Exception as exc:
+            logger.warning('mystery preview send failed', key=key, error=str(exc)[:150])
+    await callback.message.answer(caption, parse_mode='HTML', reply_markup=_CANCEL_KB)
 
 
 @router.callback_query(F.data.startswith('gallery_try:'))
@@ -3157,17 +3327,73 @@ async def cb_retry_edit(callback: CallbackQuery, state: FSMContext) -> None:
     if not face_photos or not prompt:
         await callback.answer('Не хватает данных для повтора', show_alert=True)
         return
-    # Восстанавливаем контекст в state; mystery_free сбрасываем (повтор платный).
+    # Если падал бесплатный «Подарок дня» — повтор тоже бесплатный: при провале
+    # claim был откачен (release), поэтому заново занимаем слот. Не удалось занять
+    # (уже использован сегодня) → повтор платный, чтобы не раздавать второй free.
+    mystery_free = bool(data.get('mystery_free'))
+    if mystery_free:
+        from app.services.mystery_preset import claim as _mystery_claim
+        mystery_free = await _mystery_claim(callback.from_user.id)
+    # Восстанавливаем контекст в state.
     await state.update_data(
         face_photos=face_photos, file_id=face_photos[0],
-        preset_key=preset_key, quality_mode=mode, mystery_free=False,
+        preset_key=preset_key, quality_mode=mode, mystery_free=mystery_free,
     )
-    await callback.answer('Повторяю…')
+    await callback.answer('Повторяю…' if not mystery_free else 'Повторяю бесплатно…')
     await _run_edit(callback.message, state, prompt, callback.from_user.id,
                     quality_mode=mode)
 
 
+async def _acquire_gen_lock(user_id: int) -> bool:
+    """Анти-даблтап: True если генерация для юзера не идёт (лок взят). nx + TTL
+    180с как бэкстоп — если процесс упадёт, лок сам протухнет, юзер не
+    заблокирован навсегда. Redis недоступен → fail-open (не блокируем)."""
+    try:
+        from redis.asyncio import Redis
+        from app.config import settings as _s
+        r = Redis.from_url(_s.REDIS_URL, decode_responses=True)
+        try:
+            return bool(await r.set(f'genlock:{user_id}', '1', nx=True, ex=180))
+        finally:
+            await r.aclose()
+    except Exception:
+        return True
+
+
+async def _release_gen_lock(user_id: int) -> None:
+    try:
+        from redis.asyncio import Redis
+        from app.config import settings as _s
+        r = Redis.from_url(_s.REDIS_URL, decode_responses=True)
+        try:
+            await r.delete(f'genlock:{user_id}')
+        finally:
+            await r.aclose()
+    except Exception:
+        pass
+
+
 async def _run_edit(
+    message: Message, state: FSMContext, prompt: str,
+    source_user_id: int, quality_mode: str | None = None,
+) -> None:
+    """Тонкая обёртка вокруг генерации с анти-даблтап локом: один юзер = одна
+    генерация одновременно. Раньше двойной тап по кнопке сцены запускал две
+    генерации и списывал кредиты дважды. Лок снимается по завершении (и успех,
+    и провал) — следующую генерацию можно начинать сразу после результата."""
+    if not await _acquire_gen_lock(source_user_id):
+        await message.answer(
+            '⏳ Я ещё доделываю твоё предыдущее фото — дождись результата, '
+            'потом жми ещё раз.'
+        )
+        return
+    try:
+        await _run_edit_inner(message, state, prompt, source_user_id, quality_mode)
+    finally:
+        await _release_gen_lock(source_user_id)
+
+
+async def _run_edit_inner(
     message: Message, state: FSMContext, prompt: str,
     source_user_id: int, quality_mode: str | None = None,
 ) -> None:
@@ -3200,6 +3426,22 @@ async def _run_edit(
 
     if not face_photos:
         await message.answer('❌ Фото не найдено в сессии. Пришли заново.')
+        return
+
+    # Guard: пустой/None промпт. Пресеты change_clothes/change_bg хранят prompt=None
+    # (нужно текстовое уточнение — это умеет cb_gallery_try). Но quickscene/freescene
+    # зовут _run_edit НАПРЯМУЮ: без этой проверки строка native_wm делала `None + str`
+    # (TypeError) уже ПОСЛЕ показа анимации → «Подкручиваю реальность» висло без
+    # результата и без ошибки (ровно симптом «анимация есть, фото нет»). Кредиты
+    # здесь ещё не списаны (deduct ниже) — рефанд не нужен.
+    if not prompt:
+        if preset_key is not None:
+            await message.answer(
+                '✏️ Этот образ нужно уточнить текстом (что надеть / какой фон). '
+                'Открой его в каталоге и напиши детали — применю к этому же фото.'
+            )
+        else:
+            await message.answer('❌ Пустой запрос. Напиши, что сделать с фото.')
         return
 
     _MODE_LABEL_RU = {'quality': 'качественная', 'precise': 'с точным лицом'}
@@ -3375,6 +3617,14 @@ async def _run_edit(
 
     if not result:
         await _refund(source_user_id, cost)
+        # Подарок дня не должен сгорать при сбое генерации: откатываем claim,
+        # чтобы юзер мог забрать бесплатную сцену заново (или через free-retry ниже).
+        if mystery_free:
+            try:
+                from app.services.mystery_preset import release as _mystery_release
+                await _mystery_release(source_user_id)
+            except Exception as exc:
+                logger.warning('mystery release failed', error=str(exc)[:150])
         # P1: логируем провал генерации. Без этого retention-аналитика слепа —
         # не отличить «доволен, ушёл» от «попробовал, упало, бросил».
         log_event_bg(user_db_id, 'image_edit_failed', model_key=quality_mode,
@@ -3391,7 +3641,8 @@ async def _run_edit(
             await _redis.set(
                 f'retry:{_rk}',
                 _json.dumps({'face_photos': face_photos, 'prompt': retry_prompt,
-                             'preset_key': preset_key, 'mode': quality_mode}),
+                             'preset_key': preset_key, 'mode': quality_mode,
+                             'mystery_free': mystery_free}),
                 ex=3600,
             )
             retry_rows.append([InlineKeyboardButton.model_construct(
@@ -3567,7 +3818,10 @@ async def _run_edit(
     if refine_key and not low_balance:
         _suggest = [k for k in await _get_new_preset_keys(limit=12)
                     if k != preset_key and k != free_gift_key
-                    and not (user_gender == 'male' and k in _FEMALE_ONLY_PRESETS)][:2]
+                    and not (user_gender == 'male' and k in _FEMALE_ONLY_PRESETS)
+                    # prompt=None (change_clothes/change_bg) нельзя запускать одним
+                    # тапом — им нужно текстовое уточнение. Не предлагаем в quickscene.
+                    and EDIT_PRESETS.get(k, (None, None))[1] is not None][:2]
         for _k in _suggest:
             keyboard_rows.append([InlineKeyboardButton.model_construct(
                 text=_label_for(_k, user_gender == "male"),
@@ -3592,8 +3846,11 @@ async def _run_edit(
 
     # 4) Один вход в каталог — заменяет ДВА прежних дубля «другой стиль» (оба вели
     #    в edit_again — был баг дублирования из-за проверки только row[0]).
+    # refine_key в callback → каталог применит выбранный пресет к ТОМУ ЖЕ селфи
+    # (без повторной загрузки). Без него (нет кэша) — обычный каталог с нуля.
     keyboard_rows.append([InlineKeyboardButton.model_construct(
-        text='Все сцены каталога', callback_data='gallery_open',
+        text='Все сцены каталога',
+        callback_data=(f'gallery_open:{refine_key}' if refine_key else 'gallery_open'),
         icon_custom_emoji_id=PE_FRAME, style='primary',
     )])
 

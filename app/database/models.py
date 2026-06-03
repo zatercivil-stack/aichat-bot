@@ -347,6 +347,20 @@ class CustomPreset(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 
+class PresetLaunch(Base):
+    """Единый реестр ДАТЫ ЗАПУСКА пресета — и для хардкод-, и для DB-пресетов.
+    Развязывает «новизну»/graduation от preset_previews.generated_at (которая
+    сбивается при массовой регенерации превью). launched_at: DB-пресет →
+    custom_presets.created_at (точная дата создания), хардкод → момент первого
+    появления (now() при первом reload, см. reload_custom_presets). См.
+    миграцию 024."""
+    __tablename__ = 'preset_launch'
+
+    preset_key: Mapped[str] = mapped_column(String(64), primary_key=True)
+    launched_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now())
+
+
 class ScheduledBroadcast(Base):
     """Очередь отложенных пресет-рассылок. APScheduler-job ежеминутно берёт
     due (send_at <= now & status='pending') и запускает _do_preset_broadcast.

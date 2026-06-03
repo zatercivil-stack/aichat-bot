@@ -724,17 +724,29 @@ async def send_mystery_push(bot_instance) -> None:
         )).limit(5000)
         users = (await session.execute(stmt)).scalars().all()
 
-    clean_label = re.sub(r'^\W+', '', mystery['label']).strip()
-    text = (
-        f'🎁 <b>Подарок дня — бесплатно, без списания кредитов</b>\n\n'
-        f'Сегодня дарю сцену «{clean_label}» 👆 Пришли селфи — и ты в ней за '
-        f'минуту, лицо <b>в точности твоё</b>.\n\n'
-        f'⏳ Только сегодня, до полуночи МСК. Завтра будет другая.'
-    )
+    # Название под пол через единый helper (учитывает и муж-, и жен-оверрайды):
+    # «Валькирия»↔«Викинг», «по-джентльменски»↔«по-светски». Готовим оба текста,
+    # в цикле берём по полу юзера.
+    from app.handlers.image_edit import _gender_label
+    _key = mystery['preset_key']
+    female_label = re.sub(r'^\W+', '', _gender_label(_key, is_male=False)).strip()
+    male_label = re.sub(r'^\W+', '', _gender_label(_key, is_male=True)).strip()
+
+    def _mk_gift_text(lbl: str) -> str:
+        return (
+            f'🎁 <b>Подарок дня — бесплатно, без списания кредитов</b>\n\n'
+            f'Сегодня дарю сцену «{lbl}» 👆 Пришли селфи — и ты в ней за '
+            f'минуту, лицо <b>в точности твоё</b>.\n\n'
+            f'⏳ Только сегодня, до полуночи МСК. Завтра будет другая.'
+        )
+    text_f, text_m = _mk_gift_text(female_label), _mk_gift_text(male_label)
     # Превью самой сцены — показываем ЧТО дарим (визуал > текста для фото-бота).
+    # Привязка к полу: грузим обе версии (0=жен, 1=муж) один раз, в цикле берём
+    # под пол юзера (фолбэк на женское, если мужского нет).
     from app.database.repo.preset_previews import get_preview_file_id
     async with AsyncSessionFactory() as session:
-        gift_fid = await get_preview_file_id(session, mystery['preset_key'], position=0)
+        gift_fid_f = await get_preview_file_id(session, mystery['preset_key'], position=0)
+        gift_fid_m = await get_preview_file_id(session, mystery['preset_key'], position=1)
 
     sent = skipped = failed = 0
     for user in users:
@@ -742,6 +754,9 @@ async def send_mystery_push(bot_instance) -> None:
         if await is_used_today(user.telegram_id):
             skipped += 1
             continue
+        is_male = (user.gender == 'male')
+        gift_fid = gift_fid_m if (is_male and gift_fid_m) else gift_fid_f
+        text = text_m if is_male else text_f
         try:
             if gift_fid:
                 await bot_instance.send_photo(
@@ -1194,6 +1209,131 @@ def stop_daily_push_scheduler() -> None:
 
 def is_admin(message: Message) -> bool:
     return message.from_user.id in settings.admin_ids_list
+
+
+# Тест-аккаунты (PK в users) исключаем из всех бизнес-метрик — иначе админские
+# прогоны раздувают активацию/выручку. Совпадает с фильтром в /neyra_status.
+_TEST_USER_IDS = (1, 2, 3, 6)
+
+
+async def _build_admin_dashboard() -> str:
+    """Живой снимок ключевых метрик для /admin.
+
+    Главное отличие от /analytics — ВОРОНКА АКТИВАЦИИ (рег → 1-й кадр): именно
+    она узкое место проекта, а в /analytics её нет. Считаем по уникальным
+    юзерам с ≥1 событием image_edited (как в /neyra_status), без тест-аккаунтов.
+    """
+    from sqlalchemy import select, func, and_, distinct
+    from app.database.models import User, Payment, BotEvent, Subscription
+    from app.services import fal_balance
+
+    now = datetime.utcnow()
+    day_ago = now - timedelta(days=1)
+    week_ago = now - timedelta(days=7)
+
+    async with AsyncSessionFactory() as session:
+        not_test = User.id.notin_(_TEST_USER_IDS)
+        total = await session.scalar(
+            select(func.count(User.id)).where(not_test)) or 0
+        new_24h = await session.scalar(
+            select(func.count(User.id)).where(and_(not_test, User.created_at >= day_ago))) or 0
+        active_24h = await session.scalar(
+            select(func.count(User.id)).where(and_(not_test, User.last_active_at >= day_ago))) or 0
+        active_7d = await session.scalar(
+            select(func.count(User.id)).where(and_(not_test, User.last_active_at >= week_ago))) or 0
+        banned = await session.scalar(
+            select(func.count(User.id)).where(and_(not_test, User.is_banned.is_(True)))) or 0
+
+        # Активация: уникальные юзеры, сделавшие хотя бы один кадр
+        activated = await session.scalar(
+            select(func.count(distinct(BotEvent.user_id))).where(
+                BotEvent.event_type == 'image_edited',
+                BotEvent.user_id.notin_(_TEST_USER_IDS),
+            )) or 0
+        gens_24h = await session.scalar(
+            select(func.count()).select_from(BotEvent).where(
+                BotEvent.event_type == 'image_edited',
+                BotEvent.user_id.notin_(_TEST_USER_IDS),
+                BotEvent.created_at >= day_ago,
+            )) or 0
+
+        pay_count, pay_total = (await session.execute(
+            select(func.count(), func.coalesce(func.sum(Payment.amount), 0)).where(
+                Payment.status == PaymentStatus.SUCCEEDED,
+                Payment.user_id.notin_(_TEST_USER_IDS),
+            ))).one()
+        active_subs = await session.scalar(
+            select(func.count(Subscription.id)).where(and_(
+                Subscription.is_active.is_(True), Subscription.expires_at > now))) or 0
+
+    activation_pct = (activated / total * 100) if total else 0
+    conv_pct = (pay_count / total * 100) if total else 0
+
+    bal = await fal_balance.get_balance()
+    fal_stats = await fal_balance.get_daily_stats()
+    bal_str = f'${bal:.2f}' if bal is not None else 'не задан (/falbalance)'
+    days_left = fal_stats['days_left']
+    days_str = f'~{days_left:.0f} дн' if days_left and days_left < 999 else '∞'
+    low = '  ⚠️' if (bal is not None and bal < 0.30) else ''
+
+    msk = datetime.now(timezone(timedelta(hours=3))).strftime('%d.%m %H:%M')
+
+    return (
+        f'🎛 <b>Нейра · командный центр</b>  <i>{msk} МСК</i>\n\n'
+        f'👥 <b>Юзеры:</b> {total} всего · +{new_24h} за 24ч\n'
+        f'🟢 <b>Активны:</b> {active_24h} за 24ч · {active_7d} за 7д\n'
+        f'🚫 Заблокировали бота: {banned}\n\n'
+        f'🎯 <b>Активация:</b> {activated}/{total} сделали ≥1 кадр '
+        f'(<b>{activation_pct:.0f}%</b>)\n'
+        f'🎨 Генераций за 24ч: {gens_24h}\n\n'
+        f'💰 <b>Платящих:</b> {pay_count} ({conv_pct:.1f}%) · собрано {float(pay_total):,.0f}₽\n'
+        f'📅 Активных подписок: {active_subs}\n\n'
+        f'💵 <b>fal.ai:</b> {bal_str}{low} · хватит {days_str} · '
+        f'сегодня ${fal_stats["spent_today"]:.3f}\n\n'
+        f'<i>Полная разбивка: /analytics · посты: /neyra_status</i>'
+    )
+
+
+def _admin_dashboard_kb() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(inline_keyboard=[[
+        InlineKeyboardButton(text='🔄 Обновить', callback_data='admin:refresh'),
+        InlineKeyboardButton(text='💵 fal-отчёт', callback_data='admin:fal'),
+    ]])
+
+
+@router.message(Command('admin'))
+async def cmd_admin(message: Message) -> None:
+    """Командный центр: один экран с ключевыми метриками + кнопки."""
+    if not is_admin(message):
+        return
+    text = await _build_admin_dashboard()
+    await message.answer(text, parse_mode='HTML', reply_markup=_admin_dashboard_kb())
+
+
+@router.callback_query(F.data == 'admin:refresh')
+async def cb_admin_refresh(callback: CallbackQuery) -> None:
+    if callback.from_user.id not in settings.admin_ids_list:
+        await callback.answer()
+        return
+    text = await _build_admin_dashboard()
+    try:
+        await callback.message.edit_text(
+            text, parse_mode='HTML', reply_markup=_admin_dashboard_kb())
+    except Exception:
+        # «message is not modified» когда цифры не изменились — это норма
+        pass
+    await callback.answer('Обновлено')
+
+
+@router.callback_query(F.data == 'admin:fal')
+async def cb_admin_fal(callback: CallbackQuery) -> None:
+    if callback.from_user.id not in settings.admin_ids_list:
+        await callback.answer()
+        return
+    from app.services import fal_balance
+    stats = await fal_balance.get_daily_stats()
+    await callback.message.answer(_format_fal_report(stats), parse_mode='HTML')
+    await callback.answer()
 
 
 @router.message(Command('analytics'))

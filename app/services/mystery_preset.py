@@ -50,7 +50,9 @@ MYSTERY_ELIGIBLE: list[str] = [
     # Вторая пачка 24.05
     'diner_cereal', 'store_cooler', 'street_lowangle', 'chrome_goggles',
     'tokyo_vending', 'bubblegum_car', 'courtside_glam', 'white_void',
-    'red_punk', 'cat_beanie',
+    'red_punk',
+    # ⚠️ cat_beanie УБРАН (02.06): female-only + нет мужского превью → мужчинам
+    # выпадала женская сцена в подарок (нарушает «Не female-only» из доки выше).
 ]
 
 _CONFIG_KEY = 'mystery_today_data'
@@ -142,3 +144,18 @@ async def claim(user_tg_id: int) -> bool:
     except Exception as exc:
         logger.warning('mystery claim redis failed', error=str(exc)[:200])
         return False
+
+
+async def release(user_tg_id: int) -> None:
+    """Откат claim — если бесплатная генерация подарка дня провалилась, слот НЕ
+    должен сгорать: возвращаем юзеру право забрать сегодняшний Mystery заново."""
+    today = today_msk().isoformat()
+    key = f'mystery:used:{today}:{user_tg_id}'
+    try:
+        r = _redis()
+        try:
+            await r.delete(key)
+        finally:
+            await r.aclose()
+    except Exception as exc:
+        logger.warning('mystery release redis failed', error=str(exc)[:200])

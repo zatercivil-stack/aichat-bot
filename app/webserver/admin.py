@@ -1353,9 +1353,14 @@ async def gallery_page(
     состояние (f: all/missing/custom/featured), сортировка (sort)."""
     if not _check_auth(admin_session):
         return _redirect_login()
+    import app.handlers.image_edit as ie
     from app.handlers.image_edit import EDIT_PRESETS, PRESET_PAGES, _FEMALE_ONLY_PRESETS
     from app.database.repo.preset_previews import get_preview_file_id
     from app.database.repo.custom_presets import list_custom_presets
+    from app.database.repo.preset_launch import get_launch_map
+    # Актуальный состав «🆕 Новинки» (для бейджа и кнопки «Сделать новым»).
+    await ie.refresh_fresh_presets()
+    badge_keys = ie._BADGE_KEYS
 
     key_to_cat: dict[str, str] = {}
     for page in PRESET_PAGES:
@@ -1367,6 +1372,7 @@ async def gallery_page(
     async with AsyncSessionFactory() as session:
         customs = await list_custom_presets(session)
         custom_map = {c.key: c for c in customs}
+        launch_map = await get_launch_map(session)
         from app.database.repo.events import get_excluded_user_ids
         exclude_uids = await get_excluded_user_ids(session)
         # Стат по генерациям за 30д. Тех-юзеры (admin + @grelok) исключены —
@@ -1415,6 +1421,8 @@ async def gallery_page(
                 'featured': is_featured,
                 'gen_count_30d': s['cnt'],
                 'last_used': s['last'],
+                'is_new': key in badge_keys,
+                'launched_at': launch_map.get(key),
             })
         # Сортировка
         if sort == 'top':
@@ -1578,6 +1586,28 @@ async def gallery_toggle_featured(
     log_action_bg('token', 'gallery.toggle_featured',
                   ip=request.client.host if request.client else None, key=key, featured=new_state)
     return RedirectResponse('/admin/gallery?msg=Featured+обновлён', status_code=302)
+
+
+@router.post('/gallery/{key}/mark-new')
+async def gallery_mark_new(
+    key: str, request: Request, admin_session: Optional[str] = Cookie(default=None),
+):
+    """Снова сделать пресет «новым»: launched_at=now → попадёт в «🆕 Новинки»
+    на окно свежести. Работает для ЛЮБОГО пресета (код или DB) — реестр
+    preset_launch keyed by preset_key, миграция не нужна (в отличие от featured)."""
+    if not _check_auth(admin_session):
+        return _redirect_login()
+    from datetime import datetime, timezone
+    from app.database.repo.preset_launch import set_launch
+    from app.handlers.image_edit import EDIT_PRESETS, reload_custom_presets
+    if key not in EDIT_PRESETS:
+        return RedirectResponse('/admin/gallery?msg=Пресет+не+найден', status_code=302)
+    async with AsyncSessionFactory() as session:
+        await set_launch(session, key, datetime.now(timezone.utc))
+    await reload_custom_presets()  # пересчитает _NEW_SECTION/_BADGE_KEYS
+    log_action_bg('token', 'gallery.mark_new',
+                  ip=request.client.host if request.client else None, key=key)
+    return RedirectResponse('/admin/gallery?msg=Пресет+снова+в+Новинках', status_code=302)
 
 
 @router.post('/gallery/{key}/create-override')
