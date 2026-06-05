@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import re
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 from sqlalchemy import select
 
@@ -348,8 +348,9 @@ async def cmd_start(
 
         # Welcome bonus — ВСЕМ новичкам, независимо от промо/рефера.
         # Раньше: исключали юзеров с промо/рефером → юзер из канала с SCENE200 получал
-        # только 200 кр и недоумевал почему в welcome обещано 300. Теперь стэкается:
-        # SCENE200 + welcome 300 = 500 кр; рефер 150 + welcome 300 = 450 кр; органика = 300.
+        # только 200 кр и недоумевал почему в welcome обещано 300. Теперь стэкается
+        # с промо. Приглашённый (referee) отдельного бонуса НЕ получает — у него
+        # welcome 500; вознаграждается РЕФЕРЕР (250 burn) когда друг сделал 1-е фото.
         welcome_bonus = 0
         if is_new_user:
             from app.database.repo.bot_config import get_config_value
@@ -359,7 +360,18 @@ async def cmd_start(
             except ValueError:
                 welcome_bonus = 300
             if welcome_bonus:
-                await add_credits(session, user, welcome_bonus)
+                # Welcome — СГОРАЕМЫЙ (urgency на первое фото, борьба с глутом:
+                # 80% юзеров сидят на нетронутых кредитах). Срок в bot_config
+                # (welcome_burn_days, 0=вечные). Daily-кредиты (15/д) остаются
+                # вечными → у активных есть постоянный floor, не уйдут в ноль.
+                burn_raw = (await get_config_value(session, 'welcome_burn_days') or '7').strip()
+                try:
+                    burn_days = max(0, int(burn_raw))
+                except ValueError:
+                    burn_days = 7
+                burn_until = (datetime.now(timezone.utc) + timedelta(days=burn_days)
+                              if burn_days > 0 else None)
+                await add_credits(session, user, welcome_bonus, burn_expires_at=burn_until)
 
         # Login-бонус: начисляем ежедневный грант при заходе в бота, а не только
         # при фото-действии. Так обещание «ежедневный бонус» становится честным
@@ -442,7 +454,7 @@ async def cmd_start(
         # Бонус-строка: БЕЗ внутреннего кода промо (юзеру он не нужен — лишний
         # шум). Показываем только подарок новичку, если он есть. 24.05 фикс.
         if is_new_user and welcome_bonus:
-            bonus_breakdown = f'<i>+{welcome_bonus} кр в подарок новичку уже внутри</i>'
+            bonus_breakdown = f'<i>+{welcome_bonus} кр в подарок новичку (на неделю) уже внутри</i>'
         else:
             bonus_breakdown = ''
 
@@ -577,14 +589,14 @@ async def cmd_start(
         # с рефером/промо — там свой бонус, поэтому welcome_bonus здесь 0.
         if welcome_bonus >= 200:
             gift_line = (
-                f'\n\n🎁 <b>Подарок новичку: {welcome_bonus} кредитов</b>\n'
+                f'\n\n🎁 <b>Подарок новичку: {welcome_bonus} кредитов на неделю</b>\n'
                 f'<i>Хватит на пару фото с твоим лицом (Полночь в Париже, Балет на ступенях…) — '
-                f'выбирай сцену и пробуй.</i>'
+                f'выбери сцену и попробуй сегодня.</i>'
             )
         elif welcome_bonus:
             gift_line = (
-                f'\n\n🎁 <b>Подарок новичку: {welcome_bonus} кредитов</b>\n'
-                f'<i>Хватит на пару пресетов — выбирай и пробуй.</i>'
+                f'\n\n🎁 <b>Подарок новичку: {welcome_bonus} кредитов на неделю</b>\n'
+                f'<i>Хватит на пару пресетов — выбери и попробуй сегодня.</i>'
             )
         else:
             gift_line = ''
@@ -664,24 +676,22 @@ def _ref_content(tg_id: int, invited: int):
         [InlineKeyboardButton.model_construct(text='В главное меню', callback_data='main_menu', icon_custom_emoji_id=PE_BACK, style='danger')],
     ])
 
-    earned = invited * REFERRAL_BONUS
     milestones = ''
     if invited < 5:
-        milestones = f'\n🎯 Пригласи {5 - invited} ещё — получи +200 кр бонусом'
+        milestones = f'\n🎯 Пригласи {5 - invited} ещё — неделя без водяного знака'
     elif invited < 10:
-        milestones = f'\n🎯 Пригласи {10 - invited} ещё — получи +500 кр бонусом'
+        milestones = f'\n🎯 Пригласи {10 - invited} ещё — месяц без водяного знака'
     else:
         milestones = f'\n🏆 Топ-реферер! Ты пригласил {invited} друзей'
 
     text = (
         f'🤝 <b>Приглашай друзей — получай кредиты</b>\n\n'
         f'За каждого друга, который сделает первое фото в Нейре:\n'
-        f'<b>+{REFERRAL_BONUS} кредитов</b> на твой счёт.\n\n'
+        f'<b>+{REFERRAL_BONUS} кр на неделю</b> на твой счёт.\n\n'
         f'<b>Дополнительные подарки:</b>\n'
-        f'• 5 друзей — ещё <b>+200 кредитов</b>\n'
-        f'• 10 друзей — ещё <b>+500 кредитов</b>\n\n'
-        f'👥 Уже приглашено: <b>{invited}</b>\n'
-        f'🎁 Заработано: <b>{earned:,} кредитов</b>'
+        f'• 5 друзей — <b>неделя без водяного знака</b>\n'
+        f'• 10 друзей — <b>месяц без водяного знака</b>\n\n'
+        f'👥 Уже приглашено: <b>{invited}</b>'
         f'{milestones}\n\n'
         f'<b>Твоя ссылка для друзей:</b>\n'
         f'<code>{link}</code>'

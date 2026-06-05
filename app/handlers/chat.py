@@ -110,7 +110,7 @@ async def cb_clear_memory(callback: CallbackQuery, redis=None) -> None:
 async def cb_settings_menu(callback: CallbackQuery) -> None:
     settings_text = (
         '⚙️ <b>Ещё</b>\n\n'
-        '• <b>Пригласить друга</b> — +150 кр за каждого\n'
+        '• <b>Пригласить друга</b> — +250 кр на неделю за каждого\n'
         '• <b>Промокод</b> — активировать\n'
         '• <b>Сменить пол</b> — для какого гендера каталог\n'
         '• <b>Помощь</b> — как пользоваться ботом\n\n'
@@ -208,12 +208,19 @@ async def cb_check_channel_sub(callback: CallbackQuery, redis=None) -> None:
         pass
 
 
-REFERRAL_MILESTONES = {5: 200, 10: 500}  # invited count -> bonus credits
+# Кол-во приглашённых -> дней «без водяного знака». Перк-тизер подписки, НЕ
+# кредиты: не углубляет free-глут, а показывает ценность платного (знак уходит).
+REFERRAL_WM_MILESTONES = {5: 7, 10: 30}
+REFERRAL_BURN_DAYS = 7  # срок жизни реф-кредитов (urgency, без вечного глута)
 
 
 async def _maybe_grant_referral_bonus(redis, user_tg_id: int, bot) -> None:
-    """Выдаёт реферальный бонус при первом сообщении нового пользователя.
-    После начисления проверяет milestone (5/10 друзей) и выдаёт доп. бонус."""
+    """Выдаёт реферальный бонус, когда приглашённый сделал ПЕРВОЕ ФОТО (зовётся
+    из image_edit после успешной генерации; ключ ставится в start.py, удаляется
+    тут → выплата ровно раз). Бонус — СГОРАЕМЫЙ (7 дней): реферер обязан
+    вернуться и потратить. Milestone 5/10 друзей → неделя/месяц без водяного
+    знака (через эфемерный Redis-флаг wm_free:<id>, без миграции)."""
+    from datetime import datetime, timezone, timedelta
     from app.handlers.start import REFERRAL_BONUS, REFERRAL_PENDING_KEY
     key = REFERRAL_PENDING_KEY.format(user_id=user_tg_id)
     referrer_id_bytes = await redis.get(key)
@@ -221,27 +228,32 @@ async def _maybe_grant_referral_bonus(redis, user_tg_id: int, bot) -> None:
         return
     await redis.delete(key)
     referrer_id = int(referrer_id_bytes)
-    milestone_bonus = 0
+    burn_until = datetime.now(timezone.utc) + timedelta(days=REFERRAL_BURN_DAYS)
     new_count = 0
     async with AsyncSessionFactory() as session:
-        await add_referral_bonus(session, referrer_id, amount=REFERRAL_BONUS)
-        # Проверяем достижение milestone
+        await add_referral_bonus(session, referrer_id, amount=REFERRAL_BONUS,
+                                 burn_expires_at=burn_until)
         referrer = await get_user(session, referrer_id)
         if referrer:
-            new_count = referrer.referral_bonus  # это счётчик приглашённых
-            milestone_bonus = REFERRAL_MILESTONES.get(new_count, 0)
-            if milestone_bonus:
-                await add_credits(session, referrer, milestone_bonus)
+            new_count = referrer.referral_bonus  # счётчик приглашённых
         await session.commit()
+    # Milestone-перк «без водяного знака» — в Redis (авто-истечение).
+    wm_days = REFERRAL_WM_MILESTONES.get(new_count, 0)
+    if wm_days:
+        try:
+            await redis.set(f'wm_free:{referrer_id}', '1', ex=wm_days * 24 * 3600)
+        except Exception:
+            pass
     try:
         text = (
-            f'🎁 <b>+{REFERRAL_BONUS} кредитов!</b>\n\n'
-            'Твой друг написал первое сообщение — бонус зачислен.'
+            f'🎁 <b>+{REFERRAL_BONUS} кр на {REFERRAL_BURN_DAYS} дней!</b>\n\n'
+            'Твой друг сделал первое фото — бонус зачислен. '
+            'Успей потратить за неделю.'
         )
-        if milestone_bonus:
+        if wm_days:
             text += (
-                f'\n\n🏆 <b>Milestone: {new_count} друзей!</b>\n'
-                f'Дополнительно зачислено <b>+{milestone_bonus} кредитов</b>.'
+                f'\n\n🏆 <b>{new_count} друзей — {wm_days} дней без водяного знака!</b>\n'
+                'Твои сцены теперь чистые, как у подписки.'
             )
         await bot.send_message(referrer_id, text, parse_mode='HTML')
     except Exception:
@@ -256,9 +268,9 @@ async def handle_message(message: Message, state: FSMContext = None, redis=None)
     автоматически перезапускаем _run_edit с тем же фото."""
     user_tg_id = message.from_user.id
 
-    if redis:
-        # Реферал-бонус всё ещё выдаём — иначе сломаем реф-воронку
-        await _maybe_grant_referral_bonus(redis, user_tg_id, message.bot)
+    # Реф-выплата перенесена на ПЕРВУЮ генерацию приглашённого (image_edit, после
+    # image_edited) — гейт «друг реально сделал фото», а не «прислал любой текст».
+    # Здесь больше НЕ дёргаем, чтобы не размывать гейт.
 
     async with AsyncSessionFactory() as session:
         user = await get_user(session, user_tg_id)

@@ -22,25 +22,56 @@ from typing import Optional
 
 logger = logging.getLogger(__name__)
 
-# Три ярких пресета для приветственного коллажа. Берём СУЩЕСТВУЮЩИЕ превью.
-# Порядок = слева направо. Конфиг-ключ можно вынести в bot_config позже.
-# 27.05: набор синхронизирован с showcase-коллажем главного меню (HERO-сцены,
-# position 0). marble_punk УБРАН отовсюду — жест (фак) отталкивает новичков.
-_PRESETS: list[tuple[str, int]] = [
-    ('sky_ledge',     1),  # 🏙 На карнизе высоток — МУЖСКОЙ кадр (сигнал «и для парней»)
-    ('ramen_night',   0),  # 🍜 Ночь в раменной — тёплая киношная атмосфера (жен)
-    ('neon_portrait', 0),  # 🕶 Неоновый портрет — резкий цветной крупный план (жен)
+# Welcome-коллаж РОТИРУЕТСЯ раз в 3 дня (детерминированно по дате → все юзеры
+# в одном окне видят один набор). Выбор: 2 ярких сцены из _POOL_A + 1 мужская
+# из _POOL_B (гарантируем сигнал «и для парней»), порядок тасуется. Все ключи —
+# с подтверждёнными превью (position 0=жен, 1=муж). marble_punk исключён (жест
+# отталкивает новичков). Курируемые HERO-сцены — заметные и разнообразные.
+_POOL_A: list[tuple[str, int]] = [
+    ('neon_portrait', 0), ('fisheye_paris', 0), ('golden_hour', 0),
+    ('rooftop_wine', 0),  ('vogue', 0),         ('red_lust', 0),
+    ('underwater_red', 0),('rainy_taxi', 0),    ('tokyo_vending', 0),
+    ('cyberpunk', 0),     ('ramen_night', 0),   ('warrior', 0),
+    ('fireworks_night', 0),('times_fisheye', 0),
 ]
+_POOL_B: list[tuple[str, int]] = [
+    ('sky_ledge', 1),  ('suit_smoke', 1),  ('night_racing', 1),
+    ('berlin_metro', 1),('warrior', 1),    ('cyberpunk', 1),
+    ('trunk_pov', 1),
+]
+_ROTATE_DAYS = 3
 _BOT_CFG_KEY = 'welcome_collage_file_id'
+_PERIOD_CFG_KEY = 'welcome_collage_period'  # текущее 3-дневное окно (инвалидация)
+
+
+def _current_period() -> int:
+    """Номер текущего 3-дневного окна (UTC). Меняется → коллаж пересобирается."""
+    from datetime import datetime, timezone
+    return datetime.now(timezone.utc).date().toordinal() // _ROTATE_DAYS
+
+
+def _select_presets(period: int) -> list[tuple[str, int]]:
+    """Детерминированный набор из 3 (key, position) для окна `period`:
+    2 сцены из _POOL_A + 1 мужская из _POOL_B, порядок перемешан."""
+    import random
+    rng = random.Random(period)
+    a = rng.sample(_POOL_A, 2)
+    a_keys = {k for k, _ in a}
+    # Мужская сцена из B, но НЕ дублируя ключ из A (cyberpunk/warrior есть в обоих).
+    b_candidates = [t for t in _POOL_B if t[0] not in a_keys] or _POOL_B
+    picks = a + [rng.choice(b_candidates)]
+    rng.shuffle(picks)
+    return picks
 
 
 def is_collage_preset(key: str, position: int | None = None) -> bool:
-    """Используется ли (key,position) в текущем welcome-коллаже. Нужно админ-
+    """Входит ли (key,position) в ТЕКУЩИЙ (по окну) welcome-коллаж. Нужно админ-
     хендлерам, чтобы автоматически инвалидировать кэш при regen/delete-thumb
     одного из этих превью (иначе welcome будет слать старую картинку)."""
+    current = _select_presets(_current_period())
     if position is None:
-        return any(k == key for k, _ in _PRESETS)
-    return (key, position) in _PRESETS
+        return any(k == key for k, _ in current)
+    return (key, position) in current
 
 
 async def _download_fid(bot, fid: str) -> bytes:
@@ -50,14 +81,16 @@ async def _download_fid(bot, fid: str) -> bytes:
     return buf.getvalue()
 
 
-async def _build_collage_bytes(bot) -> Optional[bytes]:
+async def _build_collage_bytes(bot, presets: list[tuple[str, int]] | None = None) -> Optional[bytes]:
     from PIL import Image
     from app.database.base import AsyncSessionFactory
     from app.database.repo.preset_previews import get_preview_file_id
 
+    if presets is None:
+        presets = _select_presets(_current_period())
     async with AsyncSessionFactory() as session:
         fids: list[str] = []
-        for key, pos in _PRESETS:
+        for key, pos in presets:
             fid = await get_preview_file_id(session, key, position=pos)
             if fid:
                 fids.append(fid)
@@ -99,35 +132,41 @@ async def invalidate_welcome_collage() -> None:
 
 
 async def get_or_build_welcome_collage_fid(bot) -> Optional[str]:
-    """Возвращает file_id готового коллажа. Если в bot_config пусто — строит,
-    заливает в админ-чат → получает file_id → сохраняет в bot_config. Все
-    последующие /start используют тот же file_id без сборки."""
+    """Возвращает file_id коллажа для ТЕКУЩЕГО 3-дневного окна. Если кэш пуст
+    ИЛИ окно сменилось — пересобирает (новый набор сцен), заливает в админ-чат,
+    сохраняет file_id + номер окна в bot_config. Внутри окна — тот же file_id
+    без сборки."""
     from aiogram.types import BufferedInputFile
     from app.config import settings
     from app.database.base import AsyncSessionFactory
     from app.database.repo.bot_config import get_config_value, set_config_value
 
+    period = _current_period()
     async with AsyncSessionFactory() as session:
         cached = await get_config_value(session, _BOT_CFG_KEY)
-    if cached:
+        cached_period = await get_config_value(session, _PERIOD_CFG_KEY)
+    # Валиден только если есть fid И окно совпадает (иначе — ротация).
+    if cached and cached_period == str(period):
         return cached
 
     admin = settings.admin_ids_list[0] if settings.admin_ids_list else None
     if not admin:
-        return None
+        return cached or None  # нет админ-чата для сборки — отдаём старое, чтоб не падать
     try:
-        collage = await _build_collage_bytes(bot)
+        collage = await _build_collage_bytes(bot, _select_presets(period))
         if not collage:
             return None
+        scenes = ', '.join(k for k, _ in _select_presets(period))
         msg = await bot.send_photo(
             admin, BufferedInputFile(collage, 'neyra_welcome.jpg'),
-            caption='🖼 <i>Welcome-коллаж кеширован в bot_config — '
-                    'будет вшит во все /start.</i>',
+            caption=f'🖼 <i>Welcome-коллаж окна #{period} кеширован — будет вшит '
+                    f'во все /start ближайшие {_ROTATE_DAYS} дн.\nСцены: {scenes}</i>',
             parse_mode='HTML',
         )
         fid = msg.photo[-1].file_id
         async with AsyncSessionFactory() as session:
             await set_config_value(session, _BOT_CFG_KEY, fid)
+            await set_config_value(session, _PERIOD_CFG_KEY, str(period))
             await session.commit()
         return fid
     except Exception as exc:

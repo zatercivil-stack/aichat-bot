@@ -18,12 +18,15 @@ DEFAULT_CONFIG: dict[str, tuple[str, str]] = {
     'model_cost_voice': ('2',  'Voice transcription cost (credits)'),
     'model_cost_vision':('10', 'Photo analysis cost (credits)'),
     'daily_free_credits': ('15', 'Daily credit bonus for free plan users'),
-    'referral_bonus':     ('150', 'Credits awarded per referred user'),
+    'referral_bonus':     ('250', 'Credits (burn, 7d) to referrer when invitee makes 1st photo'),
     # Подарок новичкам без рефера и промо. 23.05 поднят 300→500: при 300 кр
     # = 1.5 quality-сцены, и 80% юзеров уходили без единой генерации (страх
     # «потрачу всё на одну»). 500 = 2.5 топ-сцены = больше пространства для
     # экспериментов, ниже воспринимаемый риск первой попытки.
     'welcome_bonus_credits': ('500', 'Credits granted to brand-new users on first /start (no referrer, no promo)'),
+    # 04.06: welcome теперь СГОРАЕМЫЙ (urgency на первое фото, борьба с глутом —
+    # 80% сидят на нетронутых кредитах). N дней до сгорания welcome-бонуса.
+    'welcome_burn_days': ('7', 'Days until welcome bonus (burn pool) expires; 0=permanent'),
     'test_broadcast_username': ('grelok', 'Username (without @) for "test user" audience in broadcasts'),
     # Запуск-цена на фото-фичи: до 19 мая 2026 включительно цена снижена на discount кр
     'image_promo_until': ('2026-05-19', 'Last day of launch-price promo (ISO date, empty=disabled)'),

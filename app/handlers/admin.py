@@ -17,7 +17,7 @@ from app.database.repo.payments import get_pending_payments, update_payment
 from app.database.repo.users import get_all_telegram_ids, get_total_users_count, get_user
 from app.config import settings
 from app.keyboards.main import (
-    PE_AU_GOLD, PE_BUBBLE, PE_CARD, PE_LIGHTNING, PE_ROCKET, PE_SPARKLES,
+    PE_AU_GOLD, PE_BUBBLE, PE_CARD, PE_HANDSHAKE, PE_LIGHTNING, PE_ROCKET, PE_SPARKLES,
 )
 
 logger = structlog.get_logger(__name__)
@@ -62,27 +62,46 @@ async def cmd_set_preview(message: Message) -> None:
 
 
 async def ensure_default_promos() -> None:
-    """Создать промокоды по умолчанию при старте, если их ещё нет."""
-    from app.database.repo.promos import create_promo, get_promo
+    """Создать/поддержать промокоды по умолчанию при старте.
+
+    ВАЖНО: существование проверяем по САМОМУ коду, а НЕ через get_promo —
+    тот прячет истёкшие/неактивные промо (фильтр expires_at>now, is_active).
+    Из-за этого после истечения дефолтного промо повторный insert ловил
+    UniqueViolation на уникальном `code`, отравлял сессию, и финальный commit
+    падал PendingRollbackError → краш бота в рестарт-луп (инцидент 2026-06-04,
+    СТАРТ149 истёк 06-03). Истёкший дефолт ПРОДЛЕВАЕМ (он должен жить), любую
+    ошибку создания глушим через rollback, чтобы не уронить старт."""
+    from sqlalchemy import select
+    from app.database.models import PromoCode
+    from app.database.repo.promos import create_promo
 
     defaults = [
         # код, кредиты, максимум использований (0 = безлимит), дней до истечения (0 = бессрочно)
         ('СТАРТ149', 500, 0, 30),
     ]
+    now = datetime.now(timezone.utc)
     async with AsyncSessionFactory() as session:
         for code, credits, max_uses, expire_days in defaults:
-            existing = await get_promo(session, code)
+            expires_at = (now + timedelta(days=expire_days)) if expire_days > 0 else None
+            existing = (await session.execute(
+                select(PromoCode).where(PromoCode.code == code.upper())
+            )).scalar_one_or_none()
             if existing:
+                # Дефолтный промо должен оставаться рабочим: истёкший/выключенный
+                # реактивируем и продлеваем, активный — не трогаем.
+                exp = existing.expires_at
+                if exp is not None and exp.tzinfo is None:
+                    exp = exp.replace(tzinfo=timezone.utc)
+                if not existing.is_active or (exp is not None and exp <= now):
+                    existing.expires_at = expires_at
+                    existing.is_active = True
+                    logger.info('Default promo refreshed', code=code)
                 continue
-            expires_at = (
-                datetime.now(timezone.utc) + timedelta(days=expire_days)
-                if expire_days > 0
-                else None
-            )
             try:
                 await create_promo(session, code, credits, max_uses, expires_at)
                 logger.info('Default promo created', code=code, credits=credits)
             except Exception as e:
+                await session.rollback()
                 logger.error('Failed to create default promo', code=code, error=e)
         await session.commit()
 
@@ -538,6 +557,7 @@ async def send_daily_push(bot_instance) -> None:
     - 6-48ч молчал → день-недели ротация ИЛИ low-credit-monetization"""
     from sqlalchemy import select, and_
     from app.database.models import User, BotEvent
+    from app.database.repo.credits import total_balance
 
     now = datetime.now(timezone.utc).replace(tzinfo=None)
     cutoff_recent = now - timedelta(hours=6)
@@ -644,16 +664,36 @@ async def send_daily_push(bot_instance) -> None:
                     "Окупится после 3-4 сцен."
                 )
                 kb = _SUB_PUSH_KB
-            elif user.credits < 5:
-                # Кредиты почти кончились — монетизационный пуш
+            elif total_balance(user) < 200:
+                # «Стена»: не хватает даже на одно фото (200 кр), считаем burn.
+                # Все, кто дошёл сюда, уже генерили (0-gen перехвачен выше) →
+                # даём БЕСПЛАТНЫЙ путь (реферал) рядом с покупкой. Самый
+                # уместный момент для реф-оффера: упёрся, но продукт уже знает.
+                from app.constants import REFERRAL_BONUS as _RB
+                from urllib.parse import quote as _q
+                _bu = settings.BOT_USERNAME or 'NeyraChatBot'
+                _rl = f'https://t.me/{_bu}?start=ref_{user.telegram_id}'
+                _st = ('Заценил Нейру — кидаешь селфи, получаешь себя в любой сцене. '
+                       'Лицо в точности твоё.')
+                _su = f'https://t.me/share/url?url={_q(_rl, safe="")}&text={_q(_st, safe="")}'
+                bal = total_balance(user)
                 text = (
-                    "⚡ <b>Кредиты на нуле — а сцена ждёт.</b>\n\n"
-                    f"Осталось: <b>{user.credits} кр</b>\n\n"
-                    "🔥 <b>1 500 кредитов — 99₽</b> (×3 к обычному паку, "
-                    "хватит на 7 топ-сцен).\n"
-                    "Или подписка от 149₽ — выгоднее вдолгую."
+                    "⚡ <b>Кредиты кончились — а сцена ждёт.</b>\n\n"
+                    f"Осталось: <b>{bal} кр</b>\n\n"
+                    f"🤝 <b>Бесплатно:</b> позови друга → +{_RB} кр на неделю "
+                    "(другу — 500 на старт).\n"
+                    "🔥 <b>Или сразу:</b> 1 500 кр за 99₽ — на 7 сцен."
                 )
-                kb = _BUY_PUSH_KB
+                kb = InlineKeyboardMarkup(inline_keyboard=[
+                    [InlineKeyboardButton.model_construct(
+                        text=f'Позвать друга → +{_RB}', url=_su,
+                        icon_custom_emoji_id=PE_HANDSHAKE, style='success')],
+                    [InlineKeyboardButton.model_construct(
+                        text='Пополнить — от 99₽', callback_data='shop',
+                        icon_custom_emoji_id=PE_LIGHTNING, style='primary')],
+                ])
+                if sub_image_pool:
+                    photo = random.choice(sub_image_pool)
             else:
                 # Обычный день-недели пуш
                 text = day_text

@@ -52,17 +52,19 @@ async def get_all_telegram_ids(session: AsyncSession) -> list[int]:
     return list(result.scalars().all())
 
 
-async def add_referral_bonus(session: AsyncSession, telegram_id: int, amount: int = 150) -> None:
+async def add_referral_bonus(session: AsyncSession, telegram_id: int, amount: int = 150,
+                             burn_expires_at: datetime | None = None) -> None:
     """Начисляет реферальный бонус + инкрементит счётчик приглашённых. Идёт
     через add_credits (а не direct UPDATE), чтобы корректно отработать
-    _clean_expired_burn и единый путь начисления."""
+    _clean_expired_burn и единый путь начисления. Если задан burn_expires_at —
+    бонус кладётся в СГОРАЕМЫЙ pool (urgency, без вечного глута)."""
     from app.database.repo.credits import add_credits
     user = await session.scalar(
         select(User).where(User.telegram_id == telegram_id).with_for_update()
     )
     if not user:
         return
-    await add_credits(session, user, amount)
+    await add_credits(session, user, amount, burn_expires_at=burn_expires_at)
     user.referral_bonus = (user.referral_bonus or 0) + 1
     await session.flush()
 

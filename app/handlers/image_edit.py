@@ -422,6 +422,33 @@ _FEMALE_ONLY_PRESETS = {
 }
 
 
+# ── Пол каталога переносится в callback одним токеном ──────────────────────
+# 'f'  — юзер «девушка»: женские превью, ничего не прячем
+# 'm'  — юзер «парень»:  мужские превью, прячем female-only
+# 'af' — юзер «не важно», сейчас смотрит ЖЕНСКИЙ вариант (есть тумблер M/Ж)
+# 'am' — юзер «не важно», сейчас смотрит МУЖСКОЙ вариант (есть тумблер M/Ж)
+# «не важно» НЕ прячет female-only (обещание «покажи всё»), но даёт на каждой
+# карточке тумблер, чтобы увидеть тот же пресет в другом поле.
+_GTOKENS = ('f', 'm', 'af', 'am')
+
+
+def _parse_gtoken(g: str) -> tuple[bool, bool, bool]:
+    """(preview_is_male, hide_female_only, is_any) из токена пола."""
+    preview_is_male = g in ('m', 'am')
+    hide_female_only = (g == 'm')
+    is_any = g in ('af', 'am')
+    return preview_is_male, hide_female_only, is_any
+
+
+def _gtoken_for(gender: str | None) -> str:
+    """Стартовый токен каталога по сохранённому полу юзера."""
+    if gender == 'male':
+        return 'm'
+    if gender == 'any':
+        return 'af'
+    return 'f'
+
+
 EDIT_PRESETS: dict[str, tuple[str, str | None]] = {
     # ── Новинки 01.06 (из мудборда) ──
     'suit_smoke': (
@@ -1342,7 +1369,7 @@ async def cb_edit_again(callback: CallbackQuery, state: FSMContext) -> None:
                             face_photos=[], mface_status_msg_id=None,
                             pending_gallery_preset=None)
     gender = await _get_gender(callback.from_user.id)
-    kb = await _categories_kb(is_male=(gender == 'male'))
+    kb = await _categories_kb(g=_gtoken_for(gender))
     await callback.message.answer(
         premium_text(
             '🎨 <b>Ещё стиль для этого фото</b>\n\n'
@@ -1578,38 +1605,49 @@ async def cmd_face_swap(message: Message, state: FSMContext) -> None:
     )
 
 
-def _nav_cb(idx: int, page_idx, is_male: bool = False) -> str:
-    """callback_data навигации: gcat:<page|all|top>:<idx>:<m|f>.
+def _nav_cb(idx: int, page_idx, g: str = 'f') -> str:
+    """callback_data навигации: gcat:<page|all|top>:<idx>:<f|m|af|am>.
 
     page_idx может быть int, None ('all') или 'top' (динамическая категория
-    «Что выбирают сейчас» — топ по image_edited за 7д)."""
+    «Что выбирают сейчас» — топ по image_edited за 7д). g — токен пола (см.
+    _parse_gtoken), несётся в callback, чтобы листание не сбрасывало пол."""
     if page_idx is None:
         p = 'all'
     elif page_idx == 'top':
         p = 'top'
     else:
         p = page_idx
-    g = 'm' if is_male else 'f'
     return f'gcat:{p}:{idx}:{g}'
 
 
 def _gallery_kb(idx: int, total: int, preset_key: str,
                  page_idx: int | None = None,
-                 is_male: bool = False) -> InlineKeyboardMarkup:
-    """Клавиатура карусели. page_idx — внутри категории; is_male — мужской набор
+                 g: str = 'f') -> InlineKeyboardMarkup:
+    """Клавиатура карусели. page_idx — внутри категории; g — токен пола
     (несётся в callback навигации, чтобы листание не сбрасывало пол)."""
+    preview_is_male, _, is_any = _parse_gtoken(g)
     rows: list[list[InlineKeyboardButton]] = []
-    # Главное действие — попробовать этот пресет.
+    # Главное действие — попробовать этот пресет. Пол просмотра несём в apply,
+    # чтобы генерация пошла в мужском/женском режиме промпта под текущее превью.
+    apply_g = 'm' if preview_is_male else 'f'
     rows.append([InlineKeyboardButton.model_construct(
         text='Хочу такое со своим лицом',
-        callback_data=f'gallery_try:{preset_key}',
+        callback_data=f'gallery_try:{preset_key}:{apply_g}',
         icon_custom_emoji_id=PE_SPARKLES, style='success',
     )])
+    # Тумблер пола — только для «не важно» (юзер видит тот же пресет в M и Ж).
+    # Жмёт → перерисовываем ЭТУ же карточку с другим превью (gcat на тот же idx).
+    if is_any:
+        flipped = 'af' if preview_is_male else 'am'
+        toggle_text = '🔄 Показать в женском' if preview_is_male else '🔄 Показать в мужском'
+        rows.append([InlineKeyboardButton(
+            text=toggle_text, callback_data=_nav_cb(idx, page_idx, flipped),
+        )])
     # Навигация
     nav: list[InlineKeyboardButton] = []
     if idx > 0:
         nav.append(InlineKeyboardButton.model_construct(
-            text=' ', callback_data=_nav_cb(idx - 1, page_idx, is_male),
+            text=' ', callback_data=_nav_cb(idx - 1, page_idx, g),
             icon_custom_emoji_id=PE_LEFT,
         ))
     else:
@@ -1620,7 +1658,7 @@ def _gallery_kb(idx: int, total: int, preset_key: str,
                                      callback_data='gallery_noop'))
     if idx < total - 1:
         nav.append(InlineKeyboardButton.model_construct(
-            text=' ', callback_data=_nav_cb(idx + 1, page_idx, is_male),
+            text=' ', callback_data=_nav_cb(idx + 1, page_idx, g),
             icon_custom_emoji_id=PE_RIGHT,
         ))
     else:
@@ -1780,15 +1818,18 @@ async def _get_new_preset_keys(limit: int | None = None) -> list[str]:
 
 
 async def _build_gallery_list(page_idx=None,
-                               is_male: bool = False) -> list[tuple[str, str, str]]:
+                               g: str = 'f') -> list[tuple[str, str, str]]:
     """Возвращает [(preset_key, label, file_id), ...] для page_idx:
       None  — вся галерея в порядке PRESET_PAGES
       int   — конкретная категория
       'top' — динамический топ-7 за 7 дней (без тех-юзеров)
 
-    is_male прячет _FEMALE_ONLY_PRESETS и берёт мужское превью (с фолбэком
-    на женское если мужского ещё нет)."""
+    g — токен пола (см. _parse_gtoken). Мужской набор берёт мужское превью
+    (фолбэк на женское) и прячет _FEMALE_ONLY_PRESETS; «не важно» (af/am) ничего
+    не прячет — состав каталога одинаков, меняется только показанное превью,
+    поэтому idx стабилен при переключении тумблера M/Ж."""
     from app.database.repo.preset_previews import list_presets_with_previews, get_preview_file_id
+    preview_is_male, hide_female_only, _ = _parse_gtoken(g)
     await refresh_fresh_presets()  # обновить бейдж «🆕» для _label_for (лениво по TTL)
     if page_idx == 'top':
         top_keys = await _get_top_preset_keys()
@@ -1802,21 +1843,21 @@ async def _build_gallery_list(page_idx=None,
         pages = [PRESET_PAGES[page_idx]]
     else:
         pages = []
-    position = 1 if is_male else 0
+    position = 1 if preview_is_male else 0
     async with AsyncSessionFactory() as session:
         keys_with = set(await list_presets_with_previews(session))
         items: list[tuple[str, str, str]] = []
         for page in pages:
             for k in page['items']:
-                if is_male and k in _FEMALE_ONLY_PRESETS:
+                if hide_female_only and k in _FEMALE_ONLY_PRESETS:
                     continue
                 if k not in keys_with:
                     continue
                 file_id = await get_preview_file_id(session, k, position=position)
-                if not file_id and is_male:
+                if not file_id and preview_is_male:
                     file_id = await get_preview_file_id(session, k, position=0)
                 if file_id:
-                    items.append((k, _label_for(k, is_male), file_id))
+                    items.append((k, _label_for(k, preview_is_male), file_id))
     # «Показать все» (page_idx=None): новые (custom) сцены — первыми. Stable
     # sort сохраняет порядок внутри групп. В конкретной категории custom уже
     # впереди (front-insert при reload), доп. сортировка не нужна.
@@ -1837,11 +1878,11 @@ async def _gallery_index_for_preset(preset_key: str) -> int | None:
 
 
 async def _build_gallery_card(idx: int, page_idx: int | None = None,
-                               is_male: bool = False):
+                               g: str = 'f'):
     """Возвращает (file_id, caption, kb, total) для карточки idx внутри
-    выбранной категории (page_idx) или всей галереи (None), с учётом пола.
+    выбранной категории (page_idx) или всей галереи (None), с учётом пола (g).
     """
-    items = await _build_gallery_list(page_idx, is_male)
+    items = await _build_gallery_list(page_idx, g)
     if not items:
         # Пусто (нет превью ИЛИ устаревший page_idx от старого меню с 7
         # категориями). Возвращаем kb с возвратом к категориям — иначе юзер
@@ -1873,15 +1914,15 @@ async def _build_gallery_card(idx: int, page_idx: int | None = None,
         f'<i>Так выглядит результат этого настроения. '
         f'Хочешь — пришлю фото с твоим лицом за минуту.</i>'
     )
-    kb = _gallery_kb(idx, len(items), key, page_idx, is_male)
+    kb = _gallery_kb(idx, len(items), key, page_idx, g)
     return file_id, caption, kb, len(items)
 
 
 async def _send_gallery_card(target_msg: Message, idx: int,
                               page_idx: int | None = None,
-                              is_male: bool = False) -> None:
+                              g: str = 'f') -> None:
     """Отправляет НОВОЕ сообщение с карточкой. page_idx=None — общая галерея."""
-    file_id, caption, kb, _ = await _build_gallery_card(idx, page_idx, is_male)
+    file_id, caption, kb, _ = await _build_gallery_card(idx, page_idx, g)
     if file_id is None:
         # kb теперь содержит «К категориям» — прокидываем, чтобы не застрять.
         await target_msg.answer(caption, parse_mode='HTML', reply_markup=kb)
@@ -1896,11 +1937,11 @@ async def _send_gallery_card(target_msg: Message, idx: int,
 
 async def _edit_gallery_card(msg: Message, idx: int,
                               page_idx: int | None = None,
-                              is_male: bool = False) -> bool:
+                              g: str = 'f') -> bool:
     """Заменяет ФОТО+CAPTION+KB в существующем сообщении (для навигации без
     спама). Returns True при успехе."""
     from aiogram.types import InputMediaPhoto
-    file_id, caption, kb, _ = await _build_gallery_card(idx, page_idx, is_male)
+    file_id, caption, kb, _ = await _build_gallery_card(idx, page_idx, g)
     if file_id is None:
         return False
     try:
@@ -1923,24 +1964,25 @@ _CATEGORY_PE_ICONS: dict[str, str] = {
 }
 
 
-async def _categories_kb(is_male: bool = False) -> InlineKeyboardMarkup:
+async def _categories_kb(g: str = 'f') -> InlineKeyboardMarkup:
     """Меню категорий. Показывает страницы с видимыми превью; мужчинам не
-    считаем жёстко-женские пресеты. Пол несётся в callback (gcat:...:m|f).
+    считаем жёстко-женские пресеты. Пол (g) несётся в callback (gcat:...:<g>),
+    «не важно» (af) показывает весь набор и даёт тумблер M/Ж на карточках.
 
     Если за 7д набралось >=3 пресета с реальными генерациями (не от тех-юзеров)
     — добавляем динамическую категорию «🔥 Что выбирают сейчас» первой
     строкой. Это соц-доказательство и помощь paralysis-of-choice."""
     import re
     from app.database.repo.preset_previews import list_presets_with_previews
+    _, hide_female_only, _ = _parse_gtoken(g)
     async with AsyncSessionFactory() as session:
         keys_with = set(await list_presets_with_previews(session))
-    g = 'm' if is_male else 'f'
     rows: list[list[InlineKeyboardButton]] = []
 
     def _page_button(i: int, page: dict):
         """Кнопка категории i (или None если нет видимых сцен для этого пола)."""
         n = sum(1 for k in page['items']
-                if k in keys_with and not (is_male and k in _FEMALE_ONLY_PRESETS))
+                if k in keys_with and not (hide_female_only and k in _FEMALE_ONLY_PRESETS))
         if n == 0:
             return None
         title = page['title']
@@ -1958,7 +2000,7 @@ async def _categories_kb(is_male: bool = False) -> InlineKeyboardMarkup:
     #    (видя знакомые старые на входе). Весь раздел = набор бейджей (потолок —
     #    new_section_max в конфиге).
     new_keys = await _get_new_preset_keys()
-    if is_male:
+    if hide_female_only:
         new_keys = [k for k in new_keys if k not in _FEMALE_ONLY_PRESETS]
     if new_keys:
         rows.append([InlineKeyboardButton.model_construct(
@@ -1968,7 +2010,7 @@ async def _categories_kb(is_male: bool = False) -> InlineKeyboardMarkup:
 
     # 1. «Что выбирают сейчас» — динамический топ (соц-доказательство), если ≥3.
     top_keys = await _get_top_preset_keys(limit=7)
-    if is_male:
+    if hide_female_only:
         top_keys = [k for k in top_keys if k not in _FEMALE_ONLY_PRESETS]
     top_keys = [k for k in top_keys if k in keys_with]
     if len(top_keys) >= 3:
@@ -2046,7 +2088,7 @@ async def _open_catalog(callback: CallbackQuery) -> None:
             parse_mode='HTML', reply_markup=_gender_kb(),
         )
         return
-    kb = await _categories_kb(is_male=(gender == 'male'))
+    kb = await _categories_kb(g=_gtoken_for(gender))
     cap = premium_text(
         '🖼 <b>Выбери настроение</b>\n\n'
         '<i>В каждом разделе — готовые сцены с твоим лицом. Открой любой, '
@@ -2100,7 +2142,7 @@ async def open_catalog_from_message(message: Message, user_tg_id: int,
             parse_mode='HTML', reply_markup=_gender_kb(),
         )
         return
-    kb = await _categories_kb(is_male=(gender == 'male'))
+    kb = await _categories_kb(g=_gtoken_for(gender))
     text = intro_text or (
         '🖼 <b>Выбери настроение</b>\n\n'
         '<i>Листай примеры свободно — селфи попрошу только когда выберешь '
@@ -2218,7 +2260,7 @@ async def cb_seed_gender(callback: CallbackQuery) -> None:
         await callback.message.delete()
     except Exception:
         pass
-    kb = await _categories_kb(is_male=(g == 'male'))
+    kb = await _categories_kb(g=_gtoken_for(g))
     intro = premium_text(
         '✨ <b>Лови сцены под тебя</b>\n\n'
         '<i>Открой раздел, листай готовые кадры и пришли селфи — верну фото '
@@ -2342,7 +2384,7 @@ async def cb_bc_open(callback: CallbackQuery) -> None:
             parse_mode='HTML', reply_markup=_gender_kb(),
         )
         return
-    kb = await _categories_kb(is_male=(gender == 'male'))
+    kb = await _categories_kb(g=_gtoken_for(gender))
     await callback.message.answer(
         premium_text(
             '🖼 <b>Выбери настроение</b>\n\n'
@@ -2391,7 +2433,7 @@ async def cb_set_gender(callback: CallbackQuery, state: FSMContext) -> None:
         pass
     data = await state.get_data()
     has_reuse = bool(data.get('reuse_file_id'))
-    kb = await _categories_kb(is_male=(g == 'male'))
+    kb = await _categories_kb(g=_gtoken_for(g))
     if has_reuse:
         text = (
             '🖼 <b>Выбери настроение</b>\n\n'
@@ -2408,8 +2450,9 @@ async def cb_set_gender(callback: CallbackQuery, state: FSMContext) -> None:
 
 @router.callback_query(F.data.startswith('gcat:'))
 async def cb_gallery_cat(callback: CallbackQuery) -> None:
-    """Навигация по карусели. Формат: gcat:<page|all|top>:<idx>:<m|f>.
-    Пол несётся в callback — листание не сбрасывает мужской/женский набор.
+    """Навигация по карусели. Формат: gcat:<page|all|top>:<idx>:<f|m|af|am>.
+    Пол несётся в callback — листание не сбрасывает пол/набор. Тумблер M/Ж для
+    «не важно» = тот же gcat на текущий idx с другим токеном (af↔am).
     page='top' — динамическая категория «🔥 Что выбирают сейчас»."""
     parts = callback.data.split(':')
     try:
@@ -2422,7 +2465,7 @@ async def cb_gallery_cat(callback: CallbackQuery) -> None:
             page_idx = 'new'
         else:
             page_idx = int(page_part)
-        is_male = (len(parts) > 3 and parts[3] == 'm')
+        g = parts[3] if len(parts) > 3 and parts[3] in _GTOKENS else 'f'
     except (ValueError, IndexError):
         await callback.answer()
         return
@@ -2434,11 +2477,11 @@ async def cb_gallery_cat(callback: CallbackQuery) -> None:
             await callback.message.delete()
         except Exception:
             pass
-        await _send_gallery_card(callback.message, idx=idx, page_idx=page_idx, is_male=is_male)
+        await _send_gallery_card(callback.message, idx=idx, page_idx=page_idx, g=g)
         return
-    edited = await _edit_gallery_card(callback.message, idx=idx, page_idx=page_idx, is_male=is_male)
+    edited = await _edit_gallery_card(callback.message, idx=idx, page_idx=page_idx, g=g)
     if not edited:
-        await _send_gallery_card(callback.message, idx=idx, page_idx=page_idx, is_male=is_male)
+        await _send_gallery_card(callback.message, idx=idx, page_idx=page_idx, g=g)
 
 
 @router.callback_query(F.data.startswith('gallery:'))
@@ -2536,8 +2579,15 @@ async def cb_mystery_today(callback: CallbackQuery, state: FSMContext) -> None:
 @router.callback_query(F.data.startswith('gallery_try:'))
 async def cb_gallery_try(callback: CallbackQuery, state: FSMContext) -> None:
     """Из каталога — «Хочу такое». Переводим юзера в edit_start с выбранным пресетом
-    в state, после того как пришлёт фото — пресет применится автоматически."""
-    key = callback.data.split(':', 1)[1]
+    в state, после того как пришлёт фото — пресет применится автоматически.
+
+    Формат: gallery_try:<key>[:<f|m>]. Хвост — пол ПОКАЗАННОГО превью (для «не
+    важно» юзер мог переключить тумблер). Несём его в state (apply_gender,
+    привязан к preset через apply_gender_for), чтобы генерация пошла в нужном
+    мужском/женском режиме промпта под то, что юзер видел."""
+    parts = callback.data.split(':')
+    key = parts[1]
+    view_g = parts[2] if len(parts) > 2 and parts[2] in ('f', 'm') else None
     preset = EDIT_PRESETS.get(key)
     if not preset:
         await callback.answer('Шаблон не найден', show_alert=True)
@@ -2562,7 +2612,8 @@ async def cb_gallery_try(callback: CallbackQuery, state: FSMContext) -> None:
             await state.set_state(ImageEditState.waiting_prompt)
             await state.update_data(preset_key=key, quality_mode=preset_mode,
                                     file_id=reuse_file_id, face_photos=[reuse_file_id],
-                                    reuse_file_id=None, pending_gallery_preset=None)
+                                    reuse_file_id=None, pending_gallery_preset=None,
+                                    apply_gender=view_g, apply_gender_for=key)
             hint_map = {
                 'change_clothes': 'В какую одежду одеть?\n<i>Пример: «деловой костюм», «красное платье»</i>',
                 'change_bg': 'Какой фон поставить?\n<i>Пример: «пляж на закате», «офис из стекла»</i>',
@@ -2576,7 +2627,8 @@ async def cb_gallery_try(callback: CallbackQuery, state: FSMContext) -> None:
         await state.set_state(None)
         await state.update_data(preset_key=key, quality_mode=preset_mode,
                                 file_id=reuse_file_id, face_photos=[reuse_file_id],
-                                reuse_file_id=None, pending_gallery_preset=None)
+                                reuse_file_id=None, pending_gallery_preset=None,
+                                apply_gender=view_g, apply_gender_for=key)
         await callback.answer('Применяю к твоему фото…')
         try:
             await callback.message.edit_reply_markup(reply_markup=None)
@@ -2596,7 +2648,8 @@ async def cb_gallery_try(callback: CallbackQuery, state: FSMContext) -> None:
     # фото от другого пресета не «прилипли» к новому.
     await state.update_data(preset_key=key, quality_mode=preset_mode,
                             pending_gallery_preset=key,
-                            face_photos=[], mface_status_msg_id=None)
+                            face_photos=[], mface_status_msg_id=None,
+                            apply_gender=view_g, apply_gender_for=key)
     await callback.message.answer(
         f'📎 <b>{label}</b> · <i>{cost} кр</i>\n\n'
         f'<b>Пришли селфи или портрет</b> — применю настроение через минуту.\n\n'
@@ -3411,6 +3464,13 @@ async def _run_edit_inner(
         face_photos = [file_id]
     # Сохраняем preset_key до state.clear() — нужен для русского label в caption
     preset_key = data.get('preset_key')
+    # Пол показанного превью из каталога (для «не важно» юзер мог переключить
+    # тумблер M/Ж). Привязан к preset через apply_gender_for — чтобы старое
+    # значение из брошенной сессии не протекло в другой флоу (mystery/free-edit
+    # ставят свой preset_key, не совпадёт → игнор). 'm'/'f' → режим промпта.
+    _apply_gender = None
+    if preset_key is not None and data.get('apply_gender_for') == preset_key:
+        _apply_gender = data.get('apply_gender')
     # Mystery Preset of the Day: бесплатное применение, кредиты не списываются.
     # claim() уже произошёл в cb_mystery_today, здесь только пропускаем deduct.
     mystery_free = bool(data.get('mystery_free'))
@@ -3496,8 +3556,31 @@ async def _run_edit_inner(
         remaining = user.credits
         user_db_id = user.id
         user_gender = user.gender  # для мужского режима промпта
+        # «Не важно»-юзер выбирает пол прямо на карточке (тумблер M/Ж) — этот
+        # выбор сильнее сохранённого 'any', чтобы генерация совпала с превью,
+        # которое он видел при тапе «Хочу такое».
+        if _apply_gender == 'm':
+            user_gender = 'male'
+        elif _apply_gender == 'f':
+            user_gender = 'female'
         paid = await is_paid_user(session, user_db_id)
         await session.commit()
+
+    # Реферальный перк «неделя без водяного знака» (milestone 5/10 друзей) —
+    # эфемерный флаг в Redis с авто-истечением (без миграции). Снимает И нативную,
+    # И угловую вотермарку (как у платных), но НЕ открывает прочие paid-функции.
+    wm_free = False
+    try:
+        from redis.asyncio import Redis as _RedisWM
+        from app.config import settings as _wmset
+        _wmr = _RedisWM.from_url(_wmset.REDIS_URL, decode_responses=True)
+        try:
+            wm_free = bool(await _wmr.get(f'wm_free:{source_user_id}'))
+        finally:
+            await _wmr.aclose()
+    except Exception:
+        wm_free = False
+    wm_exempt = paid or wm_free
 
     # Мужской режим: мужской оверрайд промпта (для «тяжёлых» пресетов) либо
     # оригинал + усиленный суффикс. Убирает косички/серьги/язык/жен.одежду.
@@ -3515,7 +3598,7 @@ async def _run_edit_inner(
     # которыми делятся). Для свободных правок/refine (preset_key=None) НЕ
     # добавляем: иначе на каждой итерации копится граффити + это правка
     # личного фото юзера, а не витринная сцена. Там остаётся corner-fallback.
-    native_wm = (not paid) and (preset_key is not None)
+    native_wm = (not wm_exempt) and (preset_key is not None)
     if native_wm:
         prompt = prompt + _NATIVE_WATERMARK_INSTRUCTION
 
@@ -3727,6 +3810,24 @@ async def _run_edit_inner(
                     preset_key=preset_key,
                     mystery_free=mystery_free)
 
+    # Реферальная выплата — на ПЕРВОЙ генерации приглашённого (а не на тексте:
+    # чат отключён, приглашённые шлют фото/жмут кнопки → старый текстовый
+    # триггер в chat.py почти не срабатывал, бонус не платился НИКОМУ). Ключ
+    # REFERRAL_PENDING_KEY ставится в start.py при заходе по реф-ссылке и
+    # удаляется внутри гранта → выплата ровно один раз. Тихо, не валит flow.
+    try:
+        from redis.asyncio import Redis as _Redis
+        from app.config import settings as _rset
+        from app.handlers.chat import _maybe_grant_referral_bonus
+        _rconn = _Redis.from_url(_rset.REDIS_URL, decode_responses=True)
+        try:
+            await _maybe_grant_referral_bonus(_rconn, source_user_id, message.bot)
+        finally:
+            await _rconn.aclose()
+    except Exception as _exc:
+        logger.warning('referral grant on first gen failed',
+                       user=source_user_id, error=str(_exc)[:150])
+
     # Геймификация после успешной генерации (24.05): обновить streak +
     # проверить milestone «N фото». Тихо — ошибки не валят основной flow.
     streak_bonus_msg, milestone_msg = await _gamify_after_edit(source_user_id)
@@ -3734,7 +3835,8 @@ async def _run_edit_inner(
     # Static corner-вотермарка — fallback. Для пресет-сцен не-платящих уже
     # вшита нативная @NeyraChatBot в сам кадр (native_wm) → corner не нужен,
     # не дублируем. Для свободных правок (native_wm=False) ставим corner.
-    if not paid and not native_wm:
+    # wm_exempt (платный ИЛИ реф-перк «неделя без знака») снимает и его.
+    if not wm_exempt and not native_wm:
         result = watermark.add_watermark(result)
 
     await status.delete()
@@ -3779,6 +3881,21 @@ async def _run_edit_inner(
     can_faceswap = remaining >= swap_cost
 
     keyboard_rows: list[list[InlineKeyboardButton]] = []
+
+    # Реф-ссылка строится ОДИН раз — нужна и в low-balance блоке (бесплатная
+    # альтернатива покупке), и в нижнем ряду. share_url=None → кнопку пропускаем.
+    share_url = None
+    try:
+        from urllib.parse import quote
+        from app.config import settings as _refset
+        _bu = _refset.BOT_USERNAME or 'NeyraChatBot'
+        _ref_link = f'https://t.me/{_bu}?start=ref_{source_user_id}'
+        _share_text = ('Заценил Нейру — кидаешь селфи, получаешь себя в любой сцене. '
+                       'Балет у статуи, Bentley, Париж в неоне. Лицо в точности твоё.')
+        share_url = (f'https://t.me/share/url?url={quote(_ref_link, safe="")}'
+                     f'&text={quote(_share_text, safe="")}')
+    except Exception as exc:
+        logger.warning('share url build failed', error=str(exc)[:200])
 
     # ─────────────────────────────────────────────────────────────────────
     # Экран результата заточен под ОДНУ цель — следующая генерация (главная
@@ -3837,6 +3954,15 @@ async def _run_edit_inner(
             callback_data='buy_pack:burn_1500_7d', icon_custom_emoji_id=PE_FIRE,
             style='success',
         )])
+        # Бесплатная альтернатива покупке прямо у «стены»: позвать друга. Самый
+        # горячий момент (только что получил кадр, хочет ещё, кредитов нет).
+        from app.constants import REFERRAL_BONUS as _RB
+        if share_url:
+            keyboard_rows.append([InlineKeyboardButton.model_construct(
+                text=f'Или бесплатно: друг → +{_RB}',
+                url=share_url, icon_custom_emoji_id=PE_HANDSHAKE,
+                style='primary',
+            )])
         if not paid:
             keyboard_rows.append([InlineKeyboardButton.model_construct(
                 text='Без знака · подписка 149₽',
@@ -3867,22 +3993,13 @@ async def _run_edit_inner(
     #    «Меню» больше НЕ красная-жирная — не должна конкурировать с продолжением.
     #    Face-swap убран отсюда (доступен из главного меню как отд. инструмент).
     secondary_row: list[InlineKeyboardButton] = []
-    try:
-        from urllib.parse import quote
-        from app.config import settings as _settings
+    # При low_balance реф-кнопка уже показана крупно выше — здесь не дублируем.
+    if share_url and not low_balance:
         from app.constants import REFERRAL_BONUS
-        bot_username = _settings.BOT_USERNAME or 'NeyraChatBot'
-        ref_link = f'https://t.me/{bot_username}?start=ref_{source_user_id}'
-        share_text = ('Заценил Нейру — кидаешь селфи, получаешь себя в любой сцене. '
-                      'Балет у статуи, Bentley, Париж в неоне. Лицо в точности твоё.')
-        share_url = (f'https://t.me/share/url?url={quote(ref_link, safe="")}'
-                     f'&text={quote(share_text, safe="")}')
         secondary_row.append(InlineKeyboardButton.model_construct(
             text=f'Друг +{REFERRAL_BONUS}',  # без 🤝 в тексте — он уже в иконке (был дубль)
             url=share_url, icon_custom_emoji_id=PE_HANDSHAKE,
         ))
-    except Exception as exc:
-        logger.warning('share button build failed', error=str(exc)[:200])
     secondary_row.append(InlineKeyboardButton.model_construct(
         text='Меню', callback_data='main_menu', icon_custom_emoji_id=PE_HOME,
     ))
@@ -4065,9 +4182,20 @@ async def _gamify_after_edit(user_tg_id: int) -> tuple[str | None, str | None]:
                     )
                 else:
                     tail = '🏆 Это последний milestone-бонус. Спасибо что ты с Нейрой!'
+                # P4b: на 3-м/7-м фото — момент вовлечённости (юзер явно «в теме»)
+                # → нудж позвать друга. Указываем на уже существующую кнопку
+                # «Друг +250» под фото (без отдельной клавиатуры).
+                ref_nudge = ''
+                if total in (3, 7):
+                    from app.constants import REFERRAL_BONUS as _RB
+                    ref_nudge = (
+                        f'\n\n👥 Нравится? Позови друга — тебе <b>+{_RB} кр на неделю</b>, '
+                        f'ему 500 на старт. 5 друзей = неделя без водяного знака. '
+                        f'Кнопка «Друг» под фото 👆'
+                    )
                 milestone_msg = premium_text(
                     f'🎉 <b>Это твоё {total}-е фото в Нейре!</b>\n\n'
-                    f'Держи <b>+{mbonus} кр</b> в подарок. {tail}'
+                    f'Держи <b>+{mbonus} кр</b> в подарок. {tail}{ref_nudge}'
                 )
             else:
                 await session.commit()
