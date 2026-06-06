@@ -382,6 +382,26 @@ _WINBACK_MSGS: list[str] = [
     ),
 ]
 
+# Приглашение на ПЕРВУЮ крутку Колеса — для тех, кто ни разу не крутил.
+# Диапазон приза совпадает с _WHEEL_READY_MSGS (от +10 до +500 кр).
+_WHEEL_FIRST_MSGS: list[str] = [
+    (
+        "🎡 <b>Ты ещё не крутил Колесо удачи!</b>\n\n"
+        "Раз в день — бесплатный спин: от <b>+10</b> до <b>+500 кр</b> на счёт. "
+        "Кредиты тратятся как обычные. 30 секунд — лови первый."
+    ),
+    (
+        "🎁 <b>Бесплатные кредиты ждут — а ты ни разу не крутил.</b>\n\n"
+        "Колесо удачи: один спин в сутки, минимум +10, джекпот <b>+500 кр</b>. "
+        "Крутани прямо сейчас."
+    ),
+    (
+        "🎡 <b>Секунду — у тебя есть бесплатный спин.</b>\n\n"
+        "Колесо раз в день дарит от +10 до <b>+500 кр</b>. "
+        "Ты его ещё не пробовал — самое время."
+    ),
+]
+
 _daily_push_scheduler = None
 
 
@@ -593,8 +613,23 @@ async def send_daily_push(bot_instance) -> None:
         subscribed_uids = set((await session.execute(
             select(Subscription.user_id).where(Subscription.is_active == True)
         )).scalars().all())
+        # Кто хоть раз крутил Колесо удачи (событие wheel_spin). НЕ-круткивших
+        # зовём на ПЕРВУЮ крутку (free-credit hook) — цикл «колесо готово»
+        # их не догоняет (ZSET наполняется только при спине).
+        spun_uids = set((await session.execute(
+            select(BotEvent.user_id).where(
+                BotEvent.event_type == 'wheel_spin'
+            ).distinct()
+        )).scalars().all())
 
     day_text, day_kb = await build_day_push()
+
+    # Redis для анти-спама wheel-нуджа (1 приглашение раз в 3 дня на юзера).
+    try:
+        from redis.asyncio import Redis as _RedisDP
+        _wheel_redis = _RedisDP.from_url(settings.REDIS_URL, decode_responses=True)
+    except Exception:
+        _wheel_redis = None
 
     # Коллаж результатов для 0-gen онбординга — тянем ОДИН раз (file_id reuse).
     # Показать вау для фото-продукта важнее текста. Если не достали — fallback
@@ -695,9 +730,24 @@ async def send_daily_push(bot_instance) -> None:
                 if sub_image_pool:
                     photo = random.choice(sub_image_pool)
             else:
-                # Обычный день-недели пуш
-                text = day_text
-                kb = day_kb
+                # Не крутил Колесо → зовём на ПЕРВУЮ крутку (бесплатные кредиты —
+                # повод вернуться). Кулдаун 3 дня (set NX EX) — не долбим каждый
+                # день. Иначе — обычный день-недели пуш.
+                nudge_wheel = False
+                if _wheel_redis is not None and user.id not in spun_uids:
+                    try:
+                        nudge_wheel = bool(await _wheel_redis.set(
+                            f'wheel_nudge:{user.telegram_id}', '1', nx=True, ex=3 * 86400))
+                    except Exception:
+                        nudge_wheel = False
+                if nudge_wheel:
+                    from app.handlers.wheel import _wheel_ready_kb
+                    from app.utils import premium_text as _pt
+                    text = _pt(random.choice(_WHEEL_FIRST_MSGS))
+                    kb = _wheel_ready_kb()
+                else:
+                    text = day_text
+                    kb = day_kb
 
             # Монетизационные пуши (подписка/покупка) шлём с РАЗНОЙ сценой
             # каждый раз — свежий кадр-напоминание «вот что можно сделать»
@@ -721,7 +771,51 @@ async def send_daily_push(bot_instance) -> None:
         except Exception:
             failed += 1
 
+    if _wheel_redis is not None:
+        try:
+            await _wheel_redis.aclose()
+        except Exception:
+            pass
     logger.info('Daily push complete', sent=sent, failed=failed, total=len(users))
+
+
+async def dispatch_admin_reminder(bot_instance) -> None:
+    """Минутный чек: одноразовое напоминание админам из bot_config
+    ['pending_admin_reminder'] = JSON {send_at_iso, text}. Когда наступит время —
+    шлёт текст всем админам и чистит конфиг (один раз). Для разовых напоминаний
+    (снять замеры и т.п.) без отдельных миграций."""
+    import json
+    from datetime import datetime, timezone
+    from app.database.repo.bot_config import get_config_value, set_config_value
+    try:
+        async with AsyncSessionFactory() as session:
+            raw = await get_config_value(session, 'pending_admin_reminder')
+    except Exception:
+        return
+    if not raw:
+        return
+    try:
+        data = json.loads(raw)
+        due = datetime.fromisoformat(data['send_at_iso'])
+        if due.tzinfo is None:
+            due = due.replace(tzinfo=timezone.utc)
+        if datetime.now(timezone.utc) < due:
+            return
+    except Exception:
+        async with AsyncSessionFactory() as session:
+            await set_config_value(session, 'pending_admin_reminder', '')
+            await session.commit()
+        return
+    text = data.get('text') or '🔔 Напоминание'
+    for aid in settings.admin_ids_list:
+        try:
+            await bot_instance.send_message(aid, text, parse_mode='HTML')
+        except Exception:
+            pass
+    async with AsyncSessionFactory() as session:
+        await set_config_value(session, 'pending_admin_reminder', '')
+        await session.commit()
+    logger.info('admin reminder sent')
 
 
 async def send_mystery_push(bot_instance) -> None:
@@ -1217,6 +1311,14 @@ def start_daily_push_scheduler(bot_instance):
         trigger=CronTrigger(hour=20, minute=0, timezone=settings.tz),
         args=[bot_instance],
         id='streak_reminders',
+        replace_existing=True,
+    )
+    # Одноразовые напоминания админу (bot_config['pending_admin_reminder']).
+    _daily_push_scheduler.add_job(
+        dispatch_admin_reminder,
+        trigger=CronTrigger(minute='*'),
+        args=[bot_instance],
+        id='admin_reminder_dispatch',
         replace_existing=True,
     )
     # Автосинк реального fal.ai баланса с API → baseline. Каждый час в hh:50.

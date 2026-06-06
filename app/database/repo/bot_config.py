@@ -19,6 +19,15 @@ DEFAULT_CONFIG: dict[str, tuple[str, str]] = {
     'model_cost_vision':('10', 'Photo analysis cost (credits)'),
     'daily_free_credits': ('15', 'Daily credit bonus for free plan users'),
     'referral_bonus':     ('250', 'Credits (burn, 7d) to referrer when invitee makes 1st photo'),
+    # Спарк-акция: до referral_boost_until награда за друга = referral_boost_amount.
+    # Пусто = акции нет. ISO-дата (UTC), напр. 2026-06-08T20:59:00+00:00.
+    'referral_boost_until':  ('', 'If set (ISO datetime), boosted referral reward until then'),
+    'referral_boost_amount': ('500', 'Boosted per-referral credits during the boost window'),
+    # Ранний доступ: новые пресеты первые N дней — только платящим (sub/пак),
+    # потом всем. enabled=1/0; subs_only=1 → только активная подписка.
+    'early_access_enabled':   ('1', 'Early access for new presets (paid-only window): 1/0'),
+    'early_access_days':      ('7', 'Days a new preset stays paid-only after launch'),
+    'early_access_subs_only': ('0', 'If 1, early access requires active subscription (not just any payment)'),
     # Подарок новичкам без рефера и промо. 23.05 поднят 300→500: при 300 кр
     # = 1.5 quality-сцены, и 80% юзеров уходили без единой генерации (страх
     # «потрачу всё на одну»). 500 = 2.5 топ-сцены = больше пространства для

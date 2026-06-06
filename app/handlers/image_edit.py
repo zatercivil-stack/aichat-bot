@@ -27,7 +27,7 @@ from app.database.repo.events import log_event_bg
 from app.database.repo.users import get_user, is_paid_user
 from app.keyboards.main import (
     PE_AU_GOLD, PE_BACK, PE_CARD, PE_CITY, PE_CLIP, PE_CROSS, PE_FIRE, PE_FRAME,
-    PE_GIFT, PE_HANDSHAKE, PE_HOME, PE_LEFT, PE_MONEY, PE_MOON_DARK, PE_PAINT,
+    PE_GIFT, PE_HANDSHAKE, PE_HOME, PE_LEFT, PE_MONEY, PE_MOON_DARK, PE_NEW, PE_PAINT,
     PE_RIGHT, PE_ROBOT, PE_SPARKLES, PE_THEATER, PE_UNLOCK,
     buy_or_invite_kb,
 )
@@ -170,7 +170,7 @@ PRESET_PAGES: list[dict] = [
         'title': '✨ Стиль и портрет',
         'subtitle': 'Новая атмосфера на том же кадре: стиль, свет, смена одежды и фона.',
         'price_hint': '~200 кр · 1 минута',
-        'items': ['cinema', 'vogue', 'anime', 'cyberpunk', 'golden_hour',
+        'items': ['pink_lux', 'cinema', 'vogue', 'anime', 'cyberpunk', 'golden_hour',
                   'retro_90s', 'change_clothes', 'remove_bg'],
     },
     {
@@ -178,7 +178,7 @@ PRESET_PAGES: list[dict] = [
         'subtitle': 'Улица, метро, авто, перевоплощения, смена локации. Лицо <b>в точности твоё</b>.',
         'price_hint': '~200 кр · 1-2 минуты',
         'items': [
-            'trunk_pov',
+            'pink_hotel', 'surf_suit', 'trunk_pov',
             'paris_night', 'rooftop_wine', 'subway_bouquet', 'rainy_taxi',
             'vintage_rain', 'berlin_metro', 'vintage_car', 'lion_steps',
             'tennis_70s', 'warrior', 'fisheye_paris', 'y2k_attitude',
@@ -190,7 +190,7 @@ PRESET_PAGES: list[dict] = [
         'subtitle': 'Дерзкие кадры, обложки, арт-портреты, неон и стихии. Бунт и характер.',
         'price_hint': '~200 кр',
         'items': [
-            'suit_smoke',
+            'city_feet', 'chrome_melt', 'ice_chrome', 'suit_smoke',
             'fisheye_porsche', 'y2k_fridge', 'macro_watermelon', 'night_racing',
             'bold_red_studio', 'magazine_vibe', 'doll_porcelain',
             'graffiti_zine', 'clockwork_text', 'korean_red_wall', 'cyber_neon',
@@ -418,7 +418,7 @@ def _label_for(preset_key: str, is_male: bool) -> str:
 # образ; мужской суффикс их не спасает). Остальные считаем unisex.
 _FEMALE_ONLY_PRESETS = {
     'vogue', 'vintage_car', 'lion_steps', 'subway_bouquet',
-    'paris_night', 'doll_porcelain', 'korean_red_wall',
+    'paris_night', 'doll_porcelain', 'korean_red_wall', 'pink_lux',
 }
 
 
@@ -450,6 +450,128 @@ def _gtoken_for(gender: str | None) -> str:
 
 
 EDIT_PRESETS: dict[str, tuple[str, str | None]] = {
+    # ── Новинки 05.06 (из мудборда) ──
+    'pink_hotel': (
+        '🛎 Розовый отель',
+        'Restyle the input photo as a whimsical, perfectly symmetrical Wes-Anderson-style portrait '
+        'inside a grand pastel-pink hotel lobby. The subject stands dead-centre, facing the camera '
+        'frontally at eye level, calm neutral expression with a faint soft smile; holds an old worn '
+        'antique book and a brass room key on a tasselled fob at chest height. They wear a dusty rose / '
+        'mauve velvet double-breasted overcoat with large round buttons over a cream silk blouse; refined '
+        'vintage styling. Behind them, a storybook symmetrical hotel lobby — soft pink walls, pink '
+        'coffered ceiling, tall arched windows with deep maroon curtains, gilded brass luggage trolleys '
+        'mirrored on each side, a bellhop in a plum-purple uniform with brass buttons standing small and '
+        'symmetric in the background, vintage leather suitcases on an ornate red-and-pink patterned '
+        'carpet. Soft, flat, even warm pastel light, low contrast, gentle and nostalgic. Rigorously '
+        'centred and symmetrical, frontal one-point perspective. Shot on 35mm film, muted pastel '
+        'pink-and-cream colour grading, fine grain, gentle vintage tonality, photorealistic.\n\n'
+        'CRITICAL: This is the SAME person from the input photo. Keep the exact face — same eye shape and '
+        'colour, brows, nose, lips, jawline, skin tone, hair colour and length, age. Change only the '
+        'wardrobe, hair styling, background and lighting. Do NOT beautify, slim or stylise the facial '
+        'features; keep all distinguishing marks (freckles, moles, asymmetries).'
+    ),
+    'city_feet': (
+        '🌆 Город у ног',
+        'Restyle the input photo as a cinematic low-angle night-city portrait shot from ground level '
+        'looking up: the subject crouches low on a wet downtown street, both hands reaching forward and '
+        'resting on the glossy wet asphalt closest to the camera (foreshortened), confident gaze turned '
+        'slightly off-camera. They wear a sharp dark tailored suit with a loosened black tie over an '
+        'open-collar white shirt; chunky gold signet rings, a gold watch and bracelet catch the light; '
+        'slicked-back hair. Behind them, towering glass skyscrapers recede into a deep green-teal night '
+        'sky, warm sodium street lamps and neon glow lining the avenue, wet reflections on the asphalt, '
+        'shallow depth of field melting the city into bokeh. Moody cinematic lighting: warm key on the '
+        'face and hands against the cool green night, crisp reflections, film-noir mood. Exactly ONE '
+        'head, TWO arms, TWO hands with FIVE fingers each, natural finger length and ring placement — no '
+        'extra fingers or limbs. 8k, ultra-realistic, 24mm wide lens at ground level, teal-and-amber '
+        'colour grading, fine film grain, photorealistic.\n\n'
+        'CRITICAL: This is the SAME person from the input photo. Keep the exact face — same eye shape and '
+        'colour, brows, nose, lips, jawline, skin tone, hair colour and length, age. Change only the '
+        'wardrobe, hair styling, setting and lighting. Do NOT beautify, slim or restyle the facial features.'
+    ),
+    'surf_suit': (
+        '🌊 Костюм в прибое',
+        'Restyle the input photo as a cinematic editorial shot seen from directly above (top-down '
+        'bird-eye view): the subject lies on the back at the waterline where the sea meets the sand, '
+        'arms loosely spread, legs relaxed, eyes gently closed, calm and serene, wet hair fanned on the '
+        'sand — a dramatic washed-ashore editorial mood. They wear a soaked formal black suit jacket '
+        'over a white dress shirt and a slim black tie, black trousers, drenched and clinging to the '
+        'body, fabric darkened by water. Shot straight down onto wet golden-grey sand and shallow '
+        'sea-green water; thin foamy waves wash diagonally across the frame over the body; scattered '
+        'pebbles and bubbling foam, glassy wet sheen on the sand. Soft natural overcast daylight, even '
+        'and diffuse, muted and cool, with a wet reflective sheen; desaturated teal-and-sand palette. '
+        'The subject lies on a diagonal across the frame at the foam line with water and sand negative '
+        'space. Exactly ONE head, TWO arms with TWO hands (five fingers each), TWO legs — natural '
+        'proportions, no extra limbs. 8k, top-down aerial view, 35mm-equivalent, natural light, muted '
+        'teal/sand cinematic colour grading, fine film grain, photorealistic editorial.\n\n'
+        'CRITICAL: This is the SAME person from the input photo. Keep the exact face — same eye shape, '
+        'brows, nose, lips, jawline, skin tone, hair colour and length, age. Change only the wardrobe, '
+        'the wet styling, the setting and lighting. Do NOT beautify, slim or restyle the facial '
+        'features; keep all distinguishing marks.'
+    ),
+    'chrome_melt': (
+        '💿 Жидкий хром',
+        'Restyle the input photo as a futuristic high-gloss beauty close-up framed by a liquid-chrome '
+        'distortion. Tight head-and-shoulders portrait, face nearly filling the frame, chin slightly '
+        'down and eyes up toward the camera, lips glossy and slightly parted, intense editorial gaze. '
+        'Minimal sleek black turtleneck; clean wet-look styling. Dark wet-look hair with a blunt fringe; '
+        'the outline of the hair and the edges of the frame dissolve into rippling liquid chrome / '
+        'molten mirror-metal — reflective mercury-like tendrils radiating outward around the head, like '
+        'a glitched chrome ripple; a single thin horizontal red laser line glows across the eye-line '
+        '(the eyes remain clearly visible). Deep midnight-blue gradient background, dark and clean, so '
+        'the chrome ripples and skin highlights pop. Warm golden key light raking across dewy, textured '
+        'skin against the cool blue background; crisp specular highlights on the lips, cheekbones and '
+        'chrome; the red laser as a sharp accent. 8k, 100mm macro beauty lens, ultra-glossy editorial '
+        'retouch, liquid-chrome / molten-metal displacement effect around the subject, warm-skin vs '
+        'cool-blue contrast, high micro-detail, faint grain, photorealistic.\n\n'
+        'CRITICAL: This is the SAME person from the input photo. Keep the exact face — same eye shape '
+        'and colour, brows, nose, lips, jawline, skin tone, hair colour, age — the chrome effect '
+        'surrounds the head but must NOT melt or distort the facial features themselves. Do NOT '
+        'beautify or restyle the face; keep every distinguishing mark.'
+    ),
+    'pink_lux': (
+        '🎀 Розовый люкс',
+        'Restyle the input photo as a warm, opulent old-Hollywood glamour portrait set in a pink '
+        'glitter boudoir. She leans elegantly back against a dark glossy round table, body turned '
+        'three-quarters, weight resting on one forearm, soft direct gaze into the camera, lips '
+        'relaxed, shoulders bare and graceful. She wears a blush-pink satin slip dress with a fitted '
+        'corset bodice and a softly shimmering rose-pink sequin skirt; a fluffy cream marabou-feather '
+        'stole draped across the forearms; layered pearl-and-rhinestone necklaces and delicate '
+        'earrings. Behind her, walls fully covered in rose-gold sequin glitter sparkle with countless '
+        'tiny highlights; an ornate gold-framed oval mirror and a gilded candelabra wall sconce with '
+        'lit candles glow warm; on the table a soft-pink round hatbox and a crystal-rhinestone clutch '
+        'catch the light; sparkling bokeh throughout. Warm golden candle-light key, soft and flattering '
+        'on the skin, with glittering specular sparkle bokeh; rosy-gold colour temperature. 8k, 85mm '
+        'portrait lens at f/1.8, luminous skin retouch with preserved texture, rose-gold and champagne '
+        'colour grading, faint film grain, photorealistic high-fashion editorial.\n\n'
+        'CRITICAL: This is the SAME person from the input photo. Keep the exact same face — same eye '
+        'shape and colour, brows, nose, lips, jawline, skin tone, hair colour and length, age. Change '
+        'only the outfit, hair styling, background and lighting. Do NOT beautify, slim or idealise the '
+        'facial features; keep all distinguishing marks (freckles, moles, asymmetries).'
+    ),
+    'ice_chrome': (
+        '🧊 Хром во льду',
+        'Restyle the input photo as a high-fashion cyber-goth editorial shot, photographed from '
+        'slightly above looking down, the subject set against a wall of cracked translucent blue ice. '
+        'The subject tilts the head up toward the camera with a confident half-smirk; one arm is raised '
+        'and reaching toward the lens, fingers spread in a relaxed claw hand-sign (foreshortened, '
+        'closest to camera); shoulders squared and powerful, chin slightly lifted. They wear an '
+        'oversized washed grey-blue distressed denim hooded jacket; over both shoulders sits elaborate '
+        'biomechanical chrome armour of interlocking polished silver thorns and spikes (sculpted '
+        'pauldrons), mirror-bright; futuristic wraparound sunglasses with a sculpted silver thorn frame; '
+        'many chunky silver statement rings and an articulated claw-ring on the reaching hand; cold '
+        'steel jewellery. Behind: a wall of shattered, faceted translucent blue ice / cracked glacial '
+        'glass, wet and glossy, catching cold light and melting into soft blue bokeh. Cold high-key blue '
+        'light from the front and above; crisp specular highlights skating across the chrome spikes and '
+        'wet ice; subtle rim light; icy cyan-and-steel palette. Exactly ONE head, TWO arms, TWO hands '
+        'with FIVE fingers each, natural finger length — no extra fingers, floating rings or extra '
+        'limbs. 8k, ultra-realistic, 24mm wide lens just above eye level, crisp micro-detail on metal '
+        'and ice, glossy editorial retouch, cold steel-blue colour grading, faint film grain, '
+        'photorealistic.\n\n'
+        'CRITICAL: This is the SAME person from the input photo. Keep the exact face beneath the styling '
+        '— same eye shape and colour, brows, nose, lips, jawline, skin tone, hair colour and length, '
+        'age. Apply only the armour, eyewear, background and lighting. Do NOT beautify, slim or restyle '
+        'the facial features.'
+    ),
     # ── Новинки 01.06 (из мудборда) ──
     'suit_smoke': (
         '🖤 Костюм и сигарета',
@@ -1622,19 +1744,27 @@ def _nav_cb(idx: int, page_idx, g: str = 'f') -> str:
 
 def _gallery_kb(idx: int, total: int, preset_key: str,
                  page_idx: int | None = None,
-                 g: str = 'f') -> InlineKeyboardMarkup:
+                 g: str = 'f', locked: bool = False) -> InlineKeyboardMarkup:
     """Клавиатура карусели. page_idx — внутри категории; g — токен пола
-    (несётся в callback навигации, чтобы листание не сбрасывало пол)."""
+    (несётся в callback навигации, чтобы листание не сбрасывало пол).
+    locked=True (early-access для free) → главная кнопка ведёт на подписку."""
     preview_is_male, _, is_any = _parse_gtoken(g)
     rows: list[list[InlineKeyboardButton]] = []
     # Главное действие — попробовать этот пресет. Пол просмотра несём в apply,
     # чтобы генерация пошла в мужском/женском режиме промпта под текущее превью.
     apply_g = 'm' if preview_is_male else 'f'
-    rows.append([InlineKeyboardButton.model_construct(
-        text='Хочу такое со своим лицом',
-        callback_data=f'gallery_try:{preset_key}:{apply_g}',
-        icon_custom_emoji_id=PE_SPARKLES, style='success',
-    )])
+    if locked:
+        rows.append([InlineKeyboardButton.model_construct(
+            text='Открыть подпиской',  # без 🔒 в тексте — он уже в иконке PE_UNLOCK
+            callback_data='subscription',
+            icon_custom_emoji_id=PE_UNLOCK, style='success',
+        )])
+    else:
+        rows.append([InlineKeyboardButton.model_construct(
+            text='Хочу такое со своим лицом',
+            callback_data=f'gallery_try:{preset_key}:{apply_g}',
+            icon_custom_emoji_id=PE_SPARKLES, style='success',
+        )])
     # Тумблер пола — только для «не важно» (юзер видит тот же пресет в M и Ж).
     # Жмёт → перерисовываем ЭТУ же карточку с другим превью (gcat на тот же idx).
     if is_any:
@@ -1747,8 +1877,81 @@ _NEW_DEFAULT_MAX = 12   # потолок раздела
 # TTL (чтобы пресеты «выпускались» без рестарта).
 _NEW_SECTION: list[str] = []            # состав раздела «Новинки», новейшие сверху
 _BADGE_KEYS: set[str] = set()           # = set(_NEW_SECTION); для _label_for (sync)
+# Ранний доступ: пресеты, запущенные в пределах early_access_days — платящим
+# раньше всех. Пересчитывается вместе со свежестью (тот же launch_map).
+_EARLY_ACCESS_KEYS: set[str] = set()
+_EARLY_ACCESS_UNTIL: dict[str, 'object'] = {}   # preset_key -> дата открытия для всех
+_EARLY_DEFAULT_DAYS = 7
 _FRESH_CACHE_TS: float = 0.0
 _FRESH_CACHE_TTL = 3600                  # 1ч
+
+
+def _is_early_access(preset_key: str) -> bool:
+    """Закрыт ли пресет ранним доступом СЕЙЧАС (sync, по кэшу из refresh_fresh_presets)."""
+    return preset_key in _EARLY_ACCESS_KEYS
+
+
+def _early_access_days_left(preset_key: str) -> int:
+    """Сколько дней до открытия пресета всем (≥1). 0 — если не early-access."""
+    import math
+    from datetime import datetime, timezone
+    rel = _EARLY_ACCESS_UNTIL.get(preset_key)
+    if not rel:
+        return 0
+    secs = (rel - datetime.now(timezone.utc)).total_seconds()
+    return max(1, math.ceil(secs / 86400)) if secs > 0 else 1
+
+
+async def _user_has_early_access(session, user_db_id: int) -> bool:
+    """Имеет ли юзер ранний доступ. По умолчанию — любой платящий (sub/пак за 30д);
+    при early_access_subs_only=1 — только активная подписка."""
+    try:
+        subs_only = await _read_int_config('early_access_subs_only', 0)
+    except Exception:
+        subs_only = 0
+    if subs_only:
+        from datetime import datetime, timezone
+        from app.database.repo.subscriptions import get_subscription
+        sub = await get_subscription(session, user_db_id)
+        if not (sub and sub.is_active):
+            return False
+        exp = getattr(sub, 'expires_at', None)
+        if exp is None:
+            return True
+        if exp.tzinfo is None:
+            exp = exp.replace(tzinfo=timezone.utc)
+        return exp > datetime.now(timezone.utc)
+    return await is_paid_user(session, user_db_id)
+
+
+async def _send_early_access_upsell(message: Message, preset_label: str,
+                                    days_left: int = 0) -> None:
+    """Апселл для free-юзера, тапнувшего early-access сцену. Ведёт на подписку/паки.
+    Честно: сцена откроется всем позже (не вечный лок). days_left — для таймера."""
+    ea_days = days_left or await _read_int_config('early_access_days', _EARLY_DEFAULT_DAYS)
+    kb = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton.model_construct(
+            text='Открыть подпиской — от 149₽', callback_data='subscription',
+            icon_custom_emoji_id=PE_UNLOCK, style='success')],
+        [InlineKeyboardButton.model_construct(
+            text='Купить пак', callback_data='shop',
+            icon_custom_emoji_id=PE_CARD, style='primary')],
+        [InlineKeyboardButton.model_construct(
+            text='Назад в каталог', callback_data='gallery_cats',
+            icon_custom_emoji_id=PE_BACK, style='danger')],
+    ])
+    text = premium_text(
+        f'🔒 <b>«{preset_label}» — ранний доступ</b>\n\n'
+        'Эту сцену уже примеряют те, кто оформил. ✨ Присоединяйся:\n\n'
+        '🔓 фото без водяного знака — всегда\n'
+        '🎁 свежие кредиты каждый день\n'
+        '💎 и эта сцена — прямо сейчас\n\n'
+        f'⏳ Для всех откроется примерно через <b>{ea_days} дн.</b> Но зачем ждать?'
+    )
+    try:
+        await message.answer(text, parse_mode='HTML', reply_markup=kb)
+    except Exception:
+        pass
 
 
 async def _read_int_config(key: str, default: int) -> int:
@@ -1770,7 +1973,7 @@ async def refresh_fresh_presets(force: bool = False) -> None:
     Свежесть — launched_at из реестра preset_launch (единая дата запуска для
     код- и DB-пресетов, не зависит от регенерации превью).
     Дёшево. Лениво по TTL; force=True при reload/правках."""
-    global _NEW_SECTION, _BADGE_KEYS, _FRESH_CACHE_TS
+    global _NEW_SECTION, _BADGE_KEYS, _FRESH_CACHE_TS, _EARLY_ACCESS_KEYS, _EARLY_ACCESS_UNTIL
     if not force and _FRESH_CACHE_TS and (time.monotonic() - _FRESH_CACHE_TS) < _FRESH_CACHE_TTL:
         return
     from datetime import datetime, timezone, timedelta
@@ -1798,6 +2001,24 @@ async def refresh_fresh_presets(force: bool = False) -> None:
             section = recent[:max(min_n, len(fresh_in_order))][:cap]
         _NEW_SECTION = section
         _BADGE_KEYS = set(section)
+        # Ранний доступ: пресеты с launched_at в пределах early_access_days (если
+        # включено). Тот же launch_map — без доп. запросов.
+        ea_enabled = await _read_int_config('early_access_enabled', 1)
+        ea_days = await _read_int_config('early_access_days', _EARLY_DEFAULT_DAYS)
+        if ea_enabled and ea_days > 0:
+            ea_cutoff = datetime.now(timezone.utc) - timedelta(days=ea_days)
+            ea_until = {}
+            for k, ts in launch_map.items():
+                # Только СЦЕНЫ (есть промпт). Утилиты (change_bg/remove_bg,
+                # prompt=None) не локаем — это инструменты, не витрина.
+                if (ts is not None and ts >= ea_cutoff and k in EDIT_PRESETS
+                        and EDIT_PRESETS[k][1] is not None):
+                    ea_until[k] = ts + timedelta(days=ea_days)  # дата открытия всем
+            _EARLY_ACCESS_KEYS = set(ea_until.keys())
+            _EARLY_ACCESS_UNTIL = ea_until
+        else:
+            _EARLY_ACCESS_KEYS = set()
+            _EARLY_ACCESS_UNTIL = {}
         _FRESH_CACHE_TS = time.monotonic()
     except Exception as exc:
         logger.warning('refresh_fresh_presets failed', error=str(exc)[:200])
@@ -1878,9 +2099,10 @@ async def _gallery_index_for_preset(preset_key: str) -> int | None:
 
 
 async def _build_gallery_card(idx: int, page_idx: int | None = None,
-                               g: str = 'f'):
+                               g: str = 'f', lock_early: bool = False):
     """Возвращает (file_id, caption, kb, total) для карточки idx внутри
     выбранной категории (page_idx) или всей галереи (None), с учётом пола (g).
+    lock_early=True (free-юзер) → на early-access сценах замок + апселл-кнопка.
     """
     items = await _build_gallery_list(page_idx, g)
     if not items:
@@ -1896,6 +2118,7 @@ async def _build_gallery_card(idx: int, page_idx: int | None = None,
         return None, '📭 <b>Тут пока пусто.</b>\n\nОткрой каталог заново 👇', empty_kb, 0
     idx = max(0, min(idx, len(items) - 1))
     key, label, file_id = items[idx]
+    locked = lock_early and _is_early_access(key)
     quality_mode = PRESET_QUALITY_MAP.get(key, 'quality')
     cost = await effective_cost_for(quality_mode)
     cat_hint = ''
@@ -1909,20 +2132,30 @@ async def _build_gallery_card(idx: int, page_idx: int | None = None,
         cat_hint = f"\n<i>Категория: 🔥 Что выбирают сейчас</i>"
     elif page_idx == 'new':
         cat_hint = f"\n<i>Категория: 🆕 Новинки</i>"
-    caption = (
-        f'🪄 <b>{label}</b>  ·  <i>{cost} кр</i>{cat_hint}\n\n'
-        f'<i>Так выглядит результат этого настроения. '
-        f'Хочешь — пришлю фото с твоим лицом за минуту.</i>'
-    )
-    kb = _gallery_kb(idx, len(items), key, page_idx, g)
+    # premium_text — чтобы 🪄/🆕/🔒/✨ были премиум-эмодзи (не обычные). Замок —
+    # ОДИН (ведущий значок), без дубля в тексте.
+    if locked:
+        _dl = _early_access_days_left(key)
+        caption = premium_text(
+            f'🔒 <b>{label}</b>  ·  <i>{cost} кр</i>{cat_hint}\n\n'
+            f'<i>✨ Ранний доступ. Свежую сцену можно примерить уже сейчас — '
+            f'по подписке или паку. Всем откроется через <b>{_dl} дн.</b></i>'
+        )
+    else:
+        caption = premium_text(
+            f'🪄 <b>{label}</b>  ·  <i>{cost} кр</i>{cat_hint}\n\n'
+            f'<i>Так выглядит результат этого настроения. '
+            f'Хочешь — пришлю фото с твоим лицом за минуту.</i>'
+        )
+    kb = _gallery_kb(idx, len(items), key, page_idx, g, locked=locked)
     return file_id, caption, kb, len(items)
 
 
 async def _send_gallery_card(target_msg: Message, idx: int,
                               page_idx: int | None = None,
-                              g: str = 'f') -> None:
+                              g: str = 'f', lock_early: bool = False) -> None:
     """Отправляет НОВОЕ сообщение с карточкой. page_idx=None — общая галерея."""
-    file_id, caption, kb, _ = await _build_gallery_card(idx, page_idx, g)
+    file_id, caption, kb, _ = await _build_gallery_card(idx, page_idx, g, lock_early)
     if file_id is None:
         # kb теперь содержит «К категориям» — прокидываем, чтобы не застрять.
         await target_msg.answer(caption, parse_mode='HTML', reply_markup=kb)
@@ -1937,11 +2170,11 @@ async def _send_gallery_card(target_msg: Message, idx: int,
 
 async def _edit_gallery_card(msg: Message, idx: int,
                               page_idx: int | None = None,
-                              g: str = 'f') -> bool:
+                              g: str = 'f', lock_early: bool = False) -> bool:
     """Заменяет ФОТО+CAPTION+KB в существующем сообщении (для навигации без
     спама). Returns True при успехе."""
     from aiogram.types import InputMediaPhoto
-    file_id, caption, kb, _ = await _build_gallery_card(idx, page_idx, g)
+    file_id, caption, kb, _ = await _build_gallery_card(idx, page_idx, g, lock_early)
     if file_id is None:
         return False
     try:
@@ -2004,8 +2237,9 @@ async def _categories_kb(g: str = 'f') -> InlineKeyboardMarkup:
         new_keys = [k for k in new_keys if k not in _FEMALE_ONLY_PRESETS]
     if new_keys:
         rows.append([InlineKeyboardButton.model_construct(
-            text=f'🆕 Новинки · {len(new_keys)}',
+            text=f'Новинки · {len(new_keys)}',  # 🆕 — премиум-иконкой, не в тексте
             callback_data=f'gcat:new:0:{g}', style='success',
+            icon_custom_emoji_id=PE_NEW,
         )])
 
     # 1. «Что выбирают сейчас» — динамический топ (соц-доказательство), если ≥3.
@@ -2470,6 +2704,16 @@ async def cb_gallery_cat(callback: CallbackQuery) -> None:
         await callback.answer()
         return
     await callback.answer()
+    # Ранний доступ: free-юзеру показываем замок на early-access сценах.
+    lock_early = False
+    if _EARLY_ACCESS_KEYS:
+        try:
+            async with AsyncSessionFactory() as _s:
+                _u = await get_user(_s, callback.from_user.id)
+                if _u:
+                    lock_early = not await _user_has_early_access(_s, _u.id)
+        except Exception:
+            lock_early = False
     # Текстовое меню → шлём новую фото-карточку (удалив меню). Фото → edit на месте.
     is_text = callback.message and callback.message.text is not None
     if is_text:
@@ -2477,11 +2721,11 @@ async def cb_gallery_cat(callback: CallbackQuery) -> None:
             await callback.message.delete()
         except Exception:
             pass
-        await _send_gallery_card(callback.message, idx=idx, page_idx=page_idx, g=g)
+        await _send_gallery_card(callback.message, idx=idx, page_idx=page_idx, g=g, lock_early=lock_early)
         return
-    edited = await _edit_gallery_card(callback.message, idx=idx, page_idx=page_idx, g=g)
+    edited = await _edit_gallery_card(callback.message, idx=idx, page_idx=page_idx, g=g, lock_early=lock_early)
     if not edited:
-        await _send_gallery_card(callback.message, idx=idx, page_idx=page_idx, g=g)
+        await _send_gallery_card(callback.message, idx=idx, page_idx=page_idx, g=g, lock_early=lock_early)
 
 
 @router.callback_query(F.data.startswith('gallery:'))
@@ -2595,6 +2839,20 @@ async def cb_gallery_try(callback: CallbackQuery, state: FSMContext) -> None:
     label = preset[0]
     preset_mode = PRESET_QUALITY_MAP.get(key, 'quality')
     cost = await effective_cost_for(preset_mode)
+
+    # Ранний доступ: сцена пока для платящих → free отправляем на апселл. Ловит и
+    # «Хочу такое» со старых сообщений (где кнопка ещё не была заменена замком).
+    if _is_early_access(key):
+        async with AsyncSessionFactory() as _s:
+            _u = await get_user(_s, callback.from_user.id)
+            has_ea = bool(_u) and await _user_has_early_access(_s, _u.id)
+        if not has_ea:
+            await callback.answer()
+            if _u:
+                log_event_bg(_u.id, 'early_access_blocked', preset_key=key)
+            await _send_early_access_upsell(callback.message, preset[0],
+                                            _early_access_days_left(key))
+            return
 
     # Проверка баланса заранее — если не хватит, сразу шлём upsell
     if not await _check_balance(callback, cost):
@@ -3844,9 +4102,9 @@ async def _run_edit_inner(
     bio.name = 'edited.png'
     photo_file = BufferedInputFile(bio.read(), filename='edited.png')
     if quality_mode == 'precise' and precise_swap_done:
-        mode_badge = '🛡 Точное лицо'
+        mode_badge = '🛡 2K HD · точное лицо'
     else:
-        mode_badge = '💎 Качество'
+        mode_badge = '💎 2K HD'
 
     # Запоминаем оригинал + результат в Redis на 1 час — для возможного refine_face
     refine_key = None
@@ -4039,17 +4297,17 @@ async def _run_edit_inner(
             )
     elif not paid:
         # Делаем ЦЕННОСТЬ оплаты явной: называем, что на фото знак, и что
-        # именно даёт оплата (чистое фото + HD + ежедневный бонус). Знак сам
-        # остаётся деликатным (виральность) — продаёт его снятие копия, не агрессия.
+        # именно даёт оплата (чистое фото + ежедневный бонус). HD/2K даётся ВСЕМ
+        # — не пишем как перк подписки (это было бы враньё). Знак деликатный
+        # (виральность) — продаёт его снятие копия, не агрессия.
         caption_parts.append(
             '<i>🔓 Сейчас в кадр вплетён знак <b>@NeyraChatBot</b>. Подписка '
-            'от <b>149₽/мес</b> = фото <b>без знака</b>, HD-качество и '
-            '<b>+30 кр</b> каждый день.</i>'
+            'от <b>149₽/мес</b> = фото <b>без знака</b> и <b>+30 кр</b> каждый день.</i>'
         )
 
     sent_msg = await message.answer_photo(
         photo=photo_file,
-        caption='\n'.join(caption_parts),
+        caption=premium_text('\n'.join(caption_parts)),
         reply_markup=InlineKeyboardMarkup(inline_keyboard=keyboard_rows),
     )
 
@@ -4059,8 +4317,9 @@ async def _run_edit_inner(
         hd = BufferedInputFile(result, filename='neyra_hd.png')
         await message.answer_document(
             document=hd,
-            caption='📎 <b>HD без сжатия</b> — открой файл для полного качества '
-                    '(в превью Telegram сжимает фото).',
+            caption=premium_text(
+                '📎 <b>2K HD оригинал</b> · 4 МП без сжатия — резкость как у студийной '
+                'съёмки. Превью Telegram ужимает, а в файле полная детализация.'),
             parse_mode='HTML',
         )
     except Exception as exc:

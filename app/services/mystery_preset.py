@@ -95,11 +95,20 @@ async def get_today_mystery() -> Optional[dict]:
         previewed = await get_previewed_keys(session, position=0)
 
     yesterday_key = stored.get('preset_key')
+    # Early-access сцены НЕ выдаём в «Подарке дня» — иначе free получит закрытый
+    # пресет бесплатно мимо paywall. Прогреваем кэш раннего доступа.
+    from app.handlers.image_edit import _is_early_access, refresh_fresh_presets
+    try:
+        await refresh_fresh_presets()
+    except Exception:
+        pass
     pool = [k for k in MYSTERY_ELIGIBLE
-            if k in EDIT_PRESETS and k in previewed and k != yesterday_key]
+            if k in EDIT_PRESETS and k in previewed and k != yesterday_key
+            and not _is_early_access(k)]
     if not pool:
-        # fallback: без исключения вчерашнего (но всё ещё только с превью)
-        pool = [k for k in MYSTERY_ELIGIBLE if k in EDIT_PRESETS and k in previewed]
+        # fallback: без исключения вчерашнего (но всё ещё только с превью и не early-access)
+        pool = [k for k in MYSTERY_ELIGIBLE if k in EDIT_PRESETS and k in previewed
+                and not _is_early_access(k)]
     if not pool:
         return None
     new_key = random.choice(pool)

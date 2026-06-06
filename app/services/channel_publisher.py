@@ -709,8 +709,14 @@ async def _generate_post(topic: str, web_context: str = '') -> str:
     # 24.05: список пресетов подставляем ДИНАМИЧЕСКИ из EDIT_PRESETS, а не
     # хардкодом — иначе свежие custom-пресеты (доберманы, дайнер-постер и т.д.)
     # никогда не выбирались бы AI для постов. Раньше пропадали 19 новых сцен.
-    from app.handlers.image_edit import EDIT_PRESETS
-    presets_block = '\n'.join(f'  {k} — {EDIT_PRESETS[k][0]}' for k in EDIT_PRESETS)
+    from app.handlers.image_edit import EDIT_PRESETS, _is_early_access, refresh_fresh_presets
+    # Early-access сцены НЕ предлагаем AI: free-кликер с поста упрётся в paywall.
+    try:
+        await refresh_fresh_presets()
+    except Exception:
+        pass
+    presets_block = '\n'.join(f'  {k} — {EDIT_PRESETS[k][0]}'
+                              for k in EDIT_PRESETS if not _is_early_access(k))
     system_msg = _SYSTEM_PROMPT.replace('__PRESETS_BLOCK__', presets_block)
     if web_context:
         system_msg += (
@@ -1089,6 +1095,17 @@ async def _build_post(
         if inferred:
             preset_key = inferred
             logger.info('preset inferred from body', preset=inferred, topic=topic)
+    # Safety-net: если пресет всё же оказался early-access (label-match/ручной) —
+    # заменяем на released-новинку, иначе free с поста упрётся в paywall.
+    if preset_key:
+        try:
+            from app.handlers.image_edit import _is_early_access, _get_new_preset_keys
+            if _is_early_access(preset_key):
+                alts = [k for k in await _get_new_preset_keys() if not _is_early_access(k)]
+                preset_key = alts[0] if alts else None
+                logger.info('post preset was early-access → replaced', new=preset_key)
+        except Exception:
+            pass
         else:
             logger.warning('neyra post has NO preset (degraded mode)', topic=topic)
     body, more_noise = _strip_ai_noise(body)

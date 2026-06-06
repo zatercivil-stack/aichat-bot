@@ -228,15 +228,35 @@ async def _maybe_grant_referral_bonus(redis, user_tg_id: int, bot) -> None:
         return
     await redis.delete(key)
     referrer_id = int(referrer_id_bytes)
-    burn_until = datetime.now(timezone.utc) + timedelta(days=REFERRAL_BURN_DAYS)
+    now = datetime.now(timezone.utc)
+    burn_until = now + timedelta(days=REFERRAL_BURN_DAYS)
     new_count = 0
+    from app.database.repo.bot_config import get_config_value
+    bonus_amount = REFERRAL_BONUS
     async with AsyncSessionFactory() as session:
-        await add_referral_bonus(session, referrer_id, amount=REFERRAL_BONUS,
+        # Спарк: до referral_boost_until награда за друга повышена (для рассылок-
+        # акций без передеплоя). Пусто/прошло → обычные REFERRAL_BONUS.
+        try:
+            bu_raw = (await get_config_value(session, 'referral_boost_until') or '').strip()
+            if bu_raw:
+                bu = datetime.fromisoformat(bu_raw)
+                if bu.tzinfo is None:
+                    bu = bu.replace(tzinfo=timezone.utc)
+                if now <= bu:
+                    amt = (await get_config_value(session, 'referral_boost_amount') or '500').strip()
+                    bonus_amount = max(REFERRAL_BONUS, int(amt))
+        except Exception:
+            bonus_amount = REFERRAL_BONUS
+        await add_referral_bonus(session, referrer_id, amount=bonus_amount,
                                  burn_expires_at=burn_until)
         referrer = await get_user(session, referrer_id)
         if referrer:
             new_count = referrer.referral_bonus  # счётчик приглашённых
         await session.commit()
+    # Замер: выплата реферала (для конверсии рассылок referral_advocate_push и т.п.).
+    if referrer:
+        log_event_bg(referrer.id, 'referral_paid', amount=bonus_amount,
+                     boosted=bool(bonus_amount > REFERRAL_BONUS))
     # Milestone-перк «без водяного знака» — в Redis (авто-истечение).
     wm_days = REFERRAL_WM_MILESTONES.get(new_count, 0)
     if wm_days:
@@ -245,8 +265,9 @@ async def _maybe_grant_referral_bonus(redis, user_tg_id: int, bot) -> None:
         except Exception:
             pass
     try:
+        boost_tag = ' (×2 акция!)' if bonus_amount > REFERRAL_BONUS else ''
         text = (
-            f'🎁 <b>+{REFERRAL_BONUS} кр на {REFERRAL_BURN_DAYS} дней!</b>\n\n'
+            f'🎁 <b>+{bonus_amount} кр на {REFERRAL_BURN_DAYS} дней!{boost_tag}</b>\n\n'
             'Твой друг сделал первое фото — бонус зачислен. '
             'Успей потратить за неделю.'
         )
