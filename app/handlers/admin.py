@@ -1321,6 +1321,16 @@ def start_daily_push_scheduler(bot_instance):
         id='admin_reminder_dispatch',
         replace_existing=True,
     )
+    # Реф-напоминание: пинг реферера, чей друг зашёл, но не сделал фото (бонус
+    # не сработал). Раз в день 12:30 МСК, один пинг на реферал (кулдаун в Redis).
+    from app.services.referral_reminder import send_referral_stall_reminders
+    _daily_push_scheduler.add_job(
+        send_referral_stall_reminders,
+        trigger=CronTrigger(hour=12, minute=30, timezone=settings.tz),
+        args=[bot_instance],
+        id='referral_stall_reminder',
+        replace_existing=True,
+    )
     # Автосинк реального fal.ai баланса с API → baseline. Каждый час в hh:50.
     # Источник истины — официальный billing endpoint, не локальный трекер
     # (который не видит админ-скриптовых генераций).
@@ -1896,11 +1906,12 @@ async def cmd_fix_payments(message: Message) -> None:
 
                     # Отправить уведомление пользователю
                     try:
+                        from app.database.repo.credits import total_balance as _tb
                         await message.bot.send_message(
                             chat_id=int(user_tg_id),
                             text=(
                                 f'✅ <b>{credits:,} кредитов зачислено!</b>\n\n'
-                                f'💳 Твой баланс: <b>{user.credits + credits:,} кредитов</b>\n\n'
+                                f'💳 Твой баланс: <b>{_tb(user):,} кредитов</b>\n\n'
                                 f'Просто напиши мне — я готов помочь 🚀'
                             ),
                             parse_mode='HTML',

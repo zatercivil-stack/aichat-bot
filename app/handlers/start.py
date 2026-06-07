@@ -106,15 +106,31 @@ async def build_menu_text(session, bot, user) -> str:
         Если не подписан → CTA, если подписан → благодарность. Этой инфы
         раньше не было нигде в интерфейсе.
     """
-    from app.database.repo.credits import DAILY_FREE_CREDITS, DAILY_CHANNEL_CREDITS
+    from app.database.repo.credits import DAILY_FREE_CREDITS, DAILY_CHANNEL_CREDITS, total_balance
     from app.services import channel_service
 
     welcome = await get_text(session, 'text_welcome', WELCOME_TEXT)
     parts = [welcome]
 
     if user is not None:
-        if user.credits > 0:
-            parts.append(f'💳 <b>На счету: {user.credits:,} кр</b>')
+        # ВАЖНО: показываем ПОЛНЫЙ баланс (burn + обычные). Раньше был user.credits
+        # — после welcome→burn (P5) новичок видел «15 кр» вместо 515 (welcome лежит
+        # в burn-пуле). Сгораемую часть подсвечиваем — urgency сохраняется.
+        bal = total_balance(user)
+        if bal > 0:
+            burn = user.burn_credits or 0
+            if burn > 0 and user.burn_expires_at:
+                from datetime import datetime, timezone
+                exp = user.burn_expires_at
+                if exp.tzinfo is None:
+                    exp = exp.replace(tzinfo=timezone.utc)
+                days = max(1, (exp - datetime.now(timezone.utc)).days + 1)
+                parts.append(
+                    f'💳 <b>На счету: {bal:,} кр</b> · '
+                    f'<i>{burn:,} сгорят через {days} дн. — успей потратить</i>'
+                )
+            else:
+                parts.append(f'💳 <b>На счету: {bal:,} кр</b>')
         else:
             parts.append(
                 '💳 <b>На счету: 0 кр</b> — пополни или подожди до завтра, '

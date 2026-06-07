@@ -2099,10 +2099,12 @@ async def _gallery_index_for_preset(preset_key: str) -> int | None:
 
 
 async def _build_gallery_card(idx: int, page_idx: int | None = None,
-                               g: str = 'f', lock_early: bool = False):
+                               g: str = 'f', lock_early: bool = False,
+                               show_ea_perk: bool = False):
     """Возвращает (file_id, caption, kb, total) для карточки idx внутри
     выбранной категории (page_idx) или всей галереи (None), с учётом пола (g).
-    lock_early=True (free-юзер) → на early-access сценах замок + апселл-кнопка.
+    lock_early=True (free на early-access) → замок + апселл-кнопка.
+    show_ea_perk=True (платящий на early-access) → позитив «у тебя ранний доступ».
     """
     items = await _build_gallery_list(page_idx, g)
     if not items:
@@ -2119,6 +2121,7 @@ async def _build_gallery_card(idx: int, page_idx: int | None = None,
     idx = max(0, min(idx, len(items) - 1))
     key, label, file_id = items[idx]
     locked = lock_early and _is_early_access(key)
+    perk = show_ea_perk and _is_early_access(key)  # платящий на свежей сцене
     quality_mode = PRESET_QUALITY_MAP.get(key, 'quality')
     cost = await effective_cost_for(quality_mode)
     cat_hint = ''
@@ -2141,6 +2144,13 @@ async def _build_gallery_card(idx: int, page_idx: int | None = None,
             f'<i>✨ Ранний доступ. Свежую сцену можно примерить уже сейчас — '
             f'по подписке или паку. Всем откроется через <b>{_dl} дн.</b></i>'
         )
+    elif perk:
+        _dl = _early_access_days_left(key)
+        caption = premium_text(
+            f'🔓 <b>{label}</b>  ·  <i>{cost} кр</i>{cat_hint}\n\n'
+            f'<i>✨ Ранний доступ — открыто тебе раньше всех. Остальные увидят '
+            f'эту сцену через <b>{_dl} дн.</b> Спасибо, что ты с нами 💜</i>'
+        )
     else:
         caption = premium_text(
             f'🪄 <b>{label}</b>  ·  <i>{cost} кр</i>{cat_hint}\n\n'
@@ -2153,9 +2163,10 @@ async def _build_gallery_card(idx: int, page_idx: int | None = None,
 
 async def _send_gallery_card(target_msg: Message, idx: int,
                               page_idx: int | None = None,
-                              g: str = 'f', lock_early: bool = False) -> None:
+                              g: str = 'f', lock_early: bool = False,
+                              show_ea_perk: bool = False) -> None:
     """Отправляет НОВОЕ сообщение с карточкой. page_idx=None — общая галерея."""
-    file_id, caption, kb, _ = await _build_gallery_card(idx, page_idx, g, lock_early)
+    file_id, caption, kb, _ = await _build_gallery_card(idx, page_idx, g, lock_early, show_ea_perk)
     if file_id is None:
         # kb теперь содержит «К категориям» — прокидываем, чтобы не застрять.
         await target_msg.answer(caption, parse_mode='HTML', reply_markup=kb)
@@ -2170,11 +2181,12 @@ async def _send_gallery_card(target_msg: Message, idx: int,
 
 async def _edit_gallery_card(msg: Message, idx: int,
                               page_idx: int | None = None,
-                              g: str = 'f', lock_early: bool = False) -> bool:
+                              g: str = 'f', lock_early: bool = False,
+                              show_ea_perk: bool = False) -> bool:
     """Заменяет ФОТО+CAPTION+KB в существующем сообщении (для навигации без
     спама). Returns True при успехе."""
     from aiogram.types import InputMediaPhoto
-    file_id, caption, kb, _ = await _build_gallery_card(idx, page_idx, g, lock_early)
+    file_id, caption, kb, _ = await _build_gallery_card(idx, page_idx, g, lock_early, show_ea_perk)
     if file_id is None:
         return False
     try:
@@ -2704,16 +2716,20 @@ async def cb_gallery_cat(callback: CallbackQuery) -> None:
         await callback.answer()
         return
     await callback.answer()
-    # Ранний доступ: free-юзеру показываем замок на early-access сценах.
+    # Ранний доступ: free → замок на early-access сценах; платящий → позитив-бейдж.
     lock_early = False
+    show_ea_perk = False
     if _EARLY_ACCESS_KEYS:
         try:
             async with AsyncSessionFactory() as _s:
                 _u = await get_user(_s, callback.from_user.id)
                 if _u:
-                    lock_early = not await _user_has_early_access(_s, _u.id)
+                    has_ea = await _user_has_early_access(_s, _u.id)
+                    lock_early = not has_ea
+                    show_ea_perk = has_ea
         except Exception:
             lock_early = False
+            show_ea_perk = False
     # Текстовое меню → шлём новую фото-карточку (удалив меню). Фото → edit на месте.
     is_text = callback.message and callback.message.text is not None
     if is_text:
@@ -2721,11 +2737,14 @@ async def cb_gallery_cat(callback: CallbackQuery) -> None:
             await callback.message.delete()
         except Exception:
             pass
-        await _send_gallery_card(callback.message, idx=idx, page_idx=page_idx, g=g, lock_early=lock_early)
+        await _send_gallery_card(callback.message, idx=idx, page_idx=page_idx, g=g,
+                                 lock_early=lock_early, show_ea_perk=show_ea_perk)
         return
-    edited = await _edit_gallery_card(callback.message, idx=idx, page_idx=page_idx, g=g, lock_early=lock_early)
+    edited = await _edit_gallery_card(callback.message, idx=idx, page_idx=page_idx, g=g,
+                                      lock_early=lock_early, show_ea_perk=show_ea_perk)
     if not edited:
-        await _send_gallery_card(callback.message, idx=idx, page_idx=page_idx, g=g, lock_early=lock_early)
+        await _send_gallery_card(callback.message, idx=idx, page_idx=page_idx, g=g,
+                                 lock_early=lock_early, show_ea_perk=show_ea_perk)
 
 
 @router.callback_query(F.data.startswith('gallery:'))
@@ -3811,7 +3830,10 @@ async def _run_edit_inner(
             if not ok:
                 await message.answer('💳 Недостаточно кредитов.', reply_markup=_BUY_KB)
                 return
-        remaining = user.credits
+        # ПОЛНЫЙ баланс (burn+обычные) — иначе после welcome→burn карточка
+        # показывала бы остаток без 500 welcome-кредитов и ложно считала low_balance.
+        from app.database.repo.credits import total_balance as _tb
+        remaining = _tb(user)
         user_db_id = user.id
         user_gender = user.gender  # для мужского режима промпта
         # «Не важно»-юзер выбирает пол прямо на карточке (тумблер M/Ж) — этот
@@ -4514,7 +4536,7 @@ async def _run_face_swap(message: Message, state: FSMContext, extra_prompt: str,
             )
             return
         ok = await deduct_credits(session, user, eff_swap)
-        remaining = user.credits
+        remaining = total_balance(user)  # полный баланс (burn+обычные)
         user_db_id = user.id
         paid = await is_paid_user(session, user_db_id)
         await session.commit()
