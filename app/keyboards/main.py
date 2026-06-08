@@ -94,6 +94,9 @@ def main_menu_kb(
     rows.append([InlineKeyboardButton.model_construct(
         text='Ещё', callback_data='settings_menu', icon_custom_emoji_id=PE_GEAR,
     )])
+    rows.append([InlineKeyboardButton(
+        text='🆘 Поддержка', callback_data='support_open',
+    )])
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
 

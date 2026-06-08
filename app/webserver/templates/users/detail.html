@@ -18,12 +18,17 @@
           <tr><td class="text-muted">Telegram ID</td><td><code>{{ user.telegram_id }}</code></td></tr>
           <tr><td class="text-muted">Username</td><td>{% if user.username %}<a href="https://t.me/{{ user.username }}" target="_blank">@{{ user.username }}</a>{% else %}—{% endif %}</td></tr>
           <tr><td class="text-muted">Имя</td><td>{{ user.full_name or '—' }}</td></tr>
-          <tr><td class="text-muted">Кредиты</td><td class="fw-bold gradient-text" style="font-size:1.2rem">{{ '{:,}'.format(user.credits) }}</td></tr>
+          <tr><td class="text-muted">Кредиты</td><td class="fw-bold gradient-text" style="font-size:1.2rem">{{ '{:,}'.format(user.display_balance) }}{% if user.active_burn > 0 %} <small class="text-warning" style="font-size:0.8rem" title="сгораемые (burn)">🔥{{ '{:,}'.format(user.active_burn) }} · обычных {{ '{:,}'.format(user.credits) }}</small>{% endif %}</td></tr>
           <tr><td class="text-muted">План</td><td><span class="badge bg-indigo">{{ user.current_plan.value|upper }}</span></td></tr>
-          <tr><td class="text-muted">Модель</td><td><code>{{ user.preferred_model }}</code></td></tr>
           <tr><td class="text-muted">Streak</td><td>{{ user.streak_days }} дней</td></tr>
-          <tr><td class="text-muted">Триал Claude</td><td>{{ user.trial_pro_messages_left }} из 3</td></tr>
-          <tr><td class="text-muted">Реф. бонус</td><td>{{ user.referral_bonus }}</td></tr>
+          <tr><td class="text-muted">Пришёл от</td><td>
+            {% if referrer %}<span class="badge bg-cyan">🤝 реферал</span> <a href="/admin/users/{{ referrer.id }}">{% if referrer.username %}@{{ referrer.username }}{% else %}#{{ referrer.id }}{% endif %}</a>
+            {% elif user.referrer_id %}<span class="badge bg-cyan">🤝 реферал</span> <span class="text-muted">tg {{ user.referrer_id }} (нет в базе)</span>
+            {% else %}<span class="text-muted">органика</span>{% endif %}</td></tr>
+          <tr><td class="text-muted">Пригласил</td><td>
+            {% if invitees %}<b>{{ invitees|length }}</b> чел · выплачено за <b>{{ ref_paid_count }}</b>
+            (<span class="{% if ref_earned_total > 0 %}text-success{% else %}text-muted{% endif %}">{{ '{:,}'.format(ref_earned_total) }} кр</span>)
+            {% else %}<span class="text-muted">никого</span>{% endif %}</td></tr>
           <tr><td class="text-muted">Заплатил всего</td><td class="text-success fw-bold">₽{{ '{:,.0f}'.format(total_paid|float) }}</td></tr>
           <tr><td class="text-muted">Зарегистрирован</td><td>{{ user.created_at|msk_strftime('%d.%m.%Y %H:%M') if user.created_at else '—' }}</td></tr>
           <tr><td class="text-muted">Последняя активность</td><td>{{ user.last_active_at|msk_strftime('%d.%m.%Y %H:%M') if user.last_active_at else '—' }}</td></tr>
@@ -58,6 +63,27 @@
         </div>
       </div>
     </div>
+
+    {% if invitees %}
+    <div class="card mb-3">
+      <div class="card-header"><h3 class="card-title"><i class="ti ti-users-group me-1"></i>Кого пригласил · {{ invitees|length }}
+        <small class="text-muted ms-2">активны: {{ invitees|selectattr('activated')|list|length }} · <b>выплачено за {{ ref_paid_count }}</b> · {{ '{:,}'.format(ref_earned_total) }} кр</small></h3></div>
+      <div class="card-body p-0">
+        <table class="table table-sm mb-0">
+          <thead><tr><th>Приглашённый</th><th>Сделал фото</th><th class="text-end">Пришёл</th></tr></thead>
+          <tbody>
+          {% for it in invitees %}
+            <tr>
+              <td><a href="/admin/users/{{ it.u.id }}">{% if it.u.username %}@{{ it.u.username }}{% else %}#{{ it.u.id }}{% endif %}</a></td>
+              <td>{% if it.activated %}<span class="badge bg-success">✅ да</span>{% else %}<span class="badge bg-secondary">⏳ ждём</span>{% endif %}</td>
+              <td class="text-end text-muted">{{ it.u.created_at|msk_strftime('%d.%m %H:%M') if it.u.created_at else '—' }}</td>
+            </tr>
+          {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+    {% endif %}
 
     <div class="card">
       <div class="card-header"><h3 class="card-title"><i class="ti ti-chart-pie me-1"></i>Использование моделей</h3></div>

@@ -67,6 +67,9 @@ body{font-feature-settings:"cv11","ss01";background:#0f1226;color:#dde2f4;font-s
 .form-control:focus,.form-select:focus{background:#0f1226;border-color:#6366f1;box-shadow:0 0 0 .2rem rgba(99,102,241,.2);color:#fff}
 .form-label{color:#a0a8c0;font-size:.8rem;font-weight:500;margin-bottom:.4rem}
 .badge{font-weight:500;letter-spacing:.02em;padding:.3em .65em;border-radius:.4rem}
+/* В тёмной теме у .bg-secondary текст совпадал с фоном → серые бейджи были пустыми.
+   Принудительно делаем читаемыми (план Free, метод оплаты, статус «—», organic и т.п.). */
+.badge.bg-secondary{background-color:#3a3f5e!important;color:#fff!important}
 .bg-purple{background:#a855f7!important}
 .bg-pink{background:#ec4899!important}
 .bg-indigo{background:#6366f1!important}

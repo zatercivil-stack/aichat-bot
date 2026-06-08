@@ -19,6 +19,10 @@ class ImageEditState(StatesGroup):
     waiting_face_prompt = State()   # face swap: опциональное уточнение
 
 
+class SupportState(StatesGroup):
+    waiting_message = State()
+
+
 class ChannelDraftState(StatesGroup):
     """Редактирование черновика канал-поста перед публикацией (админ)."""
     waiting_caption = State()       # ждём новый текст поста

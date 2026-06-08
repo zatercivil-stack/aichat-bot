@@ -30,7 +30,12 @@ class CommandResetStateMiddleware(BaseMiddleware):
             state: FSMContext | None = data.get('state')
             if state is not None:
                 try:
-                    if await state.get_state() is not None:
+                    from app.states import SupportState
+                    cur = await state.get_state()
+                    # Режим тикета — НЕ сбрасываем: пользователь в «опиши проблему»,
+                    # любой текст (в т.ч. начинающийся с /) = тело обращения; выход —
+                    # кнопкой «Отмена». Иначе такое сообщение терялось бы молча.
+                    if cur is not None and cur != SupportState.waiting_message.state:
                         await state.clear()
                 except Exception as exc:
                     logger.warning('command-reset state clear failed', error=str(exc)[:200])

@@ -5,7 +5,7 @@
   <div class="row row-cards">
     <div class="col-md-7">
       <div class="card">
-        <div class="card-header"><h3 class="card-title"><i class="ti ti-cpu me-1"></i>Стоимость моделей (кредитов / запрос)</h3></div>
+        <div class="card-header"><h3 class="card-title"><i class="ti ti-cpu me-1"></i>Стоимость операций (кредитов / запрос)</h3></div>
         <div class="card-body">
           <div class="row g-3">
           {% for key, label, icon, color in model_rows %}
@@ -19,8 +19,9 @@
           {% endfor %}
           </div>
           <div class="text-muted small mt-3">
-            После пивота visual-first дорогие LLM-тарифы (GPT-5, Claude Sonnet/Opus) убраны из бота —
-            в чате осталась только DeepSeek. Старые ключи в bot_config остаются для обратной совместимости.
+            Проект visual-first: чат и дорогие LLM-тарифы (GPT-5, Claude) убраны со страницы —
+            чат вторичен и работает на бесплатной DeepSeek. Главные деньги — фото-операции ниже,
+            пакеты и подписки.
           </div>
         </div>
       </div>

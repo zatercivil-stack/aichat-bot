@@ -63,14 +63,20 @@ def shop_kb() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
-def confirm_pack_kb(pack_id: str) -> InlineKeyboardMarkup:
+def confirm_pack_kb(pack_id: str, card_discount: int = 0) -> InlineKeyboardMarkup:
     # 3 способа оплаты ПРЯМО на карточке (без промежуточного экрана). Один
     # премиум-эмодзи на кнопку (без дублей). Stars-цена показывается.
+    # Реф-кэшбэк применяется ТОЛЬКО к карте → итоговую цену показываем на самой
+    # кнопке карты, чтобы Stars/Crypto не вводили в заблуждение «общей» скидкой.
     from app.services.payments_alt import product_info
     _info = product_info(pack_id)
     _stars = _info['stars'] if _info else None
+    _base = int(_info['rub']) if _info else 0
+    _card_text = 'Карта/СБП/СберПэй/Т-Пэй'
+    if card_discount > 0 and _base:
+        _card_text = f'Картой · {_base - int(card_discount)}₽ (−{int(card_discount)}₽ скидка)'
     return InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton.model_construct(text='Карта/СБП/СберПэй/Т-Пэй', callback_data=f'pay_rub:{pack_id}', icon_custom_emoji_id=PE_CARD, style='success')],
+        [InlineKeyboardButton.model_construct(text=_card_text, callback_data=f'pay_rub:{pack_id}', icon_custom_emoji_id=PE_CARD, style='success')],
         [InlineKeyboardButton.model_construct(text=f'⭐ Stars{f" · {_stars}" if _stars else ""}', callback_data=f'payst:{pack_id}', style='primary'),
          InlineKeyboardButton.model_construct(text='💎 Cryptobot', callback_data=f'paycr:{pack_id}', style='primary')],
         [InlineKeyboardButton.model_construct(text='Выбрать другой пакет', callback_data='shop', icon_custom_emoji_id=PE_BACK, style='danger')],

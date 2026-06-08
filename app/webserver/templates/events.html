@@ -12,7 +12,10 @@
   <a href="/admin/api/export/events.csv?event_type={{ event_type }}&days={{ days }}" class="btn btn-outline-secondary"><i class="ti ti-file-export me-1"></i>CSV</a>
 </div>
 <div class="col-auto">
-  <a href="/admin/logs" class="btn btn-primary"><i class="ti ti-activity me-1"></i>Live-логи</a>
+  <div class="btn-group">
+    <a href="/admin/events" class="btn btn-sm btn-primary active"><i class="ti ti-list me-1"></i>История</a>
+    <a href="/admin/logs" class="btn btn-sm btn-outline-secondary"><i class="ti ti-activity me-1"></i>Живой поток</a>
+  </div>
 </div>
 {% endblock %}
 

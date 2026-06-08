@@ -154,6 +154,19 @@ async def process_succeeded_payment(
                 logger.error('process_payment: subscription activation failed',
                              payment_db_id=payment_db_id, error=str(exc)[:200])
 
+        # Реф-кэшбэк (вариант B): фиксируем ДО пометки SUCCEEDED — был ли это
+        # ПЕРВЫЙ платёж юзера (тогда его рефереру капнёт кэшбэк) и сколько своего
+        # кэшбэка юзер потратил на эту покупку (спишем после commit).
+        from sqlalchemy import select as _sel, func as _func
+        from app.database.models import Payment as _Pay
+        _prior_succeeded = await session.scalar(
+            _sel(_func.count()).select_from(_Pay).where(
+                _Pay.user_id == user.id,
+                _Pay.status == PaymentStatus.SUCCEEDED)) or 0
+        _rc_referrer_tg = user.referrer_id
+        _rc_cashback_used = payment.extra.get('cashback_used', 0)
+        _rc_paid_amount = float(payment.amount)
+
         # 3. Помечаем платёж SUCCEEDED (после кредитов и sub — чтобы при сбое
         # на предыдущих шагах при следующем поллинге был ретрай)
         await update_payment(
@@ -194,6 +207,35 @@ async def process_succeeded_payment(
         except Exception as exc:
             logger.error('process_payment: notification failed',
                          user_tg_id=user_tg_id, error=str(exc)[:200])
+
+    # 4b. Реф-кэшбэк (вариант B) — после commit, best-effort, не валит активацию.
+    try:
+        from app.services import referral_cashback as _rc
+        # (a) юзер потратил свой кэшбэк на эту покупку → списываем баланс
+        if _rc_cashback_used and int(_rc_cashback_used) > 0:
+            await _rc.redeem(int(user_tg_id), int(_rc_cashback_used))
+        # (b) ПЕРВЫЙ платёж приглашённого → рефереру 30% как скидка + пуш
+        if _prior_succeeded == 0 and _rc_referrer_tg:
+            granted = await _rc.grant(int(_rc_referrer_tg), _rc_paid_amount)
+            if granted > 0:
+                try:
+                    bot_instance = bot
+                    if bot_instance is None:
+                        from app.bot import get_bot
+                        bot_instance = get_bot()
+                    if bot_instance:
+                        from app.utils import premium_text
+                        await bot_instance.send_message(
+                            int(_rc_referrer_tg),
+                            premium_text(
+                                f'🎉 <b>Друг оформил покупку — тебе скидка {granted}₽!</b>\n\n'
+                                f'Скидка на покупку кредитов (паки), действует 14 дней.\n'
+                                f'Жми <b>/shop</b> — применится при оплате картой.'),
+                            parse_mode='HTML')
+                except Exception:
+                    pass
+    except Exception as exc:
+        logger.warning('referral cashback hook failed', error=str(exc)[:150])
 
     # 5. Admin alert + experiment conversion (best-effort)
     try:

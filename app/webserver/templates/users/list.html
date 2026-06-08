@@ -94,8 +94,13 @@
           <td><code>{{ u.telegram_id }}</code></td>
           <td>
             {% if u.username %}<strong>@{{ u.username }}</strong>{% else %}{{ u.full_name or '—' }}{% endif %}
+            {% if u.referrer_id %}<span class="badge bg-cyan-lt ms-1" title="пришёл по приглашению">реф</span>{% endif %}
+            {% if invited_counts.get(u.telegram_id) %}<span class="badge bg-teal-lt ms-1" title="пригласил пользователей">🤝{{ invited_counts[u.telegram_id] }}</span>{% endif %}
           </td>
-          <td class="text-end fw-semibold">{{ '{:,}'.format(u.credits) }}</td>
+          <td class="text-end fw-semibold">
+            {{ '{:,}'.format(u.display_balance) }}
+            {% if u.active_burn > 0 %}<br><small class="text-warning" title="сгораемые (burn)">🔥{{ '{:,}'.format(u.active_burn) }}</small>{% endif %}
+          </td>
           <td>
             {% if u.current_plan.value == 'free' %}<span class="badge bg-secondary">Free</span>
             {% elif u.current_plan.value == 'basic' %}<span class="badge bg-primary">Basic</span>

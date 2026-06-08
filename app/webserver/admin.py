@@ -413,6 +413,17 @@ async def users_list(
 
         total = await session.scalar(select(func.count()).select_from(q.subquery())) or 0
         users = (await session.execute(q.offset(offset).limit(per_page))).scalars().all()
+        # Сколько каждый из показанных юзеров пригласил (бейдж «🤝N» в списке).
+        # Один агрегат-запрос на страницу: referrer_id (= telegram_id) → count.
+        invited_counts = {}
+        _tg_ids = [u.telegram_id for u in users]
+        if _tg_ids:
+            _rows = (await session.execute(
+                select(User.referrer_id, func.count())
+                .where(User.referrer_id.in_(_tg_ids))
+                .group_by(User.referrer_id)
+            )).all()
+            invited_counts = {rid: cnt for rid, cnt in _rows}
 
     total_pages = max(1, (total + per_page - 1) // per_page)
     qs = f'search={search}&plan={plan}&activity={activity}&credits_min={credits_min}&credits_max={credits_max}'
@@ -423,6 +434,7 @@ async def users_list(
         users=users, total=total, page=page, total_pages=total_pages, qs=qs,
         search=search, plan=plan, activity=activity,
         credits_min=credits_min, credits_max=credits_max,
+        invited_counts=invited_counts,
     )
 
 
@@ -475,6 +487,36 @@ async def user_detail(
         )
         event_type_counts = [(r.event_type, int(r.cnt)) for r in event_type_rows]
 
+        # ── Реферальная картина ──────────────────────────────────────────
+        # Кто пригласил (referrer_id хранит telegram_id реферера).
+        referrer = None
+        if user.referrer_id:
+            referrer = await session.scalar(
+                select(User).where(User.telegram_id == user.referrer_id))
+        # Кого пригласил этот юзер + активировался ли каждый (сделал ≥1 фото →
+        # выплата сработала). Pending (без фото) = реферер ещё НЕ получил кр.
+        invitees = []
+        invited_rows = (await session.execute(
+            select(User).where(User.referrer_id == user.telegram_id)
+            .order_by(User.created_at.desc())
+        )).scalars().all()
+        if invited_rows:
+            edited_ids = set((await session.execute(
+                select(BotEvent.user_id).where(
+                    BotEvent.user_id.in_([iu.id for iu in invited_rows]),
+                    BotEvent.event_type == 'image_edited').distinct()
+            )).scalars().all())
+            for iu in invited_rows:
+                invitees.append({'u': iu, 'activated': iu.id in edited_ids})
+        # Сколько реально получил за рефералов (сумма amount в referral_paid).
+        ref_paid_rows = (await session.execute(
+            select(BotEvent).where(
+                BotEvent.user_id == user_id,
+                BotEvent.event_type == 'referral_paid')
+        )).scalars().all()
+        ref_earned_total = sum(int((e.extra or {}).get('amount', 0)) for e in ref_paid_rows)
+        ref_paid_count = len(ref_paid_rows)
+
     dialog = None
     if show_dialog:
         try:
@@ -490,6 +532,8 @@ async def user_detail(
         total_paid=total_paid, model_usage=model_usage,
         event_type_counts=event_type_counts, event_type=event_type,
         dialog=dialog,
+        referrer=referrer, invitees=invitees,
+        ref_earned_total=ref_earned_total, ref_paid_count=ref_paid_count,
     )
 
 
@@ -733,13 +777,12 @@ async def pricing_page(admin_session: Optional[str] = Cookie(default=None), msg:
         await ensure_defaults(session)
         config = await get_all_config(session)
 
-    # После пивота visual-first дорогие LLM (GPT-5 / Claude Sonnet/Opus) скрыты
-    # в боте — соответствующие model_cost_basic/mid/pro/ultra/vision больше не
-    # показываем (ключи в bot_config остаются для обратной совместимости).
-    # Цены image_edit / face_swap живут в MODEL_COSTS (код) и регулируются
-    # промо-скидкой на этой же странице (image_promo_discount + image_promo_until).
+    # После пивота visual-first дорогие LLM (GPT-5 / Claude Sonnet/Opus) и
+    # сам чат убраны с этой страницы — ключи model_cost_basic/mid/pro/ultra/
+    # vision/free остаются в bot_config для обратной совместимости, но не
+    # редактируются здесь (чат вторичен и работает на бесплатной DeepSeek).
+    # Реальные деньги — фото-операции (ниже) + пакеты/подписки.
     model_rows = [
-        ('model_cost_free',   'Чат (DeepSeek)',         '💬', 'secondary'),
         ('model_cost_image',  'Картинка с нуля',        '🎨', 'purple'),
         ('model_cost_voice',  'Голос (транскрипция)',   '🎤', 'success'),
     ]
@@ -755,7 +798,7 @@ async def pricing_page(admin_session: Optional[str] = Cookie(default=None), msg:
         (p['id'], f"{p['emoji']} {p['name']}", str(p['credits']), str(p['rub']))
         for p in ALL_PACKS
     ]
-    return render('pricing.html', title='Цены и модели', active='pricing', msg=msg,
+    return render('pricing.html', title='Цены', active='pricing', msg=msg,
                   config=config, model_rows=model_rows, packs=packs,
                   photo_prices=photo_prices)
 
@@ -946,7 +989,9 @@ async def events_page(
 async def logs_page(admin_session: Optional[str] = Cookie(default=None)):
     if not _check_auth(admin_session):
         return _redirect_login()
-    return render('logs.html', title='Реалтайм-логи', pretitle='SSE поток', active='logs')
+    # active='events' — logs и events слиты в один пункт меню «События»
+    # (вкладки «Живой поток» / «История»).
+    return render('logs.html', title='События · живой поток', pretitle='SSE', active='events')
 
 
 def _ev_payload(ev: BotEvent, uname: str | None, tg_id: int | None, uid: int | None) -> dict:
@@ -2851,17 +2896,13 @@ async def health_page(admin_session: Optional[str] = Cookie(default=None)):
     except Exception as exc:
         health['redis_error'] = str(exc)[:200]
 
-    # AI model stats — gather all configured models
+    # AI model stats — только фото-модели (visual-first продукт). Текстовый
+    # чат-чейн (TIER_MODELS: DeepSeek/GPT/Gemini) убран: чат вторичен и работает
+    # на бесплатной DeepSeek — в health он только зашумлял список.
     try:
-        from app.services.ai_service import TIER_MODELS
         from app.services.image_edit_service import EDIT_MODELS_QUALITY, EDIT_MODELS_FAST, FACE_SWAP_MODELS
         all_models: list[str] = []
         seen = set()
-        for tier_list in TIER_MODELS.values():
-            for m in tier_list:
-                if m not in seen:
-                    seen.add(m)
-                    all_models.append(m)
         for src in (EDIT_MODELS_QUALITY, EDIT_MODELS_FAST, FACE_SWAP_MODELS):
             for m, _ in src:
                 if m not in seen:
@@ -3088,3 +3129,146 @@ async def export_events_csv(
     ]
     header = ['id', 'telegram_id', 'username', 'event_type', 'model_key', 'credits_spent', 'created_at']
     return _csv_response(rows, header, 'events.csv')
+
+
+# ── SUPPORT TICKETS ─────────────────────────────────────────────────────────────
+
+@router.get('/support', response_class=HTMLResponse)
+async def support_list(
+    admin_session: Optional[str] = Cookie(default=None), status: str = '',
+):
+    if not _check_auth(admin_session):
+        return _redirect_login()
+    from app.database.repo.support import list_tickets
+    async with AsyncSessionFactory() as session:
+        tickets = await list_tickets(session, status=(status or None))
+    return render('support/list.html', title='Поддержка', active='support',
+                  tickets=tickets, status=status)
+
+
+@router.get('/support/{ticket_id}', response_class=HTMLResponse)
+async def support_thread(
+    ticket_id: int, admin_session: Optional[str] = Cookie(default=None), msg: str = '',
+):
+    if not _check_auth(admin_session):
+        return _redirect_login()
+    from app.database.repo.support import get_messages, get_ticket
+    async with AsyncSessionFactory() as session:
+        ticket = await get_ticket(session, ticket_id)
+        if not ticket:
+            return HTMLResponse('Не найдено', status_code=404)
+        messages = await get_messages(session, ticket_id)
+        user = await session.scalar(select(User).where(User.id == ticket.user_id))
+    return render('support/thread.html', title=f'Обращение #{ticket_id}',
+                  active='support', msg=msg, ticket=ticket, messages=messages, user=user)
+
+
+@router.post('/support/{ticket_id}/reply')
+async def support_reply(
+    ticket_id: int, request: Request,
+    body: str = Form(...),
+    admin_session: Optional[str] = Cookie(default=None),
+):
+    if not _check_auth(admin_session):
+        return _redirect_login()
+    import html as _html
+    from app.database.repo.support import add_admin_reply, add_system_note, get_ticket
+
+    body = (body or '').strip()
+    if not body:
+        return RedirectResponse(f'/admin/support/{ticket_id}?msg=Пустой+ответ', status_code=302)
+
+    async with AsyncSessionFactory() as session:
+        ticket = await get_ticket(session, ticket_id)
+        if not ticket:
+            return HTMLResponse('Не найдено', status_code=404)
+        user = await session.scalar(select(User).where(User.id == ticket.user_id))
+        await add_admin_reply(session, ticket_id, body)
+        await session.commit()
+        telegram_id = user.telegram_id if user else None
+
+    delivered = False  # ставим True только после фактической отправки
+    if telegram_id:
+        from aiogram.exceptions import TelegramForbiddenError
+        from aiogram.types import InlineKeyboardButton as IB, InlineKeyboardMarkup as IM
+        from app.bot import get_bot
+        bot = get_bot()
+        if bot:
+            kb = IM(inline_keyboard=[
+                [IB(text='Дописать к обращению', callback_data=f'support_reply:{ticket_id}')],
+                [IB(text='Вопрос решён', callback_data=f'support_close:{ticket_id}')],
+            ])
+            text = (
+                f"💬 <b>Ответ поддержки по обращению №{ticket_id}:</b>\n\n"
+                f"{_html.escape(body)}"
+            )
+            try:
+                await bot.send_message(telegram_id, text, parse_mode='HTML', reply_markup=kb)
+                delivered = True
+            except TelegramForbiddenError:
+                logger.warning('support reply not delivered: user blocked bot',
+                               ticket_id=ticket_id, telegram_id=telegram_id)
+                async with AsyncSessionFactory() as session:
+                    await add_system_note(
+                        session, ticket_id,
+                        '⚠️ Ответ не доставлен: пользователь заблокировал бота.',
+                    )
+                    await session.commit()
+            except Exception as exc:
+                logger.warning('support reply send failed',
+                               ticket_id=ticket_id, error=str(exc)[:200])
+
+    log_action_bg('token', 'support.reply',
+                  ip=request.client.host if request.client else None,
+                  ticket_id=ticket_id, delivered=delivered)
+    note = 'Ответ+отправлен' if delivered else 'Ответ+сохранён,+но+не+доставлен'
+    return RedirectResponse(f'/admin/support/{ticket_id}?msg={note}', status_code=302)
+
+
+@router.post('/support/{ticket_id}/close')
+async def support_close(
+    ticket_id: int, request: Request,
+    admin_session: Optional[str] = Cookie(default=None),
+):
+    if not _check_auth(admin_session):
+        return _redirect_login()
+    from app.database.repo.support import close_ticket as _close
+    async with AsyncSessionFactory() as session:
+        await _close(session, ticket_id)
+        await session.commit()
+    log_action_bg('token', 'support.close',
+                  ip=request.client.host if request.client else None,
+                  ticket_id=ticket_id)
+    return RedirectResponse(f'/admin/support/{ticket_id}?msg=Обращение+закрыто', status_code=302)
+
+
+@router.get('/support/{ticket_id}/attachment/{message_id}')
+async def support_attachment(
+    ticket_id: int, message_id: int, admin_session: Optional[str] = Cookie(default=None),
+):
+    """Proxy фото вложения тикета по attachment_file_id (как photo_templates_thumb)."""
+    if not _check_auth(admin_session):
+        return Response(status_code=403)
+    from app.database.models import SupportMessage
+    async with AsyncSessionFactory() as session:
+        msg = await session.scalar(
+            select(SupportMessage).where(
+                SupportMessage.id == message_id,
+                SupportMessage.ticket_id == ticket_id,
+            )
+        )
+    if not msg or not msg.attachment_file_id:
+        return Response(status_code=404)
+    try:
+        from app.bot import get_bot
+        bot = get_bot()
+        if not bot:
+            return Response(status_code=503)
+        tg_file = await bot.get_file(msg.attachment_file_id)
+        data = await bot.download_file(tg_file.file_path)
+        return Response(content=data.read(), media_type='image/jpeg',
+                        headers={'Cache-Control': 'public, max-age=3600'})
+    except Exception as exc:
+        logger.warning('support attachment proxy failed',
+                       message_id=message_id, error=str(exc)[:200])
+        return Response(status_code=500)

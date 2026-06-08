@@ -72,6 +72,12 @@ async def get_today_mystery() -> Optional[dict]:
     Подсказка: label берётся живым из EDIT_PRESETS (поддержит переименования)."""
     from app.handlers.image_edit import EDIT_PRESETS
 
+    # Подарок дня доступен ТОЛЬКО по вторникам и четвергам. В остальные дни
+    # возвращаем None — это разом скрывает кнопку в меню, не даёт уйти пушу и
+    # блокирует тап «Сегодня бесплатно» (все точки входа гейтятся этим методом).
+    if today_msk().weekday() not in (1, 3):  # Mon=0 … Tue=1, Thu=3
+        return None
+
     today = today_msk().isoformat()
     async with AsyncSessionFactory() as session:
         raw = await get_config_value(session, _CONFIG_KEY)

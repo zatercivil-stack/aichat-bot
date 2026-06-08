@@ -4617,7 +4617,20 @@ async def _run_face_swap(message: Message, state: FSMContext, extra_prompt: str,
         except Exception as exc:
             logger.warning('tpl conversion bump failed', error=str(exc)[:200])
 
-    if not paid:
+    # Реф-перк «неделя без знака» (wm_free) снимает знак и на face-swap — как в
+    # основном пути генерации. Иначе перк «без знака на всех фото» был бы неполным.
+    wm_free = False
+    try:
+        from redis.asyncio import Redis as _RedisWM
+        from app.config import settings as _wmset
+        _wmr = _RedisWM.from_url(_wmset.REDIS_URL, decode_responses=True)
+        try:
+            wm_free = bool(await _wmr.get(f'wm_free:{source_user_id}'))
+        finally:
+            await _wmr.aclose()
+    except Exception:
+        wm_free = False
+    if not (paid or wm_free):
         result = watermark.add_watermark(result)
 
     await status.delete()

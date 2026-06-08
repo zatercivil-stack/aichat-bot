@@ -1,0 +1,73 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="card mb-3">
+  <div class="card-body py-2">
+    <form method="get" class="row g-2 align-items-end">
+      <div class="col-md-3">
+        <label class="form-label">Статус</label>
+        <select name="status" class="form-select">
+          <option value="">Все</option>
+          <option value="open"     {% if status=='open' %}selected{% endif %}>Открытые</option>
+          <option value="answered" {% if status=='answered' %}selected{% endif %}>Отвечено</option>
+          <option value="closed"   {% if status=='closed' %}selected{% endif %}>Закрытые</option>
+        </select>
+      </div>
+      <div class="col-md-3 d-flex gap-2">
+        <button class="btn btn-primary"><i class="ti ti-filter me-1"></i>Применить</button>
+        <a href="/admin/support" class="btn btn-outline-secondary">Сбросить</a>
+      </div>
+    </form>
+  </div>
+</div>
+
+<div class="card">
+  <div class="card-header">
+    <h3 class="card-title mb-0">Обращения: <strong>{{ tickets|length }}</strong></h3>
+  </div>
+  <div class="table-responsive">
+    <table class="table table-vcenter mb-0">
+      <thead>
+        <tr>
+          <th class="w-1">№</th>
+          <th>Юзер</th>
+          <th>Статус</th>
+          <th>Последнее сообщение</th>
+          <th>Обновлено</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+      {% for t in tickets %}
+        <tr>
+          <td><code>{{ t.ticket.id }}</code></td>
+          <td>
+            {% if t.user %}
+              <a href="/admin/users/{{ t.user.id }}">
+                {% if t.user.username %}@{{ t.user.username }}{% else %}{{ t.user.full_name or t.user.telegram_id }}{% endif %}
+              </a>
+            {% else %}—{% endif %}
+          </td>
+          <td>
+            {% if t.ticket.status == 'open' %}<span class="badge" style="background:#f59f00;color:#1a1d33">Открыт</span>
+            {% elif t.ticket.status == 'answered' %}<span class="badge" style="background:#22c55e;color:#0f1226">Отвечено</span>
+            {% else %}<span class="badge" style="background:#3a3f5e;color:#fff">Закрыт</span>{% endif %}
+          </td>
+          <td class="text-muted">
+            {% if t.last_has_attachment %}📎 {% endif %}{{ (t.last_body or '')[:80] }}
+          </td>
+          <td class="text-muted">{{ t.ticket.updated_at|msk_strftime('%d.%m %H:%M') if t.ticket.updated_at else '—' }}</td>
+          <td>
+            <a href="/admin/support/{{ t.ticket.id }}" class="btn btn-sm btn-outline-secondary">
+              <i class="ti ti-arrow-right"></i>
+            </a>
+          </td>
+        </tr>
+      {% else %}
+        <tr><td colspan="6" class="empty-state">Обращений нет</td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}

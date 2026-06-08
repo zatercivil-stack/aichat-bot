@@ -41,40 +41,46 @@ env = Environment(
 env.filters['msk'] = _to_msk
 env.filters['msk_strftime'] = _msk_strftime
 
+# Левая навигация. Секции (url=None) — заголовки. Перегруппировано под
+# visual-first проект: «Маркетинг» (9 пунктов) разбит на Контент/Рассылки/Трафик;
+# Поддержка поднята в «Главное»; logs слиты в «События» (одна таблица bot_events,
+# /logs остался как вкладка «Живой поток»); мёртвые A/B-тесты (0 записей) убраны
+# из меню (роут /experiments жив). Роуты НЕ удалялись — менялось только меню.
 NAV_ITEMS = [
     ('_sec_main',    '',   'Главное',        None),
     ('overview',     '📊', 'Дашборд',         '/admin/'),
     ('users',        '👥', 'Пользователи',   '/admin/users'),
+    ('support',      '🆘', 'Поддержка',       '/admin/support'),
 
     ('_sec_money',   '',   'Деньги',         None),
     ('finance',      '💰', 'Финансы',         '/admin/finance'),
     ('payments',     '💳', 'Платежи',         '/admin/payments'),
     ('promos',       '🎟', 'Промокоды',       '/admin/promos'),
 
-    ('_sec_market',  '',   'Маркетинг',      None),
+    ('_sec_content', '',   'Контент',        None),
     ('presets',      '🎨', 'Пресеты',         '/admin/presets'),
     ('gallery',      '🖼', 'Галерея превью',  '/admin/gallery'),
     ('sandbox',      '🧪', 'Песочница',       '/admin/sandbox'),
-    ('scheduled',    '⏰', 'Отложенные',      '/admin/scheduled'),
+
+    ('_sec_send',    '',   'Рассылки',       None),
     ('broadcasts',   '📢', 'Рассылки',        '/admin/broadcasts'),
     ('photo_tpl',    '🎭', 'Фото-шаблоны',    '/admin/broadcasts/photo'),
+    ('scheduled',    '⏰', 'Отложенные',      '/admin/scheduled'),
     ('bulk',         '🎁', 'Bulk-операции',   '/admin/bulk'),
-    ('aurum_traffic','🛡', 'Aurum трафик',    '/admin/aurum-traffic'),
-    ('channel_traffic','📈','Трафик канала',  '/admin/channel-traffic'),
 
-    ('_sec_analyt',  '',   'Аналитика',      None),
-    ('cohorts',      '🧪', 'Когорты (LTV)',   '/admin/cohorts'),
+    ('_sec_analyt',  '',   'Трафик и аналитика', None),
+    ('channel_traffic','📈','Трафик канала',  '/admin/channel-traffic'),
+    ('aurum_traffic','🛡', 'Aurum трафик',    '/admin/aurum-traffic'),
+    ('cohorts',      '📊', 'Когорты (LTV)',   '/admin/cohorts'),
     ('heatmap',      '🔥', 'Heatmap часов',   '/admin/heatmap'),
-    ('experiments',  '🧬', 'A/B тесты',       '/admin/experiments'),
 
     ('_sec_ops',     '',   'Операционка',    None),
-    ('logs',         '🔴', 'Live-логи',       '/admin/logs'),
-    ('events',       '📋', 'События бота',    '/admin/events'),
+    ('events',       '📋', 'События',         '/admin/events'),
     ('audit',        '📜', 'Журнал админов',  '/admin/audit'),
     ('health',       '🩺', 'Здоровье',        '/admin/health'),
 
     ('_sec_config',  '',   'Конфигурация',   None),
-    ('pricing',      '🏷', 'Цены и модели',  '/admin/pricing'),
+    ('pricing',      '🏷', 'Цены',            '/admin/pricing'),
     ('texts',        '📝', 'Тексты бота',     '/admin/texts'),
 ]
 

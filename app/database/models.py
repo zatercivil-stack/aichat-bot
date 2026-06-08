@@ -84,6 +84,26 @@ class User(Base):
             return self.subscription.plan
         return Plan.FREE
 
+    @property
+    def active_burn(self) -> int:
+        """Непросроченные сгораемые кредиты (read-only, без мутации) — для UI."""
+        from datetime import datetime, timezone
+        burn = self.burn_credits or 0
+        if burn and self.burn_expires_at:
+            exp = self.burn_expires_at
+            if exp.tzinfo is None:
+                exp = exp.replace(tzinfo=timezone.utc)
+            if exp <= datetime.now(timezone.utc):
+                return 0
+        return burn
+
+    @property
+    def display_balance(self) -> int:
+        """Полный баланс для UI/дашборда: обычные + непросроченные burn.
+        Раньше дашборд показывал только .credits — после welcome→burn это
+        занижало баланс новичков (видно 15 вместо 515)."""
+        return (self.credits or 0) + self.active_burn
+
 
 class Subscription(Base):
     __tablename__ = 'subscriptions'
@@ -359,6 +379,35 @@ class PresetLaunch(Base):
     preset_key: Mapped[str] = mapped_column(String(64), primary_key=True)
     launched_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now())
+
+
+class SupportTicket(Base):
+    """Обращение в поддержку. Один открытый тикет на юзера (анти-спам) —
+    новые сообщения дописываются в тот же открытый тикет. Ответы шлёт только
+    веб-панель (бот не перехватывает admin-reply). См. миграцию 025."""
+    __tablename__ = 'support_tickets'
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    user_id: Mapped[int] = mapped_column(Integer, ForeignKey('users.id'), nullable=False, index=True)
+    status: Mapped[str] = mapped_column(String(16), default='open', nullable=False)  # open/answered/closed
+    last_user_msg_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+
+
+class SupportMessage(Base):
+    """Сообщение в треде тикета. sender='user'/'admin'. attachment_file_id —
+    TG file_id фото (опционально). См. миграцию 025."""
+    __tablename__ = 'support_messages'
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    ticket_id: Mapped[int] = mapped_column(Integer, ForeignKey('support_tickets.id'), nullable=False, index=True)
+    sender: Mapped[str] = mapped_column(String(8), nullable=False)  # 'user' | 'admin'
+    body: Mapped[str | None] = mapped_column(Text, nullable=True)
+    attachment_file_id: Mapped[str | None] = mapped_column(String(256), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 
 class ScheduledBroadcast(Base):

@@ -8,7 +8,7 @@ from aiogram.fsm.storage.redis import RedisStorage
 from redis.asyncio import Redis
 
 from app.config import settings
-from app.handlers import admin, channel_admin, channel_traffic, chat, image, image_edit, payments, promo, shop, start, subscription, templates, vision, voice, wheel
+from app.handlers import admin, channel_admin, channel_traffic, chat, image, image_edit, payments, promo, shop, start, subscription, support, templates, vision, voice, wheel
 from app.middlewares.command_reset import CommandResetStateMiddleware
 from app.middlewares.rate_limit import RateLimitMiddleware
 from app.middlewares.user import UserMiddleware
@@ -55,6 +55,10 @@ def create_dispatcher(redis: Redis) -> Dispatcher:
     dp.include_router(payments.router)
     dp.include_router(shop.router)
     dp.include_router(subscription.router)
+    # support: StateFilter(SupportState.waiting_message) ловит текст/фото в режиме
+    # тикета. ОБЯЗАН стоять перед image_edit/vision (их F.photo без StateFilter
+    # иначе перехватит фото-вложение тикета) и перед catch-all chat.router.
+    dp.include_router(support.router)
     dp.include_router(image.router)
     dp.include_router(image_edit.router)  # photo edit + face swap (FSM-aware) — до vision
     dp.include_router(wheel.router)  # колесо удачи (/spin + callback)

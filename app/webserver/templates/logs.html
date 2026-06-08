@@ -1,5 +1,14 @@
 {% extends "base.html" %}
 
+{% block header_actions %}
+<div class="col-auto">
+  <div class="btn-group">
+    <a href="/admin/events" class="btn btn-sm btn-outline-secondary"><i class="ti ti-list me-1"></i>История</a>
+    <a href="/admin/logs" class="btn btn-sm btn-primary active"><i class="ti ti-activity me-1"></i>Живой поток</a>
+  </div>
+</div>
+{% endblock %}
+
 {% block content %}
 <div class="card mb-3">
   <div class="card-body">

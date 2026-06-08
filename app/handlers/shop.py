@@ -61,6 +61,24 @@ async def cb_buy_pack(callback: CallbackQuery) -> None:
     expires_days = pack.get('expires_days')
     is_burn = expires_days is not None
 
+    # Реф-кэшбэк (вариант B): на обычных паках показываем скидку от платящих друзей.
+    from app.services import referral_cashback as _rc
+    cashback = 0
+    if not is_burn and pack['id'] in _rc.ELIGIBLE_PACK_IDS:
+        try:
+            cashback = await _rc.preview_discount(callback.from_user.id, pack['rub'])
+        except Exception:
+            cashback = 0
+    final_rub = int(pack['rub']) - int(cashback)
+    if cashback > 0:
+        price_block = (f"💳 Цена: <b>{pack['rub']}₽</b>\n"
+                       f"💸 <b>Скидка от друзей −{cashback}₽</b> при оплате картой → <b>{final_rub}₽</b>\n\n")
+    elif not is_burn and pack['id'] in _rc.ELIGIBLE_PACK_IDS:
+        price_block = (f"💳 К оплате: <b>{pack['rub']}₽</b>\n"
+                       f"<i>💡 Пригласи друга (/ref) — он купит, тебе скидка до 30%.</i>\n\n")
+    else:
+        price_block = f"💳 К оплате: <b>{pack['rub']}₽</b>\n\n"
+
     # Шапка зависит от типа пака
     if is_burn:
         header = (
@@ -81,7 +99,7 @@ async def cb_buy_pack(callback: CallbackQuery) -> None:
         f"Этого хватит примерно на:\n"
         f"• 💎 <b>{photos}</b> фото с твоим лицом в любой сцене\n"
         f"  <i>(Балет, старинное авто, Париж, неон, кино-нуар…)</i>\n\n"
-        f"💳 К оплате: <b>{pack['rub']}₽</b>\n\n"
+        f"{price_block}"
         f"━━━━━━━━━━━━━━━━━━━━\n"
         f"✓ Зачисление за <b>1 минуту</b>\n"
         f"{expire_line}"
@@ -90,7 +108,7 @@ async def cb_buy_pack(callback: CallbackQuery) -> None:
         f"━━━━━━━━━━━━━━━━━━━━"
     )
     from app.utils import safe_edit_or_answer
-    await safe_edit_or_answer(callback, text, reply_markup=confirm_pack_kb(pack_id))
+    await safe_edit_or_answer(callback, text, reply_markup=confirm_pack_kb(pack_id, card_discount=cashback))
     await callback.answer()
 
 
@@ -117,6 +135,19 @@ async def cb_pay_rub(callback: CallbackQuery) -> None:
         Configuration.account_id = settings.YOOKASSA_SHOP_ID
         Configuration.secret_key = settings.YOOKASSA_SECRET_KEY
 
+        # Реф-кэшбэк (вариант B): скидка ТОЛЬКО на обычные паки (не burn-стартер,
+        # не подписки — маржа-гард). Кредиты пак отдаёт полные, скидка лишь на ₽.
+        # Defensive: любой сбой → cashback_used=0 → полная цена (оплата не ломается).
+        from app.services import referral_cashback as _rc
+        base_rub = int(pack['rub'])
+        cashback_used = 0
+        if pack['id'] in _rc.ELIGIBLE_PACK_IDS:
+            try:
+                cashback_used = await _rc.preview_discount(callback.from_user.id, base_rub)
+            except Exception:
+                cashback_used = 0
+        final_rub = max(1, base_rub - int(cashback_used))
+
         async with AsyncSessionFactory() as session:
             user = await get_user(session, callback.from_user.id)
             if not user:
@@ -126,7 +157,7 @@ async def cb_pay_rub(callback: CallbackQuery) -> None:
             db_payment = await create_payment(
                 session,
                 user_id=user.id,
-                amount=Decimal(pack['rub']),
+                amount=Decimal(final_rub),
                 currency='RUB',
                 payment_method='yookassa',
                 plan=Plan.FREE,
@@ -136,13 +167,14 @@ async def cb_pay_rub(callback: CallbackQuery) -> None:
                     'user_tg_id': callback.from_user.id,
                     # expires_days = None для вечных, число для burn-паков
                     'expires_days': pack.get('expires_days'),
+                    'cashback_used': int(cashback_used),  # спишется при SUCCEEDED
                 },
             )
             await session.commit()
             payment_db_id = db_payment.id
 
         yk_payment = YKPayment.create({
-            'amount': {'value': str(pack['rub']), 'currency': 'RUB'},
+            'amount': {'value': str(final_rub), 'currency': 'RUB'},
             'confirmation': {'type': 'redirect', 'return_url': settings.yookassa_return_url},
             'capture': True,
             'description': f"Нейра: {pack['name']} — {pack['credits']:,} кредитов",
@@ -169,9 +201,12 @@ async def cb_pay_rub(callback: CallbackQuery) -> None:
             )],
         ])
         from app.utils import safe_edit_or_answer
+        pay_line = f"💳 <b>Оплата картой: {pack['credits']:,} кр за {final_rub}₽</b>"
+        if cashback_used > 0:
+            pay_line += f"  <i>(скидка от друзей −{cashback_used}₽, было {base_rub}₽)</i>"
         await safe_edit_or_answer(
             callback,
-            f"💳 <b>Оплата картой: {pack['credits']:,} кр за {pack['rub']}₽</b>\n\n"
+            pay_line + "\n\n"
             f"Нажми «Перейти к оплате» 👇 Кредиты зачислятся автоматически "
             f"за минуту.\n\n"
             f"💡 <i>Если страница не открывается — выключи VPN, либо вернись "
