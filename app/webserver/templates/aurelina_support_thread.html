@@ -1,0 +1,84 @@
+{% extends "base.html" %}
+
+{% block content %}
+{% if msg %}<div class="alert alert-info">{{ msg }}</div>{% endif %}
+
+{% set t = data.ticket %}
+{% set u = data.user %}
+
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <div>
+    <a href="/admin/aurelina/support" class="btn btn-sm btn-outline-secondary">← К списку</a>
+    <span class="ms-2">
+      Юзер:
+      {% if u and u.username %}@{{ u.username }}{% elif u %}{{ u.first_name or '—' }}{% else %}—{% endif %}
+      <span class="text-muted">({{ t.tg_id }})</span>
+    </span>
+  </div>
+  <div>
+    {% if t.status == 'open' %}<span class="badge bg-red-lt">открыт</span>
+    {% elif t.status == 'answered' %}<span class="badge bg-blue-lt">отвечен</span>
+    {% else %}<span class="badge bg-secondary-lt">закрыт</span>{% endif %}
+  </div>
+</div>
+
+<div class="card mb-3">
+  <div class="card-body" style="max-height:460px;overflow-y:auto">
+    {% for m in data.messages %}
+      <div class="d-flex mb-2 {% if m.sender == 'admin' %}justify-content-end{% endif %}">
+        <div class="p-2 rounded" style="max-width:75%;{% if m.sender == 'admin' %}background:rgba(99,102,241,.18){% else %}background:rgba(255,255,255,.06){% endif %}">
+          <div class="small text-muted mb-1">
+            {% if m.sender == 'admin' %}Поддержка{% else %}Юзер{% endif %} · {{ m.created_at }}
+          </div>
+          {% if m.body %}<div>{{ m.body }}</div>{% endif %}
+          {% if m.attachment_file_id %}
+            <a href="#" class="aur-thumb d-inline-block mt-1"
+               data-full="/admin/aurelina/support/{{ t.id }}/attachment/{{ m.id }}">
+              <img src="/admin/aurelina/support/{{ t.id }}/attachment/{{ m.id }}"
+                   loading="lazy" alt="фото"
+                   style="max-width:200px;max-height:200px;border-radius:8px;cursor:zoom-in">
+            </a>
+          {% endif %}
+        </div>
+      </div>
+    {% else %}
+      <div class="text-muted">Сообщений нет</div>
+    {% endfor %}
+  </div>
+</div>
+
+{% if t.status != 'closed' %}
+<div class="card">
+  <div class="card-body">
+    <form method="post" action="/admin/aurelina/support/{{ t.id }}/reply">
+      <div class="mb-2">
+        <textarea name="body" class="form-control" rows="3" placeholder="Ответ пользователю…" required></textarea>
+      </div>
+      <button type="submit" class="btn btn-success">Отправить ответ</button>
+    </form>
+  </div>
+</div>
+<form method="post" action="/admin/aurelina/support/{{ t.id }}/close" class="mt-2">
+  <button type="submit" class="btn btn-outline-danger btn-sm">Закрыть тикет</button>
+</form>
+{% else %}
+<div class="alert alert-secondary">Тикет закрыт.</div>
+{% endif %}
+
+<!-- lightbox: клик по миниатюре открывает фото, клик по фону/✕ закрывает -->
+<div id="aur-lb" onclick="this.style.display='none'"
+     style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.88);z-index:2000;
+            align-items:center;justify-content:center">
+  <span style="position:absolute;top:14px;right:26px;font-size:34px;color:#fff;cursor:pointer;line-height:1">✕</span>
+  <img id="aur-lb-img" alt="фото" style="max-width:92%;max-height:92%;border-radius:10px">
+</div>
+<script>
+(function(){
+  var lb=document.getElementById('aur-lb'), img=document.getElementById('aur-lb-img');
+  document.querySelectorAll('.aur-thumb').forEach(function(a){
+    a.addEventListener('click',function(e){e.preventDefault();img.src=a.dataset.full;lb.style.display='flex';});
+  });
+  document.addEventListener('keydown',function(e){if(e.key==='Escape')lb.style.display='none';});
+})();
+</script>
+{% endblock %}

@@ -69,6 +69,8 @@ NAV_ITEMS = [
     ('bulk',         '🎁', 'Bulk-операции',   '/admin/bulk'),
 
     ('_sec_analyt',  '',   'Трафик и аналитика', None),
+    ('aurelina',     '🔮', 'Aurelina',        '/admin/aurelina'),
+    ('aurelina_support','🆘','Aurelina · тикеты','/admin/aurelina/support'),
     ('channel_traffic','📈','Трафик канала',  '/admin/channel-traffic'),
     ('aurum_traffic','🛡', 'Aurum трафик',    '/admin/aurum-traffic'),
     ('cohorts',      '📊', 'Когорты (LTV)',   '/admin/cohorts'),

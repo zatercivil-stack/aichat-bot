@@ -13,6 +13,9 @@ services:
       - aichat_net
     volumes:
       - ./data:/app/data
+      # Aurelina (Таро+Астро бот) SQLite — read-write: dashboard reads stats and
+      # writes support-ticket admin replies into the same DB (WAL + busy_timeout).
+      - /srv/app/projects/astrobot/data/db:/app/aurelina
     extra_hosts:
       - "host.docker.internal:host-gateway"
     ports:

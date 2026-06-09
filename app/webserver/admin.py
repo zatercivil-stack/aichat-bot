@@ -4,6 +4,8 @@ import asyncio
 import csv
 import io
 import json
+import os
+import sqlite3
 from datetime import datetime, timedelta, timezone
 from typing import List, Optional
 
@@ -3270,5 +3272,388 @@ async def support_attachment(
                         headers={'Cache-Control': 'public, max-age=3600'})
     except Exception as exc:
         logger.warning('support attachment proxy failed',
+                       message_id=message_id, error=str(exc)[:200])
+        return Response(status_code=500)
+
+
+# ---------------------------------------------------------------------------
+# Aurelina (Таро+Астро бот) — read-only stats from its SQLite (mounted ro).
+# ---------------------------------------------------------------------------
+
+AURELINA_DB = os.getenv('AURELINA_DB', '/app/aurelina/astrobot.sqlite')
+
+# Seeding creatives: code -> human label. Always shown (even with zero traffic).
+AURELINA_CREATIVES = {
+    'src_mirror': 'Тайна / зеркало',
+    'src_love':   'Любовь',
+    'src_money':  'Деньги',
+    'src_fate':   'Решение / распутье',
+    'src_social': 'Соцдок / FOMO',
+}
+
+
+def _aurelina_connect() -> sqlite3.Connection:
+    """Read-only SQLite connection. Falls back to immutable mode if the live WAL
+    can't be opened (e.g. the writer is down with a pending -wal)."""
+    last_err: Exception | None = None
+    for uri in (f'file:{AURELINA_DB}?mode=ro',
+                f'file:{AURELINA_DB}?mode=ro&immutable=1'):
+        try:
+            con = sqlite3.connect(uri, uri=True, timeout=5)
+            con.row_factory = sqlite3.Row
+            con.execute('PRAGMA busy_timeout=3000')
+            con.execute('SELECT 1 FROM sqlite_master LIMIT 1')  # force-open DB file
+            return con
+        except sqlite3.Error as exc:
+            last_err = exc
+            try:
+                con.close()  # type: ignore[has-type]
+            except Exception:
+                pass
+    raise last_err if last_err else sqlite3.Error('cannot open aurelina db')
+
+
+def _load_aurelina_stats() -> dict:
+    if not os.path.exists(AURELINA_DB):
+        return {'available': False, 'error': 'БД не примонтирована'}
+    con = None
+    try:
+        con = _aurelina_connect()
+
+        def dcount(types: list[str], where: str = '', args: tuple = ()) -> int:
+            qs = ','.join('?' * len(types))
+            row = con.execute(
+                f"SELECT COUNT(DISTINCT e.tg_id) c FROM events e "
+                f"JOIN users u ON u.tg_id=e.tg_id "
+                f"WHERE e.type IN ({qs}) {where}", (*types, *args)).fetchone()
+            return row['c'] if row else 0
+
+        funnel = [
+            ('Заходы (/start)',     dcount(['start'])),
+            ('Онбординг завершён',  dcount(['onboarding_done'])),
+            ('Первый расклад',      dcount(['tarot_free', 'tarot_paid'])),
+            ('Пэйвол показан',      dcount(['paywall_view'])),
+            ('Клик оплаты',         dcount(['pay_click'])),
+            ('Оплата',              dcount(['pay_success'])),
+        ]
+
+        users = con.execute("SELECT COUNT(*) c FROM users").fetchone()['c']
+        rub_total = con.execute("SELECT COALESCE(SUM(amount),0) s FROM payments WHERE status='paid' AND currency='RUB'").fetchone()['s']
+        stars_total = con.execute("SELECT COALESCE(SUM(amount),0) s FROM payments WHERE status='paid' AND currency='XTR'").fetchone()['s']
+        payers_total = con.execute("SELECT COUNT(DISTINCT tg_id) c FROM payments WHERE status='paid'").fetchone()['c']
+
+        # ---- per-creative breakdown (known seeding codes + any extra src_*) ----
+        started = {r['source']: r['c'] for r in con.execute(
+            "SELECT source, COUNT(*) c FROM users WHERE source IS NOT NULL GROUP BY source")}
+        pay_by_src = {r['src']: r for r in con.execute(
+            "SELECT u.source src, COUNT(DISTINCT p.tg_id) payers, "
+            "COALESCE(SUM(CASE WHEN p.currency='RUB' THEN p.amount END),0) rub, "
+            "COALESCE(SUM(CASE WHEN p.currency='XTR' THEN p.amount END),0) stars "
+            "FROM payments p JOIN users u ON u.tg_id=p.tg_id "
+            "WHERE p.status='paid' GROUP BY u.source").fetchall()}
+
+        codes = list(AURELINA_CREATIVES.keys())
+        for src in started:
+            if src and src.startswith('src_') and src not in codes:
+                codes.append(src)
+
+        def sf(src: str, types: list[str]) -> int:
+            return dcount(types, "AND u.source=?", (src,))
+
+        creatives = []
+        for code in codes:
+            start = sf(code, ['start'])
+            p = pay_by_src.get(code)
+            payers = p['payers'] if p else 0
+            creatives.append({
+                'code': code,
+                'label': AURELINA_CREATIVES.get(code, code.replace('src_', '')),
+                'start': start,
+                'onb': sf(code, ['onboarding_done']),
+                'reading': sf(code, ['tarot_free', 'tarot_paid']),
+                'paywall': sf(code, ['paywall_view']),
+                'pay': payers,
+                'conv': round(payers / start * 100, 1) if start else 0.0,
+                'rub': int(p['rub']) if p else 0,
+                'stars': int(p['stars']) if p else 0,
+            })
+        creatives.sort(key=lambda c: -c['start'])
+
+        # unattributed / organic bucket (source IS NULL) — reconciles with funnel
+        def sfn(types: list[str]) -> int:
+            return dcount(types, 'AND u.source IS NULL', ())
+        ns = sfn(['start'])
+        if ns:
+            pn = pay_by_src.get(None)
+            npay = pn['payers'] if pn else 0
+            creatives.append({
+                'code': '—', 'label': 'Без источника / органика',
+                'start': ns, 'onb': sfn(['onboarding_done']),
+                'reading': sfn(['tarot_free', 'tarot_paid']),
+                'paywall': sfn(['paywall_view']), 'pay': npay,
+                'conv': round(npay / ns * 100, 1) if ns else 0.0,
+                'rub': int(pn['rub']) if pn else 0, 'stars': int(pn['stars']) if pn else 0,
+            })
+
+        recent = [dict(r) for r in con.execute(
+            "SELECT tg_id, provider, product, amount, currency, ts "
+            "FROM payments WHERE status='paid' ORDER BY id DESC LIMIT 15")]
+        return {
+            'available': True, 'users': users, 'payers_total': payers_total,
+            'rub_total': int(rub_total), 'stars_total': int(stars_total),
+            'funnel': funnel, 'creatives': creatives, 'recent': recent,
+        }
+    except Exception as exc:
+        logger.warning('aurelina stats load failed', error=str(exc)[:200])
+        return {'available': False, 'error': str(exc)[:200]}
+    finally:
+        if con is not None:
+            try:
+                con.close()
+            except Exception:
+                pass
+
+
+@router.get('/aurelina', response_class=HTMLResponse)
+async def aurelina(admin_session: Optional[str] = Cookie(default=None)):
+    if not _check_auth(admin_session):
+        return _redirect_login()
+    data = await asyncio.to_thread(_load_aurelina_stats)
+    return render('aurelina.html', title='Aurelina', pretitle='Таро+Астро бот',
+                  active='aurelina', data=data)
+
+
+# ---------------------------------------------------------------------------
+# Aurelina support tickets — read/write the bot's SQLite + reply via its token.
+# ---------------------------------------------------------------------------
+
+AURELINA_BOT_TOKEN = os.getenv('AURELINA_BOT_TOKEN', '')
+
+
+def _aurelina_connect_rw() -> sqlite3.Connection:
+    con = sqlite3.connect(f'file:{AURELINA_DB}?mode=rw', uri=True, timeout=8)
+    con.row_factory = sqlite3.Row
+    con.execute('PRAGMA busy_timeout=5000')
+    return con
+
+
+def _aur_now() -> str:
+    return datetime.utcnow().isoformat(timespec='seconds')
+
+
+def _aur_list_tickets(status: str | None = None) -> list[dict]:
+    con = None
+    try:
+        con = _aurelina_connect()
+        where = ''
+        args: tuple = ()
+        if status:
+            where = 'WHERE t.status=?'
+            args = (status,)
+        rows = con.execute(
+            f"SELECT t.id, t.tg_id, t.status, t.created_at, t.updated_at, "
+            f"u.username, u.first_name FROM support_tickets t "
+            f"LEFT JOIN users u ON u.tg_id=t.tg_id {where} "
+            f"ORDER BY (t.status='closed') ASC, t.updated_at DESC LIMIT 100", args).fetchall()
+        last = {r['ticket_id']: r for r in con.execute(
+            "SELECT ticket_id, body, attachment_file_id FROM support_messages "
+            "WHERE id IN (SELECT MAX(id) FROM support_messages GROUP BY ticket_id)")}
+        out = []
+        for t in rows:
+            lm = last.get(t['id'])
+            out.append({
+                'id': t['id'], 'tg_id': t['tg_id'], 'status': t['status'],
+                'updated_at': t['updated_at'],
+                'username': t['username'], 'first_name': t['first_name'],
+                'last_body': (lm['body'] if lm else None),
+                'last_has_attachment': bool(lm and lm['attachment_file_id']),
+            })
+        return out
+    finally:
+        if con is not None:
+            con.close()
+
+
+def _aur_thread(ticket_id: int) -> dict | None:
+    con = None
+    try:
+        con = _aurelina_connect()
+        t = con.execute("SELECT * FROM support_tickets WHERE id=?", (ticket_id,)).fetchone()
+        if not t:
+            return None
+        u = con.execute("SELECT tg_id, username, first_name FROM users WHERE tg_id=?",
+                        (t['tg_id'],)).fetchone()
+        msgs = [dict(m) for m in con.execute(
+            "SELECT id, sender, body, attachment_file_id, created_at FROM support_messages "
+            "WHERE ticket_id=? ORDER BY id ASC", (ticket_id,))]
+        return {'ticket': dict(t), 'user': dict(u) if u else None, 'messages': msgs}
+    finally:
+        if con is not None:
+            con.close()
+
+
+def _aur_add_admin_reply(ticket_id: int, body: str, status: str = 'answered',
+                         change_status: bool = True) -> int | None:
+    """Write an admin message; return the ticket owner's tg_id (for delivery)."""
+    con = None
+    try:
+        con = _aurelina_connect_rw()
+        t = con.execute("SELECT tg_id FROM support_tickets WHERE id=?", (ticket_id,)).fetchone()
+        if not t:
+            return None
+        con.execute(
+            "INSERT INTO support_messages (ticket_id, sender, body, attachment_file_id, created_at)"
+            " VALUES (?, 'admin', ?, NULL, ?)", (ticket_id, body, _aur_now()))
+        if change_status:
+            con.execute("UPDATE support_tickets SET status=?, updated_at=? WHERE id=?",
+                        (status, _aur_now(), ticket_id))
+        con.commit()
+        return t['tg_id']
+    finally:
+        if con is not None:
+            con.close()
+
+
+def _aur_close(ticket_id: int) -> None:
+    con = None
+    try:
+        con = _aurelina_connect_rw()
+        con.execute("UPDATE support_tickets SET status='closed', updated_at=? WHERE id=?",
+                    (_aur_now(), ticket_id))
+        con.commit()
+    finally:
+        if con is not None:
+            con.close()
+
+
+def _aur_send_sync(chat_id: int, text: str, reply_markup: dict | None) -> dict:
+    import urllib.request
+    payload = {'chat_id': chat_id, 'text': text, 'parse_mode': 'HTML'}
+    if reply_markup:
+        payload['reply_markup'] = reply_markup
+    req = urllib.request.Request(
+        f'https://api.telegram.org/bot{AURELINA_BOT_TOKEN}/sendMessage',
+        data=json.dumps(payload).encode(), headers={'Content-Type': 'application/json'})
+    with urllib.request.urlopen(req, timeout=15) as r:
+        return json.load(r)
+
+
+@router.get('/aurelina/support', response_class=HTMLResponse)
+async def aurelina_support_list(admin_session: Optional[str] = Cookie(default=None),
+                                status: str = ''):
+    if not _check_auth(admin_session):
+        return _redirect_login()
+    tickets = await asyncio.to_thread(_aur_list_tickets, status or None)
+    return render('aurelina_support.html', title='Aurelina · тикеты',
+                  pretitle='Поддержка', active='aurelina_support',
+                  tickets=tickets, status=status)
+
+
+@router.get('/aurelina/support/{ticket_id}', response_class=HTMLResponse)
+async def aurelina_support_thread(ticket_id: int,
+                                  admin_session: Optional[str] = Cookie(default=None),
+                                  msg: str = ''):
+    if not _check_auth(admin_session):
+        return _redirect_login()
+    data = await asyncio.to_thread(_aur_thread, ticket_id)
+    if not data:
+        return HTMLResponse('Не найдено', status_code=404)
+    return render('aurelina_support_thread.html', title=f'Обращение №{ticket_id}',
+                  pretitle='Aurelina', active='aurelina_support', msg=msg, data=data)
+
+
+@router.post('/aurelina/support/{ticket_id}/reply')
+async def aurelina_support_reply(ticket_id: int, request: Request,
+                                 body: str = Form(...),
+                                 admin_session: Optional[str] = Cookie(default=None)):
+    if not _check_auth(admin_session):
+        return _redirect_login()
+    import html as _html
+    body = (body or '').strip()
+    if not body:
+        return RedirectResponse(f'/admin/aurelina/support/{ticket_id}?msg=Пустой+ответ', status_code=302)
+
+    tg_id = await asyncio.to_thread(_aur_add_admin_reply, ticket_id, body)
+    if tg_id is None:
+        return HTMLResponse('Не найдено', status_code=404)
+
+    delivered = False
+    if AURELINA_BOT_TOKEN:
+        kb = {'inline_keyboard': [
+            [{'text': 'Дописать к обращению', 'callback_data': f'support_reply:{ticket_id}'}],
+            [{'text': 'Вопрос решён', 'callback_data': f'support_close:{ticket_id}'}],
+        ]}
+        text = (f"💬 <b>Ответ поддержки по обращению №{ticket_id}:</b>\n\n{_html.escape(body)}")
+        try:
+            res = await asyncio.to_thread(_aur_send_sync, tg_id, text, kb)
+            delivered = bool(res.get('ok'))
+        except Exception as exc:
+            logger.warning('aurelina reply delivery failed', ticket_id=ticket_id, error=str(exc)[:200])
+    if not delivered:
+        await asyncio.to_thread(_aur_add_admin_reply, ticket_id,
+                                '⚠️ Ответ не доставлен (юзер мог заблокировать бота).',
+                                'answered', False)
+    log_action_bg('token', 'aurelina.support.reply',
+                  ip=request.client.host if request.client else None, ticket_id=ticket_id)
+    suffix = 'Ответ+отправлен' if delivered else 'Сохранено+(не+доставлено)'
+    return RedirectResponse(f'/admin/aurelina/support/{ticket_id}?msg={suffix}', status_code=302)
+
+
+@router.post('/aurelina/support/{ticket_id}/close')
+async def aurelina_support_close(ticket_id: int, request: Request,
+                                 admin_session: Optional[str] = Cookie(default=None)):
+    if not _check_auth(admin_session):
+        return _redirect_login()
+    await asyncio.to_thread(_aur_close, ticket_id)
+    log_action_bg('token', 'aurelina.support.close',
+                  ip=request.client.host if request.client else None, ticket_id=ticket_id)
+    return RedirectResponse(f'/admin/aurelina/support/{ticket_id}?msg=Закрыто', status_code=302)
+
+
+def _aur_get_attachment(ticket_id: int, message_id: int) -> str | None:
+    con = None
+    try:
+        con = _aurelina_connect()
+        r = con.execute(
+            "SELECT attachment_file_id FROM support_messages WHERE id=? AND ticket_id=?",
+            (message_id, ticket_id)).fetchone()
+        return r['attachment_file_id'] if r and r['attachment_file_id'] else None
+    finally:
+        if con is not None:
+            con.close()
+
+
+def _aur_fetch_file_sync(file_id: str) -> bytes:
+    import urllib.parse
+    import urllib.request
+    base = f'https://api.telegram.org/bot{AURELINA_BOT_TOKEN}'
+    with urllib.request.urlopen(
+            f'{base}/getFile?file_id=' + urllib.parse.quote(file_id), timeout=15) as r:
+        info = json.load(r)
+    if not info.get('ok'):
+        raise RuntimeError('getFile failed')
+    fp = info['result']['file_path']
+    url = f'https://api.telegram.org/file/bot{AURELINA_BOT_TOKEN}/{fp}'
+    with urllib.request.urlopen(url, timeout=30) as r:
+        return r.read()
+
+
+@router.get('/aurelina/support/{ticket_id}/attachment/{message_id}')
+async def aurelina_support_attachment(ticket_id: int, message_id: int,
+                                      admin_session: Optional[str] = Cookie(default=None)):
+    """Proxy a ticket photo via the Aurelina bot token (getFile + download)."""
+    if not _check_auth(admin_session):
+        return Response(status_code=403)
+    if not AURELINA_BOT_TOKEN:
+        return Response(status_code=503)
+    fid = await asyncio.to_thread(_aur_get_attachment, ticket_id, message_id)
+    if not fid:
+        return Response(status_code=404)
+    try:
+        data = await asyncio.to_thread(_aur_fetch_file_sync, fid)
+        return Response(content=data, media_type='image/jpeg',
+                        headers={'Cache-Control': 'private, max-age=3600'})
+    except Exception as exc:
+        logger.warning('aurelina attachment proxy failed',
                        message_id=message_id, error=str(exc)[:200])
         return Response(status_code=500)
