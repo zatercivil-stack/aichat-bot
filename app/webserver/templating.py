@@ -47,10 +47,15 @@ env.filters['msk_strftime'] = _msk_strftime
 # /logs остался как вкладка «Живой поток»); мёртвые A/B-тесты (0 записей) убраны
 # из меню (роут /experiments жив). Роуты НЕ удалялись — менялось только меню.
 NAV_ITEMS = [
-    ('_sec_main',    '',   'Главное',        None),
+    ('_sec_main',    '',   '🟣 Нейра',        None),
     ('overview',     '📊', 'Дашборд',         '/admin/'),
     ('users',        '👥', 'Пользователи',   '/admin/users'),
     ('support',      '🆘', 'Поддержка',       '/admin/support'),
+
+    ('_sec_aurelina', '',  '🔮 Aurelina · Таро+Астро', None),
+    ('aurelina',      '📊', 'Обзор',          '/admin/aurelina'),
+    ('aurelina_users','👥', 'Пользователи',   '/admin/aurelina/users'),
+    ('aurelina_support','🆘', 'Тикеты',        '/admin/aurelina/support'),
 
     ('_sec_money',   '',   'Деньги',         None),
     ('finance',      '💰', 'Финансы',         '/admin/finance'),
@@ -69,8 +74,6 @@ NAV_ITEMS = [
     ('bulk',         '🎁', 'Bulk-операции',   '/admin/bulk'),
 
     ('_sec_analyt',  '',   'Трафик и аналитика', None),
-    ('aurelina',     '🔮', 'Aurelina',        '/admin/aurelina'),
-    ('aurelina_support','🆘','Aurelina · тикеты','/admin/aurelina/support'),
     ('channel_traffic','📈','Трафик канала',  '/admin/channel-traffic'),
     ('aurum_traffic','🛡', 'Aurum трафик',    '/admin/aurum-traffic'),
     ('cohorts',      '📊', 'Когорты (LTV)',   '/admin/cohorts'),

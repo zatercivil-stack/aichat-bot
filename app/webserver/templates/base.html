@@ -129,6 +129,66 @@ code,pre{color:#a78bfa;background:rgba(167,139,250,.08);padding:.1em .35em;borde
 .evt-user_registered{background:rgba(56,189,248,.15);color:#7dd3fc}
 .evt-image_generated{background:rgba(245,158,11,.15);color:#fcd34d}
 .evt-default{background:rgba(160,168,192,.1);color:#a0a8c0}
+
+/* ============ Liquid glass ============ */
+body{background:#0b0e1f;position:relative}
+/* мягкая «аврора» позади контента — чтобы матовое стекло читалось */
+body::before{
+  content:"";position:fixed;inset:-20%;z-index:-2;pointer-events:none;
+  background:
+    radial-gradient(40% 45% at 16% 18%, rgba(99,102,241,.30), transparent 60%),
+    radial-gradient(38% 42% at 84% 16%, rgba(168,85,247,.26), transparent 60%),
+    radial-gradient(46% 48% at 78% 84%, rgba(236,72,153,.20), transparent 62%),
+    radial-gradient(42% 44% at 20% 86%, rgba(56,189,248,.16), transparent 60%);
+  filter:blur(34px);
+  animation:glassFloat 24s ease-in-out infinite alternate;
+}
+body::after{
+  content:"";position:fixed;inset:0;z-index:-1;pointer-events:none;
+  background:radial-gradient(120% 120% at 50% 0%, transparent 42%, rgba(6,8,18,.55) 100%);
+}
+@keyframes glassFloat{0%{transform:translate3d(0,0,0) scale(1)}100%{transform:translate3d(0,-3%,0) scale(1.06)}}
+
+.card{
+  background:rgba(26,29,51,.55)!important;
+  border:1px solid rgba(255,255,255,.08)!important;
+  border-radius:1rem!important;
+  backdrop-filter:blur(16px) saturate(160%);
+  -webkit-backdrop-filter:blur(16px) saturate(160%);
+  box-shadow:0 8px 32px rgba(0,0,0,.35), inset 0 1px 0 rgba(255,255,255,.07);
+  transition:transform .18s ease, box-shadow .18s ease, border-color .18s ease;
+}
+.card:hover{
+  transform:translateY(-2px);
+  border-color:rgba(167,139,250,.35)!important;
+  box-shadow:0 16px 44px rgba(0,0,0,.45), inset 0 1px 0 rgba(255,255,255,.10);
+}
+.card-header{border-bottom:1px solid rgba(255,255,255,.07)!important}
+.stat-card{background:rgba(26,29,51,.5)!important}
+.stat-card::before{
+  content:"";position:absolute;inset:0;border-radius:inherit;pointer-events:none;
+  background:linear-gradient(135deg, rgba(255,255,255,.10), transparent 42%);
+}
+.navbar-vertical{
+  background:rgba(18,21,40,.55)!important;border-right:1px solid rgba(255,255,255,.07)!important;
+  backdrop-filter:blur(20px) saturate(160%);-webkit-backdrop-filter:blur(20px) saturate(160%);
+}
+.navbar{
+  background:rgba(26,29,51,.5)!important;border-bottom:1px solid rgba(255,255,255,.07)!important;
+  backdrop-filter:blur(20px) saturate(160%);-webkit-backdrop-filter:blur(20px) saturate(160%);
+}
+.navbar-vertical .nav-link.active{background:rgba(99,102,241,.22)!important;box-shadow:inset 0 1px 0 rgba(255,255,255,.08)}
+.dropdown-menu,.modal-content{
+  background:rgba(26,29,51,.72)!important;border:1px solid rgba(255,255,255,.09)!important;
+  backdrop-filter:blur(18px) saturate(160%);-webkit-backdrop-filter:blur(18px) saturate(160%);
+}
+.list-group-item{background:transparent!important;border-color:rgba(255,255,255,.06)!important}
+.list-group-item:hover{background:rgba(99,102,241,.08)!important}
+.btn-primary{box-shadow:0 4px 16px rgba(99,102,241,.35)}
+.form-control,.form-select{background:rgba(15,18,38,.55)!important;backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px)}
+@media (prefers-reduced-motion:reduce){body::before{animation:none}}
+@media (max-width:991.98px){.card{backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px)}}
+
 {% block extra_styles %}{% endblock %}
 </style>
 </head>

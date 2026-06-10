@@ -3291,6 +3291,29 @@ AURELINA_CREATIVES = {
     'src_social': 'Соцдок / FOMO',
 }
 
+# Тест-аккаунты владельца — исключаются из ВСЕЙ статистики дашборда (но не из
+# карточки конкретного юзера). По username (lower) + известные tg_id.
+AURELINA_EXCLUDE_USERNAMES = {'grelok', 'velumadm', 'aurum_spprt'}
+AURELINA_EXCLUDE_IDS = {299166029}  # @grelok (владелец) — фолбэк, если username пуст
+
+
+def _aur_excluded_ids(con: sqlite3.Connection) -> list[int]:
+    ids = set(AURELINA_EXCLUDE_IDS)
+    if AURELINA_EXCLUDE_USERNAMES:
+        qs = ','.join('?' * len(AURELINA_EXCLUDE_USERNAMES))
+        for r in con.execute(
+                f"SELECT tg_id FROM users WHERE lower(username) IN ({qs})",
+                tuple(AURELINA_EXCLUDE_USERNAMES)):
+            ids.add(r['tg_id'])
+    return [int(x) for x in ids]
+
+
+def _excl(ids: list[int], col: str) -> str:
+    """SQL-фрагмент исключения (ids — int из БД, инъекция исключена)."""
+    if not ids:
+        return ''
+    return f" AND {col} NOT IN ({','.join(str(int(x)) for x in ids)})"
+
 
 def _aurelina_connect() -> sqlite3.Connection:
     """Read-only SQLite connection. Falls back to immutable mode if the live WAL
@@ -3319,13 +3342,17 @@ def _load_aurelina_stats() -> dict:
     con = None
     try:
         con = _aurelina_connect()
+        excl = _aur_excluded_ids(con)
+        ex_e = _excl(excl, 'e.tg_id')   # events
+        ex_p = _excl(excl, 'p.tg_id')   # payments (alias p)
+        ex_t = _excl(excl, 'tg_id')     # plain tg_id column
 
         def dcount(types: list[str], where: str = '', args: tuple = ()) -> int:
             qs = ','.join('?' * len(types))
             row = con.execute(
                 f"SELECT COUNT(DISTINCT e.tg_id) c FROM events e "
                 f"JOIN users u ON u.tg_id=e.tg_id "
-                f"WHERE e.type IN ({qs}) {where}", (*types, *args)).fetchone()
+                f"WHERE e.type IN ({qs}) {where}{ex_e}", (*types, *args)).fetchone()
             return row['c'] if row else 0
 
         funnel = [
@@ -3337,20 +3364,20 @@ def _load_aurelina_stats() -> dict:
             ('Оплата',              dcount(['pay_success'])),
         ]
 
-        users = con.execute("SELECT COUNT(*) c FROM users").fetchone()['c']
-        rub_total = con.execute("SELECT COALESCE(SUM(amount),0) s FROM payments WHERE status='paid' AND currency='RUB'").fetchone()['s']
-        stars_total = con.execute("SELECT COALESCE(SUM(amount),0) s FROM payments WHERE status='paid' AND currency='XTR'").fetchone()['s']
-        payers_total = con.execute("SELECT COUNT(DISTINCT tg_id) c FROM payments WHERE status='paid'").fetchone()['c']
+        users = con.execute(f"SELECT COUNT(*) c FROM users WHERE 1=1{ex_t}").fetchone()['c']
+        rub_total = con.execute(f"SELECT COALESCE(SUM(amount),0) s FROM payments WHERE status='paid' AND currency='RUB'{ex_t}").fetchone()['s']
+        stars_total = con.execute(f"SELECT COALESCE(SUM(amount),0) s FROM payments WHERE status='paid' AND currency='XTR'{ex_t}").fetchone()['s']
+        payers_total = con.execute(f"SELECT COUNT(DISTINCT tg_id) c FROM payments WHERE status='paid'{ex_t}").fetchone()['c']
 
         # ---- per-creative breakdown (known seeding codes + any extra src_*) ----
         started = {r['source']: r['c'] for r in con.execute(
-            "SELECT source, COUNT(*) c FROM users WHERE source IS NOT NULL GROUP BY source")}
+            f"SELECT source, COUNT(*) c FROM users WHERE source IS NOT NULL{ex_t} GROUP BY source")}
         pay_by_src = {r['src']: r for r in con.execute(
             "SELECT u.source src, COUNT(DISTINCT p.tg_id) payers, "
             "COALESCE(SUM(CASE WHEN p.currency='RUB' THEN p.amount END),0) rub, "
             "COALESCE(SUM(CASE WHEN p.currency='XTR' THEN p.amount END),0) stars "
             "FROM payments p JOIN users u ON u.tg_id=p.tg_id "
-            "WHERE p.status='paid' GROUP BY u.source").fetchall()}
+            f"WHERE p.status='paid'{ex_p} GROUP BY u.source").fetchall()}
 
         codes = list(AURELINA_CREATIVES.keys())
         for src in started:
@@ -3396,8 +3423,8 @@ def _load_aurelina_stats() -> dict:
             })
 
         recent = [dict(r) for r in con.execute(
-            "SELECT tg_id, provider, product, amount, currency, ts "
-            "FROM payments WHERE status='paid' ORDER BY id DESC LIMIT 15")]
+            f"SELECT tg_id, provider, product, amount, currency, ts "
+            f"FROM payments WHERE status='paid'{ex_t} ORDER BY id DESC LIMIT 15")]
         return {
             'available': True, 'users': users, 'payers_total': payers_total,
             'rub_total': int(rub_total), 'stars_total': int(stars_total),
@@ -3657,3 +3684,115 @@ async def aurelina_support_attachment(ticket_id: int, message_id: int,
         logger.warning('aurelina attachment proxy failed',
                        message_id=message_id, error=str(exc)[:200])
         return Response(status_code=500)
+
+
+def _aur_list_users(q: str | None = None, limit: int = 300) -> dict:
+    con = None
+    try:
+        con = _aurelina_connect()
+        excl = _aur_excluded_ids(con)
+        ex_u = _excl(excl, 'u.tg_id')
+        ex_t = _excl(excl, 'tg_id')
+        conds, args = [], []
+        if q:
+            q = q.strip().lstrip('@')
+            if q.isdigit():
+                conds.append('u.tg_id=?'); args.append(int(q))
+            else:
+                conds.append('(u.username LIKE ? OR u.first_name LIKE ?)')
+                args += [f'%{q}%', f'%{q}%']
+        where = ('WHERE ' + ' AND '.join(conds)) if conds else 'WHERE 1=1'
+        rows = con.execute(
+            f"""SELECT u.tg_id, u.username, u.first_name, u.gender, u.source,
+                       u.paid_balance, u.vip_until, u.free_tarot_used, u.created_at,
+                  (SELECT COUNT(*) FROM payments p WHERE p.tg_id=u.tg_id AND p.status='paid') pays,
+                  (SELECT COALESCE(SUM(amount),0) FROM payments p WHERE p.tg_id=u.tg_id AND p.status='paid' AND currency='RUB') rub,
+                  (SELECT COALESCE(SUM(amount),0) FROM payments p WHERE p.tg_id=u.tg_id AND p.status='paid' AND currency='XTR') stars
+               FROM users u {where}{ex_u} ORDER BY u.created_at DESC LIMIT ?""",
+            (*args, limit)).fetchall()
+        now = datetime.utcnow().isoformat(timespec='seconds')
+        users = []
+        for r in rows:
+            d = dict(r)
+            d['vip'] = bool(r['vip_until'] and r['vip_until'] > now)
+            users.append(d)
+        total = con.execute(f"SELECT COUNT(*) c FROM users WHERE 1=1{ex_t}").fetchone()['c']
+        payers = con.execute(f"SELECT COUNT(DISTINCT tg_id) c FROM payments WHERE status='paid'{ex_t}").fetchone()['c']
+        vips = con.execute(f"SELECT COUNT(*) c FROM users WHERE vip_until IS NOT NULL AND vip_until>?{ex_t}",
+                           (now,)).fetchone()['c']
+        return {'available': True, 'users': users, 'total': total, 'payers': payers,
+                'vips': vips, 'q': q or '', 'shown': len(users)}
+    except Exception as exc:
+        logger.warning('aurelina users load failed', error=str(exc)[:200])
+        return {'available': False, 'error': str(exc)[:200]}
+    finally:
+        if con is not None:
+            con.close()
+
+
+@router.get('/aurelina/users', response_class=HTMLResponse)
+async def aurelina_users(admin_session: Optional[str] = Cookie(default=None), q: str = ''):
+    if not _check_auth(admin_session):
+        return _redirect_login()
+    data = await asyncio.to_thread(_aur_list_users, q or None)
+    return render('aurelina_users.html', title='Aurelina · пользователи',
+                  pretitle='Aurelina', active='aurelina_users', data=data)
+
+
+AUR_EVENT_LABELS = {
+    'start': 'Заход (/start)', 'onboarding_start': 'Начал онбординг',
+    'onboarding_done': 'Онбординг завершён', 'natal_view': 'Натальная карта',
+    'tarot_free': 'Бесплатный расклад', 'tarot_paid': 'Платный расклад',
+    'daily_card': 'Карта дня', 'paywall_view': 'Пэйвол показан',
+    'pay_click': 'Клик оплаты', 'pay_success': 'ОПЛАТА',
+    'ref_invite': 'Открыл реферал', 'ref_join': 'Пришёл по рефералу',
+    'ref_reward': 'Реф-награда', 'horoscope': 'Гороскоп',
+    'horoscope_push': 'Утренний гороскоп', 'support_ticket_created': 'Создал тикет',
+    'support_user_reply': 'Дописал в тикет', 'dunning1': 'Дожим #1', 'dunning2': 'Дожим #2',
+}
+
+
+def _aur_user_detail(tg_id: int) -> dict | None:
+    con = None
+    try:
+        con = _aurelina_connect()
+        u = con.execute("SELECT * FROM users WHERE tg_id=?", (tg_id,)).fetchone()
+        if not u:
+            return None
+        now = datetime.utcnow().isoformat(timespec='seconds')
+        user = dict(u)
+        user['vip'] = bool(u['vip_until'] and u['vip_until'] > now)
+        payments = [dict(r) for r in con.execute(
+            "SELECT provider, product, amount, currency, status, ts FROM payments "
+            "WHERE tg_id=? ORDER BY id DESC", (tg_id,))]
+        events = []
+        for r in con.execute(
+                "SELECT type, meta, source, ts FROM events WHERE tg_id=? ORDER BY id DESC LIMIT 80",
+                (tg_id,)):
+            events.append({'label': AUR_EVENT_LABELS.get(r['type'], r['type']),
+                           'type': r['type'], 'meta': r['meta'], 'ts': r['ts']})
+        tickets = [dict(r) for r in con.execute(
+            "SELECT id, status, updated_at FROM support_tickets WHERE tg_id=? ORDER BY id DESC",
+            (tg_id,))]
+        invited = con.execute("SELECT COUNT(*) c FROM referrals WHERE inviter=?", (tg_id,)).fetchone()['c']
+        rub = con.execute("SELECT COALESCE(SUM(amount),0) s FROM payments WHERE tg_id=? AND status='paid' AND currency='RUB'", (tg_id,)).fetchone()['s']
+        stars = con.execute("SELECT COALESCE(SUM(amount),0) s FROM payments WHERE tg_id=? AND status='paid' AND currency='XTR'", (tg_id,)).fetchone()['s']
+        return {'available': True, 'user': user, 'payments': payments, 'events': events,
+                'tickets': tickets, 'invited': invited, 'rub': int(rub), 'stars': int(stars)}
+    except Exception as exc:
+        logger.warning('aurelina user detail failed', tg_id=tg_id, error=str(exc)[:200])
+        return {'available': False, 'error': str(exc)[:200]}
+    finally:
+        if con is not None:
+            con.close()
+
+
+@router.get('/aurelina/users/{tg_id}', response_class=HTMLResponse)
+async def aurelina_user(tg_id: int, admin_session: Optional[str] = Cookie(default=None)):
+    if not _check_auth(admin_session):
+        return _redirect_login()
+    data = await asyncio.to_thread(_aur_user_detail, tg_id)
+    if not data:
+        return HTMLResponse('Пользователь не найден', status_code=404)
+    return render('aurelina_user.html', title=f'Юзер {tg_id}',
+                  pretitle='Aurelina', active='aurelina_users', data=data)

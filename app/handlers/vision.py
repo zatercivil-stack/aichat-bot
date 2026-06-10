@@ -95,6 +95,7 @@ _BUY_KB = buy_or_invite_kb()
 async def _start_edit_from_uploaded(
     message: Message, state: FSMContext, file_id: str,
     user_tg_id: int, caption: str, source_label: str,
+    is_new_user: bool = False,
 ) -> None:
     """Общая логика для фото/файла, присланного из главного меню (без активного
     flow). Если в caption явный edit-запрос — сразу запускаем edit. Иначе —
@@ -104,15 +105,38 @@ async def _start_edit_from_uploaded(
     # Funnel-метрика: фиксируем selfie_uploaded и в Freeform-флоу (welcome →
     # «пришли селфи прямо сейчас» без state). До этого фикса событие логилось
     # только в state-флоу — selfie-first юзеры выпадали из метрики активации.
+    # Если первое действие НОВОГО юзера — фото (а не /start): cmd_start не
+    # отработал → welcome-бонус не начислен и регистрация не залогирована.
+    # Закрываем этот GAP здесь. Гейт is_new_user (от middleware, True ровно на
+    # первом апдейте) исключает двойное начисление, если юзер позже нажмёт /start.
+    welcome_granted = 0
+    _uid = None
+    registered = False
     try:
         async with AsyncSessionFactory() as _s:
             _u = await get_user(_s, user_tg_id)
-        if _u:
-            log_event_bg(_u.id, 'selfie_uploaded',
-                         source='freeform', via=source_label)
+            if _u:
+                _uid = _u.id
+                # Идемпотентность: начисляем welcome ТОЛЬКО «чистому» юзеру,
+                # который ещё ничего не получал. Защита от двойного начисления,
+                # если первое действие — альбом (несколько фото конкурентно).
+                fresh = (_u.credits == 0 and (_u.burn_credits or 0) == 0
+                         and _u.daily_credits_granted_at is None
+                         and _u.promo_activated_at is None)
+                if is_new_user and fresh:
+                    from app.database.repo.credits import grant_welcome
+                    welcome_granted = await grant_welcome(_s, _u)
+                    await _s.commit()
+                    registered = True
+        if _uid:
+            log_event_bg(_uid, 'selfie_uploaded', source='freeform', via=source_label)
+            if registered:
+                log_event_bg(_uid, 'user_registered')
     except Exception as exc:
-        logger.warning('selfie_uploaded (freeform) event log failed',
-                       error=str(exc)[:150])
+        logger.warning('freeform welcome/selfie event failed', error=str(exc)[:150])
+    if welcome_granted:
+        await message.answer(
+            f'🎁 Дарю {welcome_granted} приветственных кредитов — хватит на первое фото.')
 
     edit_intent = _detect_edit_intent(caption) if caption else False
 
@@ -154,7 +178,8 @@ async def _start_edit_from_uploaded(
 
 
 @router.message(F.photo)
-async def handle_photo(message: Message, state: FSMContext, redis=None) -> None:
+async def handle_photo(message: Message, state: FSMContext, redis=None,
+                       is_new_user: bool = False) -> None:
     """Бара-фото из главного меню → новый каталог (категории) с reuse_file_id.
     Поддерживается шорткат: caption с edit-запросом → запускаем сразу."""
     user_tg_id = message.from_user.id
@@ -171,11 +196,13 @@ async def handle_photo(message: Message, state: FSMContext, redis=None) -> None:
     caption = (message.caption or '').strip()
     await _start_edit_from_uploaded(
         message, state, file_id, user_tg_id, caption, source_label='фото',
+        is_new_user=is_new_user,
     )
 
 
 @router.message(F.document)
-async def handle_document(message: Message, state: FSMContext, redis=None) -> None:
+async def handle_document(message: Message, state: FSMContext, redis=None,
+                          is_new_user: bool = False) -> None:
     """Файл из главного меню (фото-документ — iPhone .heic, RAW и т.п.).
     Раньше документ без активного flow не ловился ни одним хендлером и просто
     игнорировался. Теперь — тот же путь, что и фото: reuse_file_id + новый
@@ -200,6 +227,7 @@ async def handle_document(message: Message, state: FSMContext, redis=None) -> No
     caption = (message.caption or '').strip()
     await _start_edit_from_uploaded(
         message, state, doc.file_id, user_tg_id, caption, source_label='файл',
+        is_new_user=is_new_user,
     )
 
 

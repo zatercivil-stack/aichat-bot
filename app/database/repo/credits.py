@@ -292,6 +292,31 @@ async def add_credits(
     await session.flush()
 
 
+async def grant_welcome(session: AsyncSession, user: User) -> int:
+    """Начисляет приветственный бонус (сгораемый) — та же логика, что в cmd_start.
+    Вызывать ТОЛЬКО для новичков (is_new_user) — идемпотентность обеспечивает
+    вызывающий гейт (is_new_user=True ровно на первом апдейте). Возвращает сумму."""
+    from datetime import datetime, timedelta, timezone
+
+    from app.database.repo.bot_config import get_config_value
+    raw = (await get_config_value(session, 'welcome_bonus_credits') or '300').strip()
+    try:
+        amount = max(0, int(raw))
+    except ValueError:
+        amount = 300
+    if not amount:
+        return 0
+    burn_raw = (await get_config_value(session, 'welcome_burn_days') or '7').strip()
+    try:
+        burn_days = max(0, int(burn_raw))
+    except ValueError:
+        burn_days = 7
+    burn_until = (datetime.now(timezone.utc) + timedelta(days=burn_days)
+                  if burn_days > 0 else None)
+    await add_credits(session, user, amount, burn_expires_at=burn_until)
+    return amount
+
+
 def get_pack_by_id(pack_id: str) -> dict | None:
     """Ищет в обоих списках — вечные и burn."""
     return next((p for p in ALL_PACKS if p['id'] == pack_id), None)
