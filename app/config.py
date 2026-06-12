@@ -24,6 +24,11 @@ class Settings(BaseSettings):
     # OpenRouter
     OPENROUTER_API_KEY: str
 
+    # OpenAI (gpt-5.4-mini, бесплатные токены data-sharing) — ТОЛЬКО для
+    # генерации текстов канала @conturD. Клиентских данных не касается.
+    # Пусто → автогенератор постов отключён.
+    OPENAI_API_KEY: str = ''
+
     # fal.ai — Gemini Flash Image для identity-preserving edits и face swap
     # Если пусто — фолбэчимся на OpenRouter (gpt-5-image)
     FAL_AI_API_KEY: str = ''

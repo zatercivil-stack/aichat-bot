@@ -1,6 +1,9 @@
 from __future__ import annotations
 
 import json
+import random
+import re
+import uuid
 from datetime import datetime, timezone
 
 import structlog
@@ -182,20 +185,34 @@ async def cmd_channel_post(message: Message) -> None:
         )
 
 
-async def _publish_draft(bot, data: dict) -> int:
-    """Публикует черновик в @conturD (silent), пишет в channel_posts, чистит."""
+def _btn_markup(btn: dict | None) -> InlineKeyboardMarkup | None:
+    """Строит инлайн-кнопку-CTA из btn={text,url,icon} (или None)."""
+    if not (btn and btn.get('url')):
+        return None
+    bkw = {'text': btn['text'], 'url': btn['url'], 'style': 'success'}
+    if btn.get('icon'):
+        bkw['icon_custom_emoji_id'] = btn['icon']
+    return InlineKeyboardMarkup.model_construct(
+        inline_keyboard=[[InlineKeyboardButton.model_construct(**bkw)]])
+
+
+async def _publish_post(bot, data: dict) -> int:
+    """Шлёт пост в @conturD (silent, опц. инлайн-кнопка) + пишет в channel_posts.
+    НЕ трогает хранилище черновиков (общий код для ручного и авто-флоу)."""
     from app.services.channel_publisher import CHANNEL_ID
     from app.database.models import ChannelPost
     from sqlalchemy import insert as sql_insert
     caption = data.get('caption', '')
     fid = data.get('image_fid')
+    reply_markup = _btn_markup(data.get('btn'))
     if fid:
         sent = await bot.send_photo(chat_id=CHANNEL_ID, photo=fid, caption=caption,
-                                    parse_mode='HTML', disable_notification=True)
+                                    parse_mode='HTML', disable_notification=True,
+                                    reply_markup=reply_markup)
     else:
         sent = await bot.send_message(chat_id=CHANNEL_ID, text=caption,
                                       parse_mode='HTML', disable_web_page_preview=True,
-                                      disable_notification=True)
+                                      disable_notification=True, reply_markup=reply_markup)
     async with AsyncSessionFactory() as s:
         await s.execute(sql_insert(ChannelPost).values(
             topic=data.get('topic', 'manual'), body=caption,
@@ -204,9 +221,15 @@ async def _publish_draft(bot, data: dict) -> int:
             published_at=datetime.now(timezone.utc),
             message_id=sent.message_id, status='published',
         ))
-        await set_config_value(s, _DRAFT_KEY, '')
         await s.commit()
     return sent.message_id
+
+
+async def _publish_draft(bot, data: dict) -> int:
+    """Публикует одиночный ручной черновик (/channel_post) и очищает его слот."""
+    mid = await _publish_post(bot, data)
+    await _clear_draft()
+    return mid
 
 
 @router.callback_query(F.data == 'chp:pub')
@@ -381,3 +404,167 @@ async def cmd_channel_status(message: Message) -> None:
         parse_mode="HTML",
         disable_web_page_preview=True,
     )
+
+
+# ──────────────────────────────────────────────────────────────────────────
+# Авто-генератор постов (gpt-5.4-mini): 3×/день по 2 варианта на одобрение.
+# Чередует режимы: «бесплатные кредиты» (футер +кр) ↔ «инлайн-кнопка» (credits=0).
+# Премиум-эмодзи всегда. САМ В КАНАЛ НЕ ПУБЛИКУЕТ — только по тапу владельца.
+# Несколько черновиков живут одновременно (очередь по id), каждый одобряется
+# отдельно — в отличие от одиночного ручного слота _DRAFT_KEY.
+# ──────────────────────────────────────────────────────────────────────────
+
+_AUTO_KEY = 'auto_post_drafts'          # JSON {draft_id: data}
+_PE_SPARKLES = '5325547803936572038'    # ✨ — иконка кнопки-CTA
+
+
+async def _load_auto() -> dict:
+    async with AsyncSessionFactory() as s:
+        raw = await get_config_value(s, _AUTO_KEY)
+    try:
+        return json.loads(raw) if raw else {}
+    except Exception:  # noqa: BLE001
+        return {}
+
+
+async def _save_auto(d: dict) -> None:
+    async with AsyncSessionFactory() as s:
+        await set_config_value(s, _AUTO_KEY, json.dumps(d))
+        await s.commit()
+
+
+def _auto_kb(draft_id: str) -> InlineKeyboardMarkup:
+    from app.keyboards.main import PE_CHECK, PE_CROSS
+    return InlineKeyboardMarkup(inline_keyboard=[[
+        InlineKeyboardButton.model_construct(
+            text='Опубликовать', callback_data=f'apc:pub:{draft_id}',
+            icon_custom_emoji_id=PE_CHECK, style='success'),
+        InlineKeyboardButton.model_construct(
+            text='Удалить', callback_data=f'apc:del:{draft_id}',
+            icon_custom_emoji_id=PE_CROSS, style='danger'),
+    ]])
+
+
+async def run_auto_post_drafts(bot, n_variants: int = 2) -> None:
+    """Генерит N вариантов поста через GPT и шлёт владельцу на одобрение.
+    Чередует credits-режим (чётный индекс) и button-режим (нечётный)."""
+    from app.services.gpt_post import generate_post, is_enabled
+    if not is_enabled():
+        logger.info('auto_post skipped: OPENAI_API_KEY пуст')
+        return
+    from app.services.channel_publisher import (
+        assemble_manual_post, _create_post_promo, _neyra_link, _link_signature,
+        _fix_markdown_bold)
+    from app.handlers.image_edit import EDIT_PRESETS
+    from app.database.repo.preset_previews import get_preview_file_id
+    from app.utils import premium_text
+    from sqlalchemy import text as _sqltext
+
+    # пресеты с готовым превью (есть file_id) — из них выбираем образ
+    async with AsyncSessionFactory() as s:
+        rows = await s.execute(_sqltext(
+            "SELECT DISTINCT preset_key FROM preset_previews"))
+        preview_keys = [r[0] for r in rows.fetchall() if r[0] in EDIT_PRESETS]
+    if not preview_keys:
+        logger.warning('auto_post: нет пресетов с превью')
+        return
+    random.shuffle(preview_keys)
+
+    drafts = await _load_auto()
+    sent = 0
+    for i in range(n_variants):
+        preset = preview_keys[i % len(preview_keys)]
+        label = re.sub(r'^\W+', '', EDIT_PRESETS[preset][0]).strip()
+        body = await generate_post(label)
+        if not body:
+            continue
+        async with AsyncSessionFactory() as s:
+            fid = await get_preview_file_id(s, preset)
+        credits_mode = (i % 2 == 0)
+        if credits_mode:
+            # «бесплатные кредиты»: assemble добавит футер с +кр (премиум в теле)
+            caption, fid2, cta_type, _promo = await assemble_manual_post(
+                body, preset, mode='feature')
+            fid = fid2 or fid
+            btn = None
+            mode_label = 'бесплатные кредиты'
+        else:
+            # «инлайн-кнопка»: credits=0, кнопка-CTA под постом, без футера-бонуса
+            promo = await _create_post_promo(preset_key=preset, credits=0)
+            # тот же порядок пост-обработки, что в assemble_manual_post:
+            # markdown→HTML → премиум-эмодзи → подпись-ссылка
+            caption = _link_signature(premium_text(_fix_markdown_bold(body)))
+            cta_type = 'neira_feature'
+            btn = {'text': 'Хочу такой кадр со своим лицом',
+                   'url': _neyra_link(promo), 'icon': _PE_SPARKLES}
+            mode_label = 'инлайн-кнопка'
+
+        did = uuid.uuid4().hex[:8]
+        data = {'caption': caption, 'image_fid': fid, 'topic': f'auto:{preset}',
+                'cta_type': cta_type, 'btn': btn}
+        drafts[did] = data
+        # превью владельцу: реальный вид + отдельное сообщение с управлением
+        try:
+            await bot.send_photo(ADMIN_ID, fid, caption=caption, parse_mode='HTML',
+                                 reply_markup=_btn_markup(btn))
+            await bot.send_message(
+                ADMIN_ID,
+                f"🤖 Авто-черновик «{label}» · режим: <b>{mode_label}</b>. Публикуем?",
+                parse_mode='HTML', reply_markup=_auto_kb(did))
+            sent += 1
+        except Exception as exc:  # noqa: BLE001
+            logger.error('auto_post send failed', error=str(exc)[:200])
+            drafts.pop(did, None)
+    await _save_auto(drafts)
+    logger.info('auto_post done', sent=sent)
+
+
+@router.message(Command("autopost"))
+async def cmd_autopost(message: Message) -> None:
+    """Ручной триггер авто-генератора (та же пачка, что по расписанию)."""
+    if not _is_admin(message):
+        return
+    await message.answer("⏳ Генерирую 2 варианта через gpt-5.4-mini…")
+    await run_auto_post_drafts(message.bot, n_variants=2)
+
+
+@router.callback_query(F.data.startswith('apc:pub:'))
+async def cb_apc_publish(callback: CallbackQuery) -> None:
+    if not _is_admin_uid(callback.from_user.id):
+        return
+    did = callback.data.split(':', 2)[2]
+    drafts = await _load_auto()
+    data = drafts.get(did)
+    if not data:
+        await callback.answer('Черновик уже использован или удалён', show_alert=True)
+        return
+    await callback.answer('Публикую…')
+    try:
+        mid = await _publish_post(callback.bot, data)
+        drafts.pop(did, None)
+        await _save_auto(drafts)
+        try:
+            await callback.message.edit_reply_markup(reply_markup=None)
+        except Exception:  # noqa: BLE001
+            pass
+        await callback.message.answer(
+            f"✅ <b>Опубликовано в @conturD</b> (msg {mid}).", parse_mode='HTML')
+    except Exception as exc:  # noqa: BLE001
+        logger.error('apc publish failed', error=str(exc)[:300])
+        await callback.message.answer(
+            f"❌ Ошибка публикации: <code>{str(exc)[:300]}</code>", parse_mode='HTML')
+
+
+@router.callback_query(F.data.startswith('apc:del:'))
+async def cb_apc_delete(callback: CallbackQuery) -> None:
+    if not _is_admin_uid(callback.from_user.id):
+        return
+    did = callback.data.split(':', 2)[2]
+    drafts = await _load_auto()
+    if drafts.pop(did, None) is not None:
+        await _save_auto(drafts)
+    try:
+        await callback.message.edit_reply_markup(reply_markup=None)
+    except Exception:  # noqa: BLE001
+        pass
+    await callback.answer('Удалено')

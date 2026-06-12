@@ -432,13 +432,19 @@ async def cmd_start(
                 if idx is not None:
                     clean_label = re.sub(r'^\W+', '', EDIT_PRESETS[preset_key][0]).strip()
                     total_bonus = credits + (welcome_bonus if is_new_user else 0)
-                    # Welcome-коллаж (3 пресета) → подпись с подарком → карточка
-                    # конкретного preset из ссылки. Особенно важно для посевных
-                    # CHAN_<PRESET>_* — юзер видит ассортимент и сразу нужную сцену.
+                    # Подарок-строку показываем ТОЛЬКО если реально что-то начислили
+                    # (промо canвести credits=0 — чисто трекинг/переход в пресет;
+                    # тогда без «+0 кредитов», сразу к сцене).
+                    gift_line = (
+                        f'🎉 <b>Лови подарок — +{total_bonus} кредитов зачислено!</b>\n\n'
+                        if total_bonus > 0 else ''
+                    )
+                    # Welcome-коллаж (3 пресета) → подпись → карточка конкретного
+                    # preset из ссылки. Особенно важно для посевных CHAN_<PRESET>_*.
                     await _send_welcome_with_collage(
                         message,
                         premium_text(
-                            f'🎉 <b>Лови подарок — +{total_bonus} кредитов зачислено!</b>\n\n'
+                            f'{gift_line}'
                             f'Вот сцена <b>«{clean_label}»</b> 👇 Нравится — жми '
                             f'<b>«Хочу такое со своим лицом»</b>, пришлю готовый кадр с твоим '
                             f'лицом за минуту.\n\n'

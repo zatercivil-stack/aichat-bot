@@ -1231,6 +1231,20 @@ def start_daily_push_scheduler(bot_instance):
         id='pending_channel_post',
         replace_existing=True,
     )
+    # Авто-генератор постов канала (gpt-5.4-mini): 3×/день по 2 варианта
+    # владельцу НА ОДОБРЕНИЕ (сам в канал НЕ публикует). Чередует режимы
+    # «бесплатные кредиты» ↔ «инлайн-кнопка», премиум-эмодзи всегда.
+    from app.handlers.channel_admin import run_auto_post_drafts
+    for _hr in (11, 15, 19):
+        _daily_push_scheduler.add_job(
+            run_auto_post_drafts,
+            trigger=CronTrigger(hour=_hr, minute=random.randint(2, 14),
+                                timezone=settings.tz),
+            args=[bot_instance],
+            id=f'auto_post_drafts_{_hr}',
+            replace_existing=True,
+            misfire_grace_time=1800,
+        )
     # Колесо удачи: каждые 30 мин шлём push «колесо готово» юзерам с
     # истёкшим cooldown'ом (ZSET wheel:ready_at). Ночью (23-09 МСК) тихо.
     from app.handlers.wheel import notify_wheel_ready
