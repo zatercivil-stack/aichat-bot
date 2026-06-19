@@ -3295,12 +3295,17 @@ AURELINA_CREATIVES = {
     'src_window':    'Окно возможностей',
     'src_flow':      'Денежный поток',
     'src_feel':      'Скажу о тебе',
+    'src_vkclips':   'ВКонтакте · видео',
+    'src_vkprofile': 'ВКонтакте · профиль',
 }
 
 # Тест-аккаунты владельца — исключаются из ВСЕЙ статистики дашборда (но не из
 # карточки конкретного юзера). По username (lower) + известные tg_id.
 AURELINA_EXCLUDE_USERNAMES = {'grelok', 'velumadm', 'aurum_spprt'}
 AURELINA_EXCLUDE_IDS = {299166029}  # @grelok (владелец) — фолбэк, если username пуст
+# Источники-«накрутка»: их юзеры полностью вне статистики дашборда (src_bots —
+# боты для соц-доказательства, в боте показывают высокий счётчик, но это не люди).
+AURELINA_EXCLUDE_SOURCES = {'src_bots'}
 
 
 def _aur_excluded_ids(con: sqlite3.Connection) -> list[int]:
@@ -3310,6 +3315,12 @@ def _aur_excluded_ids(con: sqlite3.Connection) -> list[int]:
         for r in con.execute(
                 f"SELECT tg_id FROM users WHERE lower(username) IN ({qs})",
                 tuple(AURELINA_EXCLUDE_USERNAMES)):
+            ids.add(r['tg_id'])
+    if AURELINA_EXCLUDE_SOURCES:
+        qs = ','.join('?' * len(AURELINA_EXCLUDE_SOURCES))
+        for r in con.execute(
+                f"SELECT tg_id FROM users WHERE source IN ({qs})",
+                tuple(AURELINA_EXCLUDE_SOURCES)):
             ids.add(r['tg_id'])
     return [int(x) for x in ids]
 
@@ -3755,7 +3766,22 @@ AUR_EVENT_LABELS = {
     'ref_reward': 'Реф-награда', 'horoscope': 'Гороскоп',
     'horoscope_push': 'Утренний гороскоп', 'support_ticket_created': 'Создал тикет',
     'support_user_reply': 'Дописал в тикет', 'dunning1': 'Дожим #1', 'dunning2': 'Дожим #2',
+    'daily_nudge': 'Утренний пуш (карта дня)', 'streak_reward': 'Награда за серию (+1 расклад)',
+    'pending_fulfilled': 'Закрыт отложенный вопрос', 'channel_post': 'Переход из канала',
+    'broadcast_sent': 'Рассылка отправлена', 'deep_cta_view': 'Показ CTA «разбор года»',
+    'natalx_view': 'Расширенный натал',
 }
+
+AUR_PRODUCT_LABELS = {
+    'single': '1 расклад', 'pack5': '5 раскладов', 'vip': 'VIP-безлимит',
+    'deep': 'Разбор на год', 'natalx': 'Разбор личности', 'test10': 'Тест',
+}
+AUR_PROVIDER_LABELS = {
+    'rollypay': 'RollyPay (СБП/карта)', 'cryptobot': 'CryptoBot',
+    'stars': 'Telegram Stars', 'platega': 'Platega',
+}
+AUR_PAY_STATUS = {'paid': 'оплачен', 'expired': 'истёк', 'created': 'не завершён',
+                  'pending': 'в обработке', 'failed': 'ошибка'}
 
 
 def _aur_user_detail(tg_id: int) -> dict | None:
@@ -3768,9 +3794,14 @@ def _aur_user_detail(tg_id: int) -> dict | None:
         now = datetime.utcnow().isoformat(timespec='seconds')
         user = dict(u)
         user['vip'] = bool(u['vip_until'] and u['vip_until'] > now)
+        user['source_ru'] = AURELINA_CREATIVES.get(user.get('source') or '', user.get('source') or '')
         payments = [dict(r) for r in con.execute(
             "SELECT provider, product, amount, currency, status, ts FROM payments "
             "WHERE tg_id=? ORDER BY id DESC", (tg_id,))]
+        for p in payments:
+            p['product_ru'] = AUR_PRODUCT_LABELS.get(p['product'], p['product'])
+            p['provider_ru'] = AUR_PROVIDER_LABELS.get(p['provider'], p['provider'])
+            p['status_ru'] = AUR_PAY_STATUS.get(p['status'], p['status'])
         events = []
         for r in con.execute(
                 "SELECT type, meta, source, ts FROM events WHERE tg_id=? ORDER BY id DESC LIMIT 80",
