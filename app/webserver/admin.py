@@ -3353,6 +3353,16 @@ def _aurelina_connect() -> sqlite3.Connection:
     raise last_err if last_err else sqlite3.Error('cannot open aurelina db')
 
 
+def _aur_col(con: sqlite3.Connection, name: str, default: str = 'NULL') -> str:
+    """Безопасная ссылка на колонку users: вернёт `u.<name>`, если она есть в
+    схеме astrobot, иначе `NULL` — защита от рассинхрона схем двух проектов."""
+    try:
+        cols = {r[1] for r in con.execute('PRAGMA table_info(users)').fetchall()}
+        return f'u.{name}' if name in cols else default
+    except Exception:
+        return default
+
+
 def _load_aurelina_stats() -> dict:
     if not os.path.exists(AURELINA_DB):
         return {'available': False, 'error': 'БД не примонтирована'}
@@ -3722,6 +3732,7 @@ def _aur_list_users(q: str | None = None, limit: int = 300) -> dict:
         rows = con.execute(
             f"""SELECT u.tg_id, u.username, u.first_name, u.gender, u.source,
                        u.paid_balance, u.vip_until, u.free_tarot_used, u.created_at,
+                       {_aur_col(con, 'blocked_at')} AS blocked_at,
                   (SELECT COUNT(*) FROM payments p WHERE p.tg_id=u.tg_id AND p.status='paid') pays,
                   (SELECT COALESCE(SUM(amount),0) FROM payments p WHERE p.tg_id=u.tg_id AND p.status='paid' AND currency='RUB') rub,
                   (SELECT COALESCE(SUM(amount),0) FROM payments p WHERE p.tg_id=u.tg_id AND p.status='paid' AND currency='XTR') stars
@@ -3732,13 +3743,19 @@ def _aur_list_users(q: str | None = None, limit: int = 300) -> dict:
         for r in rows:
             d = dict(r)
             d['vip'] = bool(r['vip_until'] and r['vip_until'] > now)
+            d['blocked'] = bool(r['blocked_at'])
             users.append(d)
         total = con.execute(f"SELECT COUNT(*) c FROM users WHERE 1=1{ex_t}").fetchone()['c']
         payers = con.execute(f"SELECT COUNT(DISTINCT tg_id) c FROM payments WHERE status='paid'{ex_t}").fetchone()['c']
         vips = con.execute(f"SELECT COUNT(*) c FROM users WHERE vip_until IS NOT NULL AND vip_until>?{ex_t}",
                            (now,)).fetchone()['c']
+        cols_present = {r[1] for r in con.execute('PRAGMA table_info(users)').fetchall()}
+        blocked = 0
+        if 'blocked_at' in cols_present:
+            blocked = con.execute(
+                f"SELECT COUNT(*) c FROM users WHERE blocked_at IS NOT NULL{ex_t}").fetchone()['c']
         return {'available': True, 'users': users, 'total': total, 'payers': payers,
-                'vips': vips, 'q': q or '', 'shown': len(users)}
+                'vips': vips, 'blocked': blocked, 'q': q or '', 'shown': len(users)}
     except Exception as exc:
         logger.warning('aurelina users load failed', error=str(exc)[:200])
         return {'available': False, 'error': str(exc)[:200]}

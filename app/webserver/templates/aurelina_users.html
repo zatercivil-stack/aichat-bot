@@ -6,19 +6,24 @@
 {% else %}
 
 <div class="row row-cards mb-2">
-  <div class="col-4">
+  <div class="col-3">
     <div class="card stat-card"><div class="card-body">
       <div class="stat-label mb-1">👥 Всего</div><div class="h2 mb-0">{{ data.total }}</div>
     </div></div>
   </div>
-  <div class="col-4">
+  <div class="col-3">
     <div class="card stat-card"><div class="card-body">
       <div class="stat-label mb-1">💳 Платящих</div><div class="h2 mb-0 text-success">{{ data.payers }}</div>
     </div></div>
   </div>
-  <div class="col-4">
+  <div class="col-3">
     <div class="card stat-card"><div class="card-body">
       <div class="stat-label mb-1">⭐ VIP</div><div class="h2 mb-0">{{ data.vips }}</div>
+    </div></div>
+  </div>
+  <div class="col-3">
+    <div class="card stat-card"><div class="card-body">
+      <div class="stat-label mb-1">🚫 Заблокировали</div><div class="h2 mb-0 text-danger">{{ data.blocked }}</div>
     </div></div>
   </div>
 </div>
@@ -43,6 +48,7 @@
         <tr>
           <td><a href="/admin/aurelina/users/{{ u.tg_id }}"><code class="small">{{ u.tg_id }}</code></a></td>
           <td>
+            {% if u.blocked %}<span title="Заблокировал бота">🚫</span> {% endif %}
             {{ u.first_name or '—' }}
             {% if u.username %}<span class="text-muted">@{{ u.username }}</span>{% endif %}
           </td>
@@ -52,6 +58,7 @@
             {% if u.vip %}<span class="badge bg-yellow-lt">VIP</span>{% endif %}
             {% if u.paid_balance %}<span class="badge bg-green-lt">{{ u.paid_balance }} раскл.</span>{% endif %}
             {% if not u.vip and not u.paid_balance %}<span class="text-muted">free</span>{% endif %}
+            {% if u.blocked %}<span class="badge bg-red-lt" title="Заблокировал бота">🚫 заблокировал</span>{% endif %}
           </td>
           <td>
             {% if u.pays %}<span class="text-success">{{ u.pays }}×</span>

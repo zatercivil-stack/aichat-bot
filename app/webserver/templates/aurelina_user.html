@@ -12,6 +12,7 @@
   <div class="col-lg-5">
     <div class="card">
       <div class="card-header"><h3 class="card-title">
+        {% if u.blocked_at %}<span title="Заблокировал бота">🚫</span> {% endif %}
         {{ u.first_name or '—' }}{% if u.username %} · @{{ u.username }}{% endif %}
       </h3></div>
       <div class="card-body">
@@ -23,6 +24,7 @@
           <tr><td class="text-muted">Статус</td><td>
             {% if u.vip %}<span class="badge bg-yellow-lt">VIP до {{ u.vip_until }}</span>{% endif %}
             <span class="badge bg-green-lt">Баланс: {{ u.paid_balance }} раскл.</span>
+            {% if u.blocked_at %}<span class="badge bg-red-lt" title="{{ u.blocked_at }}">🚫 заблокировал бота</span>{% endif %}
           </td></tr>
           <tr><td class="text-muted">Free-расклад</td><td>{{ u.free_tarot_used }} исп. · натал: {{ 'да' if u.free_natal_done else 'нет' }}</td></tr>
           <tr><td class="text-muted">Потрачено</td><td>{% if data.rub %}{{ data.rub }}₽ {% endif %}{% if data.stars %}{{ data.stars }}⭐{% endif %}{% if not data.rub and not data.stars %}—{% endif %}</td></tr>
