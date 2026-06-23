@@ -52,10 +52,10 @@ NAV_ITEMS = [
     ('users',        '👥', 'Пользователи',   '/admin/users'),
     ('support',      '🆘', 'Поддержка',       '/admin/support'),
 
-    ('_sec_aurelina', '',  '🔮 Aurelina · Таро+Астро', None),
-    ('aurelina',      '📊', 'Обзор',          '/admin/aurelina'),
-    ('aurelina_users','👥', 'Пользователи',   '/admin/aurelina/users'),
-    ('aurelina_support','🆘', 'Тикеты',        '/admin/aurelina/support'),
+    ('_sec_aurelina', '',  '🔮 Aurelina', None),
+    # отдельный дашборд вынесен на dashboard.example.com (см. astrobot/app/admin.py).
+    # Старые /admin/aurelina* роуты ещё живы как фолбэк, но из меню убраны.
+    ('aurelina_dash', '🚀', 'Дашборд ↗',      'https://dashboard.example.com'),
 
     ('_sec_money',   '',   'Деньги',         None),
     ('finance',      '💰', 'Финансы',         '/admin/finance'),

@@ -5,6 +5,7 @@ import csv
 import io
 import json
 import os
+import re
 import sqlite3
 from datetime import datetime, timedelta, timezone
 from typing import List, Optional
@@ -3786,7 +3787,7 @@ AUR_EVENT_LABELS = {
     'daily_nudge': 'Утренний пуш (карта дня)', 'streak_reward': 'Награда за серию (+1 расклад)',
     'pending_fulfilled': 'Закрыт отложенный вопрос', 'channel_post': 'Переход из канала',
     'broadcast_sent': 'Рассылка отправлена', 'deep_cta_view': 'Показ CTA «разбор года»',
-    'natalx_view': 'Расширенный натал',
+    'natalx_view': 'Расширенный натал', 'wheel_spin': 'Звёздный дар (награда)',
 }
 
 AUR_PRODUCT_LABELS = {
@@ -3823,8 +3824,10 @@ def _aur_user_detail(tg_id: int) -> dict | None:
         for r in con.execute(
                 "SELECT type, meta, source, ts FROM events WHERE tg_id=? ORDER BY id DESC LIMIT 80",
                 (tg_id,)):
+            # meta показываем как текст — снимаем HTML-теги (в призах wheel_spin есть <b>)
+            meta = re.sub(r'<[^>]+>', '', r['meta']) if r['meta'] else r['meta']
             events.append({'label': AUR_EVENT_LABELS.get(r['type'], r['type']),
-                           'type': r['type'], 'meta': r['meta'], 'ts': r['ts']})
+                           'type': r['type'], 'meta': meta, 'ts': r['ts']})
         tickets = [dict(r) for r in con.execute(
             "SELECT id, status, updated_at FROM support_tickets WHERE tg_id=? ORDER BY id DESC",
             (tg_id,))]
