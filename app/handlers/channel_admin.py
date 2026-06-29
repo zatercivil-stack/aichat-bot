@@ -528,6 +528,92 @@ async def cmd_autopost(message: Message) -> None:
     await run_auto_post_drafts(message.bot, n_variants=2)
 
 
+# ──────────────────────────────────────────────────────────────────────────
+# Полностью АВТОМАТИЧЕСКИЙ постинг: генерит ОДИН пост и публикует СРАЗУ в
+# @conturD, без одобрения в личку. Безопасен по mismatch: пост строится
+# preset-first (текст пишется ПРО конкретный пресет, картинка = превью того же
+# пресета), поэтому фото всегда совпадает с текстом — в отличие от старого
+# _build_post, где тема и картинка выбирались независимо.
+# ──────────────────────────────────────────────────────────────────────────
+
+_LAST_PRESET_KEY = 'auto_publish_last_preset'  # чтобы не повторять пресет подряд
+
+
+async def run_auto_post_publish(bot, mode: str = 'feature') -> None:
+    """Генерит один пост (gpt-5.4-mini на OPENAI_API_KEY) и сразу публикует его
+    в @conturD. Уважает паузу/skip (общие флаги с /channel_pause /channel_skip).
+    mode: 'feature' (+100 кр в CTA) утром / 'daily' (+50 кр) вечером."""
+    from app.services.gpt_post import generate_post, is_enabled
+    if not is_enabled():
+        logger.info('auto_publish skipped: OPENAI_API_KEY пуст')
+        return
+
+    # пауза / разовый пропуск — те же конфиг-флаги, что у ручных команд
+    async with AsyncSessionFactory() as s:
+        paused = await get_config_value(s, 'channel_publisher_paused')
+        skip = await get_config_value(s, 'channel_publisher_skip_next')
+        last = await get_config_value(s, _LAST_PRESET_KEY)
+    if paused == '1':
+        logger.info('auto_publish: paused')
+        return
+    if skip == '1':
+        async with AsyncSessionFactory() as s:
+            await set_config_value(s, 'channel_publisher_skip_next', '0')
+            await s.commit()
+        logger.info('auto_publish: skip_next (one-shot)')
+        return
+
+    from app.services.channel_publisher import assemble_manual_post
+    from app.handlers.image_edit import EDIT_PRESETS
+    from sqlalchemy import text as _sqltext
+
+    # пресеты с готовым превью (file_id уже есть → fal.ai не тратится)
+    async with AsyncSessionFactory() as s:
+        rows = await s.execute(_sqltext(
+            "SELECT DISTINCT preset_key FROM preset_previews"))
+        preview_keys = [r[0] for r in rows.fetchall() if r[0] in EDIT_PRESETS]
+    if not preview_keys:
+        logger.warning('auto_publish: нет пресетов с превью')
+        return
+    # не повторяем тот же образ два поста подряд (если есть выбор)
+    pool = [k for k in preview_keys if k != last] or preview_keys
+    preset = random.choice(pool)
+
+    label = re.sub(r'^\W+', '', EDIT_PRESETS[preset][0]).strip()
+    body = await generate_post(label)
+    if not body:
+        logger.warning('auto_publish: пустой текст от gpt', preset=preset)
+        return
+
+    caption, image_fid, cta_type, _promo = await assemble_manual_post(
+        body, preset, mode=mode)
+    if not image_fid:
+        logger.warning('auto_publish: нет превью у пресета', preset=preset)
+        return
+
+    data = {'caption': caption, 'image_fid': image_fid,
+            'topic': f'auto:{preset}', 'cta_type': cta_type, 'btn': None}
+    try:
+        mid = await _publish_post(bot, data)
+        async with AsyncSessionFactory() as s:
+            await set_config_value(s, _LAST_PRESET_KEY, preset)
+            await s.commit()
+        logger.info('auto_publish done', preset=preset, mid=mid, mode=mode)
+    except Exception as exc:  # noqa: BLE001
+        logger.error('auto_publish failed', preset=preset, error=str(exc)[:300])
+
+
+@router.message(Command("autopublish"))
+async def cmd_autopublish(message: Message) -> None:
+    """Ручной триггер ПОЛНОГО автопостинга: сгенерить и сразу опубликовать один
+    пост в @conturD (для проверки расписания без ожидания слота)."""
+    if not _is_admin(message):
+        return
+    await message.answer("⏳ Генерирую и публикую один пост в @conturD…")
+    await run_auto_post_publish(message.bot, mode='feature')
+    await message.answer("✅ Готово (проверь @conturD).")
+
+
 @router.callback_query(F.data.startswith('apc:pub:'))
 async def cb_apc_publish(callback: CallbackQuery) -> None:
     if not _is_admin_uid(callback.from_user.id):

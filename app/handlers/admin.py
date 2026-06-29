@@ -1231,20 +1231,23 @@ def start_daily_push_scheduler(bot_instance):
         id='pending_channel_post',
         replace_existing=True,
     )
-    # Авто-генератор постов канала (gpt-5.4-mini): 3×/день по 2 варианта
-    # владельцу НА ОДОБРЕНИЕ (сам в канал НЕ публикует). Чередует режимы
-    # «бесплатные кредиты» ↔ «инлайн-кнопка», премиум-эмодзи всегда.
-    from app.handlers.channel_admin import run_auto_post_drafts
-    for _hr in (11, 15, 19):
-        _daily_push_scheduler.add_job(
-            run_auto_post_drafts,
-            trigger=CronTrigger(hour=_hr, minute=random.randint(2, 14),
-                                timezone=settings.tz),
-            args=[bot_instance],
-            id=f'auto_post_drafts_{_hr}',
-            replace_existing=True,
-            misfire_grace_time=1800,
-        )
+    # ПОЛНЫЙ АВТОПОСТИНГ канала (gpt-5.4-mini на OPENAI_API_KEY): 1 пост/день
+    # СРАЗУ в @conturD, без одобрения в личку (решение владельца 28.06 — ручное
+    # одобрение убивало импакт и спамило ЛС). mismatch-безопасно: пост строится
+    # preset-first (текст ПРО пресет + превью того же пресета). Уважает
+    # /channel_pause /channel_resume /channel_skip. misfire_grace_time=3600 —
+    # если бот лежал в момент слота (ребут), пост опубликуется при подъёме.
+    # Слот: ВЕЧЕР ~19 МСК (прайм-тайм аудитории), mode='feature' (+100 кр в CTA).
+    from app.handlers.channel_admin import run_auto_post_publish
+    _daily_push_scheduler.add_job(
+        run_auto_post_publish,
+        trigger=CronTrigger(hour=19, minute=random.randint(2, 14),
+                            timezone=settings.tz),
+        args=[bot_instance, 'feature'],
+        id='auto_post_publish_evening',
+        replace_existing=True,
+        misfire_grace_time=3600,
+    )
     # Колесо удачи: каждые 30 мин шлём push «колесо готово» юзерам с
     # истёкшим cooldown'ом (ZSET wheel:ready_at). Ночью (23-09 МСК) тихо.
     from app.handlers.wheel import notify_wheel_ready
@@ -1377,9 +1380,7 @@ def start_daily_push_scheduler(bot_instance):
     logger.info(
         'Daily push scheduler started',
         schedule='10:00 MSK daily / 11:00 MSK sub-expiry / hourly time-bonus',
-        channel_morning_minute=_channel_morning_minute,
-        channel_evening_minute=_channel_publish_minute,
-        channel_schedule='morning 11:0X + evening 19:0X MSK, every day',
+        channel_schedule='auto-publish 1/day ~19:0X MSK (feature), every day',
     )
     return _daily_push_scheduler
 
