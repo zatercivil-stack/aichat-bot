@@ -537,12 +537,17 @@ async def cmd_autopost(message: Message) -> None:
 # ──────────────────────────────────────────────────────────────────────────
 
 _LAST_PRESET_KEY = 'auto_publish_last_preset'  # чтобы не повторять пресет подряд
+# Доля постов с бонусом «+кр» в футере. Остальные (~75%) — БЕЗ бонуса, с
+# зелёной инлайн-кнопкой-CTA в бота (credits=0, только трекинг): владелец 28.06 —
+# бонус в каждом посте обесценивает кредиты, дарить лишь иногда.
+_BONUS_CHANCE = 0.25
 
 
 async def run_auto_post_publish(bot, mode: str = 'feature') -> None:
     """Генерит один пост (gpt-5.4-mini на OPENAI_API_KEY) и сразу публикует его
     в @conturD. Уважает паузу/skip (общие флаги с /channel_pause /channel_skip).
-    mode: 'feature' (+100 кр в CTA) утром / 'daily' (+50 кр) вечером."""
+    ~25% постов — бонусный футер (+кр по mode: feature=100/daily=50), остальные —
+    инлайн-кнопка в бота без бонуса. mode влияет только на размер бонуса."""
     from app.services.gpt_post import generate_post, is_enabled
     if not is_enabled():
         logger.info('auto_publish skipped: OPENAI_API_KEY пуст')
@@ -563,8 +568,12 @@ async def run_auto_post_publish(bot, mode: str = 'feature') -> None:
         logger.info('auto_publish: skip_next (one-shot)')
         return
 
-    from app.services.channel_publisher import assemble_manual_post
+    from app.services.channel_publisher import (
+        assemble_manual_post, _create_post_promo, _neyra_link, _link_signature,
+        _fix_markdown_bold)
     from app.handlers.image_edit import EDIT_PRESETS
+    from app.database.repo.preset_previews import get_preview_file_id
+    from app.utils import premium_text
     from sqlalchemy import text as _sqltext
 
     # пресеты с готовым превью (file_id уже есть → fal.ai не тратится)
@@ -585,20 +594,35 @@ async def run_auto_post_publish(bot, mode: str = 'feature') -> None:
         logger.warning('auto_publish: пустой текст от gpt', preset=preset)
         return
 
-    caption, image_fid, cta_type, _promo = await assemble_manual_post(
-        body, preset, mode=mode)
+    bonus_mode = random.random() < _BONUS_CHANCE
+    if bonus_mode:
+        # редкий бонусный пост: футер «+кр в подарок», без инлайн-кнопки
+        caption, image_fid, cta_type, _promo = await assemble_manual_post(
+            body, preset, mode=mode)
+        btn = None
+    else:
+        # основной режим: без бонуса, зелёная инлайн-кнопка-CTA в бота
+        # (credits=0 — промо только трекает источник и открывает пресет)
+        promo = await _create_post_promo(preset_key=preset, credits=0)
+        caption = _link_signature(premium_text(_fix_markdown_bold(body)))
+        cta_type = 'neira_feature'
+        btn = {'text': 'Хочу такой кадр со своим лицом',
+               'url': _neyra_link(promo), 'icon': _PE_SPARKLES}
+        async with AsyncSessionFactory() as s:
+            image_fid = await get_preview_file_id(s, preset)
     if not image_fid:
         logger.warning('auto_publish: нет превью у пресета', preset=preset)
         return
 
     data = {'caption': caption, 'image_fid': image_fid,
-            'topic': f'auto:{preset}', 'cta_type': cta_type, 'btn': None}
+            'topic': f'auto:{preset}', 'cta_type': cta_type, 'btn': btn}
     try:
         mid = await _publish_post(bot, data)
         async with AsyncSessionFactory() as s:
             await set_config_value(s, _LAST_PRESET_KEY, preset)
             await s.commit()
-        logger.info('auto_publish done', preset=preset, mid=mid, mode=mode)
+        logger.info('auto_publish done', preset=preset, mid=mid, mode=mode,
+                    bonus=bonus_mode)
     except Exception as exc:  # noqa: BLE001
         logger.error('auto_publish failed', preset=preset, error=str(exc)[:300])
 
