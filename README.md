@@ -1,29 +1,29 @@
-# Neyra — AI Photo Bot
+# Neyra — AI-фото бот
 
-Async Telegram application: users send a selfie, choose a scene/preset, receive a photo with their face preserved in the new scene. Includes credit system, subscriptions, YooKassa payments, referral cashback, and a FastAPI admin dashboard.
+Асинхронное Telegram-приложение: пользователь отправляет селфи, выбирает сцену/пресет и получает фото с сохранённым лицом в новой сцене. Включает систему кредитов, подписки, платежи через YooKassa, реферальную программу и собственную административную панель на FastAPI.
 
-## Features
+## Возможности
 
-- Multi-provider AI image generation/editing (fal.ai, OpenRouter)
-- Credit system with burn (expiring) and eternal pools
-- Subscription plans with auto-renewal via saved payment method
-- YooKassa payments (webhook + polling fallback) with server-side verification
-- Telegram Stars and CryptoBot payments
-- Admin dashboard (FastAPI + Jinja) with auth, CSRF, rate limiting
-- Analytics: cohorts, heatmaps, experiments, finance
-- Channel publishing scheduler for @conturD
-- Referral system with cashback
+- Мультипровайдерная генерация и редактирование изображений (fal.ai, OpenRouter)
+- Система кредитов: сгораемые (burn) и вечные пулы
+- Подписки с автопродлением через сохранённый платёжный метод
+- Платежи YooKassa (webhook + поллинг) с серверной верификацией суммы и валюты
+- Платежи через Telegram Stars и CryptoBot
+- Админ-панель (FastAPI + Jinja): авторизация, CSRF, rate limit
+- Аналитика: когорты, тепловые карты, эксперименты, финансы
+- Планировщик публикаций в канал @conturD
+- Реферальная система с кэшбэком
 
-## Tech stack
+## Технологический стек
 
 Backend: Python 3.12, aiogram 3, FastAPI, SQLAlchemy 2 (async), Alembic, PostgreSQL 16, Redis 7.
 AI: fal.ai, OpenRouter, OpenAI.
-Payments: YooKassa, Telegram Stars, CryptoBot.
-Infra: Docker Compose, GitHub Actions CI.
+Платежи: YooKassa, Telegram Stars, CryptoBot.
+Инфраструктура: Docker Compose, GitHub Actions CI.
 
-## Architecture
+## Архитектура
 
-See `docs/ARCHITECTURE.md`. Mermaid diagram:
+См. `docs/ARCHITECTURE.md`. Упрощённая схема:
 
 ```mermaid
 flowchart LR
@@ -34,41 +34,40 @@ flowchart LR
   Svc --> AI[AI Providers]
   YK[YooKassa] --> WH[FastAPI webhook]
   WH --> Svc
-  Admin[Admin browser] --> AD[FastAPI admin]
+  Admin[Браузер админа] --> AD[FastAPI admin]
   AD --> DB
 ```
 
-## Project structure
+## Структура проекта
 
-- `app/` — application code
-- `migrations/` — Alembic migrations
-- `tests/` — pytest tests
-- `scripts/` — operational one-off scripts (not for public use)
-- `docs/` — technical documentation
+- `app/` — код приложения
+- `migrations/` — миграции Alembic
+- `tests/` — тесты pytest
+- `docs/` — техническая документация
 
-## Local run
+## Локальный запуск
 
-1. Clone repo.
-2. `cp .env.example .env` and fill values; set `ENV=development` for local.
+1. Клонировать репозиторий.
+2. `cp .env.example .env`, заполнить значения; для локального запуска `ENV=development`.
 3. `docker compose up -d postgres redis`
 4. `pip install -r requirements.txt -r requirements-dev.txt`
-5. `python main.py` (migrations apply automatically)
+5. `python main.py` (миграции применяются автоматически)
 6. `pytest`
 
-## Configuration
+## Конфигурация
 
-See `.env.example`. Key variables: `BOT_TOKEN`, `OPENROUTER_API_KEY`, `POSTGRES_*`, `REDIS_URL`, `ADMIN_TOKEN`, `ADMIN_SECRET_KEY`, `ADMIN_BASE_URL`, `YOOKASSA_*`.
+См. `.env.example`. Ключевые переменные: `BOT_TOKEN`, `OPENROUTER_API_KEY`, `POSTGRES_*`, `REDIS_URL`, `ADMIN_TOKEN`, `ADMIN_SECRET_KEY`, `ADMIN_BASE_URL`, `YOOKASSA_*`.
 
-`ADMIN_TOKEN` and `ADMIN_SECRET_KEY` must be strong (>=16 chars) in production; weak/empty defaults are rejected.
+`ADMIN_TOKEN` и `ADMIN_SECRET_KEY` должны быть стойкими (>=16 символов) в production; слабые/пустые значения отклоняются.
 
-## Testing
+## Тестирование
 
-`pytest` runs unit tests. Integration tests need PostgreSQL + Redis (see CI).
+`pytest` запускает unit-тесты. Интеграционные тесты требуют PostgreSQL и Redis (см. CI).
 
-## Limitations
+## Ограничения
 
-Requires external API keys (OpenRouter, fal.ai, YooKassa) for full functionality. Without them, core bot still starts in development mode.
+Для полной функциональности нужны внешние API-ключи (OpenRouter, fal.ai, YooKassa). Без них ядро бота запускается в режиме разработки.
 
-## License
+## Лицензия
 
-MIT (see LICENSE).
+MIT (см. LICENSE).
