@@ -15,9 +15,13 @@ from app.database.models import PaymentStatus
 from app.database.repo.credits import add_credits
 from app.database.repo.payments import get_pending_payments, update_payment
 from app.database.repo.users import get_all_telegram_ids, get_total_users_count, get_user
-from app.config import settings
 from app.keyboards.main import (
-    PE_AU_GOLD, PE_BUBBLE, PE_CARD, PE_HANDSHAKE, PE_LIGHTNING, PE_ROCKET, PE_SPARKLES,
+    PE_AU_GOLD,
+    PE_CARD,
+    PE_HANDSHAKE,
+    PE_LIGHTNING,
+    PE_ROCKET,
+    PE_SPARKLES,
 )
 
 logger = structlog.get_logger(__name__)
@@ -38,7 +42,7 @@ async def cmd_set_preview(message: Message) -> None:
     Фильтр in_(admin_ids) в декораторе — чтобы НЕ перехватывать фото обычных
     юзеров (даже если они случайно/намеренно поставят такую подпись)."""
     from app.database.repo.preset_previews import save_preview
-    from app.handlers.image_edit import reload_custom_presets, EDIT_PRESETS
+    from app.handlers.image_edit import EDIT_PRESETS, reload_custom_presets
     parts = (message.caption or '').split(':')
     if len(parts) < 3:
         await message.answer('Формат: <code>setpreview:&lt;key&gt;:&lt;0|1&gt;</code>', parse_mode='HTML')
@@ -72,6 +76,7 @@ async def ensure_default_promos() -> None:
     СТАРТ149 истёк 06-03). Истёкший дефолт ПРОДЛЕВАЕМ (он должен жить), любую
     ошибку создания глушим через rollback, чтобы не уронить старт."""
     from sqlalchemy import select
+
     from app.database.models import PromoCode
     from app.database.repo.promos import create_promo
 
@@ -91,7 +96,7 @@ async def ensure_default_promos() -> None:
                 # реактивируем и продлеваем, активный — не трогаем.
                 exp = existing.expires_at
                 if exp is not None and exp.tzinfo is None:
-                    exp = exp.replace(tzinfo=timezone.utc)
+                    exp = exp.replace(tzinfo=UTC)
                 if not existing.is_active or (exp is not None and exp <= now):
                     existing.expires_at = expires_at
                     existing.is_active = True
@@ -115,7 +120,8 @@ _PAYMENT_EXPIRE_HOURS = 24
 async def check_yookassa_payments(bot=None) -> None:
     """Проверять статус платежей YooKassa каждые 60 секунд."""
     try:
-        from yookassa import Configuration, Payment as YKPayment
+        from yookassa import Configuration
+        from yookassa import Payment as YKPayment
 
         Configuration.account_id = settings.YOOKASSA_SHOP_ID
         Configuration.secret_key = settings.YOOKASSA_SECRET_KEY
@@ -135,7 +141,7 @@ async def check_yookassa_payments(bot=None) -> None:
                 if not payment.external_id:
                     created = payment.created_at
                     if created.tzinfo is None:
-                        created = created.replace(tzinfo=timezone.utc)
+                        created = created.replace(tzinfo=UTC)
                     if (now_utc - created).total_seconds() > _PAYMENT_EXPIRE_HOURS * 3600:
                         await update_payment(session, payment.id, PaymentStatus.FAILED)
                         logger.info('Payment auto-expired (no external_id)',
@@ -445,8 +451,8 @@ async def send_activation_survey(bot_instance, tg_id: int) -> bool:
 async def cb_activation_survey(callback: CallbackQuery) -> None:
     reason = callback.data.split(':', 1)[1]
     try:
-        from app.database.repo.users import get_user
         from app.database.repo.events import log_event
+        from app.database.repo.users import get_user
         async with AsyncSessionFactory() as s:
             u = await get_user(s, callback.from_user.id)
         if u:
@@ -509,6 +515,7 @@ async def dispatch_scheduled_broadcasts() -> None:
     помечает 'running' и зовёт _do_preset_broadcast. Импорт ленивый — модуль
     webserver/admin.py содержит саму отправку и связанные хелперы."""
     from sqlalchemy import select as _sel
+
     from app.database.base import AsyncSessionFactory
     from app.database.models import ScheduledBroadcast
     from app.webserver.admin import _do_preset_broadcast
@@ -589,8 +596,9 @@ async def send_daily_push(bot_instance) -> None:
     - 7-14 дней молчал → win-back
     - 2-7 дней молчал → re-engagement
     - 6-48ч молчал → день-недели ротация ИЛИ low-credit-monetization"""
-    from sqlalchemy import select, and_
-    from app.database.models import User, BotEvent
+    from sqlalchemy import and_, select
+
+    from app.database.models import BotEvent, User
     from app.database.repo.credits import total_balance
 
     now = datetime.now(timezone.utc).replace(tzinfo=None)
@@ -604,7 +612,7 @@ async def send_daily_push(bot_instance) -> None:
         stmt = select(User).where(and_(
             User.last_active_at >= cutoff_max,
             User.last_active_at <= cutoff_recent,
-            User.is_banned == False,
+            not User.is_banned,
         )).limit(5000)
         users = (await session.execute(stmt)).scalars().all()
         # Pre-compute set юзеров с хотя бы одной генерацией — для O(1) проверки
@@ -625,7 +633,7 @@ async def send_daily_push(bot_instance) -> None:
         )).all())
         # Активные подписчики — этих не дёргаем upsell'ом
         subscribed_uids = set((await session.execute(
-            select(Subscription.user_id).where(Subscription.is_active == True)
+            select(Subscription.user_id).where(Subscription.is_active)
         )).scalars().all())
         # Кто хоть раз крутил Колесо удачи (событие wheel_spin). НЕ-круткивших
         # зовём на ПЕРВУЮ крутку (free-credit hook) — цикл «колесо готово»
@@ -722,8 +730,9 @@ async def send_daily_push(bot_instance) -> None:
                 # Все, кто дошёл сюда, уже генерили (0-gen перехвачен выше) →
                 # даём БЕСПЛАТНЫЙ путь (реферал) рядом с покупкой. Самый
                 # уместный момент для реф-оффера: упёрся, но продукт уже знает.
-                from app.constants import REFERRAL_BONUS as _RB
                 from urllib.parse import quote as _q
+
+                from app.constants import REFERRAL_BONUS as _RB
                 _bu = settings.BOT_USERNAME or 'NeyraChatBot'
                 _rl = f'https://t.me/{_bu}?start=ref_{user.telegram_id}'
                 _st = ('Заценил Нейру — кидаешь селфи, получаешь себя в любой сцене. '
@@ -803,7 +812,8 @@ async def dispatch_admin_reminder(bot_instance) -> None:
     шлёт текст всем админам и чистит конфиг (один раз). Для разовых напоминаний
     (снять замеры и т.п.) без отдельных миграций."""
     import json
-    from datetime import datetime, timezone
+    from datetime import datetime
+
     from app.database.repo.bot_config import get_config_value, set_config_value
     try:
         async with AsyncSessionFactory() as session:
@@ -816,7 +826,7 @@ async def dispatch_admin_reminder(bot_instance) -> None:
         data = json.loads(raw)
         due = datetime.fromisoformat(data['send_at_iso'])
         if due.tzinfo is None:
-            due = due.replace(tzinfo=timezone.utc)
+            due = due.replace(tzinfo=UTC)
         if datetime.now(timezone.utc) < due:
             return
     except Exception:
@@ -850,10 +860,12 @@ async def send_mystery_push(bot_instance) -> None:
     Этот push НЕ дублирует daily_push (10:00) — у них разная цель и аудитория:
     daily_push сегментирует по тишине, mystery_push зовёт активных за подарком.
     """
-    from sqlalchemy import select, and_
-    from app.database.models import User, BotEvent
-    from app.services.mystery_preset import get_today_mystery, is_used_today
     import re
+
+    from sqlalchemy import and_, select
+
+    from app.database.models import BotEvent, User
+    from app.services.mystery_preset import get_today_mystery, is_used_today
 
     mystery = await get_today_mystery()
     if not mystery:
@@ -871,7 +883,7 @@ async def send_mystery_push(bot_instance) -> None:
         )).scalars().all())
         stmt = select(User).where(and_(
             User.last_active_at >= cutoff,
-            User.is_banned == False,
+            not User.is_banned,
             User.id.in_(edited_uids) if edited_uids else False,
         )).limit(5000)
         users = (await session.execute(stmt)).scalars().all()
@@ -930,7 +942,8 @@ async def send_mystery_push(bot_instance) -> None:
 
 async def send_subscription_expiring_notifications(bot_instance) -> None:
     """Уведомить юзеров чьи подписки истекают через 1-3 дня."""
-    from sqlalchemy import select, and_
+    from sqlalchemy import and_, select
+
     from app.database.models import Plan, Subscription, User
     from app.database.repo.credits import SUBSCRIPTION_PLANS
 
@@ -942,7 +955,7 @@ async def send_subscription_expiring_notifications(bot_instance) -> None:
 
     async with AsyncSessionFactory() as session:
         stmt = select(Subscription, User).join(User, Subscription.user_id == User.id).where(and_(
-            Subscription.is_active == True,
+            Subscription.is_active,
             Subscription.expires_at > now,
             Subscription.expires_at <= in_3_days,
             Subscription.plan != Plan.FREE,
@@ -956,7 +969,7 @@ async def send_subscription_expiring_notifications(bot_instance) -> None:
         # С 24.05 now всегда aware → если expires_at naive, делаем его aware.
         sub_expires = sub.expires_at
         if sub_expires.tzinfo is None:
-            sub_expires = sub_expires.replace(tzinfo=timezone.utc)
+            sub_expires = sub_expires.replace(tzinfo=UTC)
         delta_days = (sub_expires - now).days + 1
         days_left = max(1, delta_days)
 
@@ -990,7 +1003,8 @@ async def send_streak_reminders(bot_instance) -> None:
     """Вечером (20:00 МСК): напоминаем тем, у кого серия ≥2 дней и кто СЕГОДНЯ
     ещё не заходил — иначе завтра серия обнулится. Только текст (fal не тратит).
     Loss aversion: «не потеряй накопленное». Один заход — серия спасена."""
-    from sqlalchemy import select, and_
+    from sqlalchemy import and_, select
+
     from app.database.models import User
     from app.database.repo.credits import next_streak_milestone
     from app.utils import premium_text, yesterday_msk
@@ -1034,8 +1048,9 @@ async def send_streak_reminders(bot_instance) -> None:
 
 async def grant_time_bonuses(bot_instance) -> None:
     """Каждый час: выдать +200 кредитов тем, кто отправил хотя бы 1 сообщение в первые 24ч после активации промокода."""
-    from sqlalchemy import select, and_
-    from app.database.models import User, BotEvent
+    from sqlalchemy import and_, select
+
+    from app.database.models import BotEvent, User
 
     TIME_BONUS = 200
     now = datetime.now(timezone.utc).replace(tzinfo=None)
@@ -1045,7 +1060,7 @@ async def grant_time_bonuses(bot_instance) -> None:
         # Найти кандидатов: promo_activated_at установлен, бонус ещё не выдан, 24ч прошло
         stmt = select(User).where(and_(
             User.promo_activated_at.is_not(None),
-            User.time_bonus_granted == False,
+            not User.time_bonus_granted,
             User.promo_activated_at <= cutoff,
         ))
         result = await session.execute(stmt)
@@ -1096,6 +1111,7 @@ async def grant_time_bonuses(bot_instance) -> None:
 async def check_error_spike() -> None:
     """Send admin alert if >5 errors in last 15 minutes. Throttled to once per hour."""
     from sqlalchemy import func, select
+
     from app.database.models import BotEvent
     from app.services.admin_notify import alert_error_spike
 
@@ -1128,7 +1144,12 @@ def start_daily_push_scheduler(bot_instance):
     global _daily_push_scheduler
     from apscheduler.schedulers.asyncio import AsyncIOScheduler
     from apscheduler.triggers.cron import CronTrigger
-    from app.services.channel_publisher import run_scheduled_post, run_scheduled_feature_post, publish_pending_channel_post
+
+    from app.services.channel_publisher import (
+        publish_pending_channel_post,
+        run_scheduled_feature_post,
+        run_scheduled_post,
+    )
 
     _daily_push_scheduler = AsyncIOScheduler(timezone=settings.tz)
     _daily_push_scheduler.add_job(
@@ -1408,8 +1429,9 @@ async def _build_admin_dashboard() -> str:
     она узкое место проекта, а в /analytics её нет. Считаем по уникальным
     юзерам с ≥1 событием image_edited (как в /neyra_status), без тест-аккаунтов.
     """
-    from sqlalchemy import select, func, and_, distinct
-    from app.database.models import User, Payment, BotEvent, Subscription
+    from sqlalchemy import and_, distinct, func, select
+
+    from app.database.models import BotEvent, Payment, Subscription, User
     from app.services import fal_balance
 
     now = datetime.utcnow()
@@ -1526,8 +1548,9 @@ async def cmd_analytics(message: Message) -> None:
     if not is_admin(message):
         return
 
-    from sqlalchemy import select, func, and_, distinct
-    from app.database.models import User, Payment, PaymentStatus, Subscription
+    from sqlalchemy import and_, distinct, func, select
+
+    from app.database.models import Payment, PaymentStatus, Subscription, User
 
     now = datetime.utcnow()
     day_ago = now - timedelta(days=1)
@@ -1584,7 +1607,7 @@ async def cmd_analytics(message: Message) -> None:
 
         active_subs = await session.scalar(
             select(func.count(Subscription.id)).where(and_(
-                Subscription.is_active == True,
+                Subscription.is_active,
                 Subscription.expires_at > now,
             ))
         ) or 0
@@ -1696,8 +1719,9 @@ async def grant_daily_to_subscribers(bot_instance=None) -> None:
     (не раздуваем балансы мёртвых аккаунтов). Идемпотентно: grant_daily_if_needed
     пропустит тех, кому уже начислено сегодня (например, активным — через фото).
     """
-    from sqlalchemy import select, and_
-    from app.database.models import User, Subscription, Plan
+    from sqlalchemy import and_, select
+
+    from app.database.models import Plan, Subscription, User
     from app.database.repo.credits import grant_daily_if_needed
 
     now = datetime.now(timezone.utc)
@@ -1808,9 +1832,10 @@ async def cmd_neyra_status(message: Message) -> None:
     """
     if not is_admin(message):
         return
-    from sqlalchemy import select, func, text
+    from sqlalchemy import func, select, text
+
+    from app.database.models import BotEvent, ChannelPost, Payment, PaymentStatus, User
     from app.services import fal_balance
-    from app.database.models import User, Payment, PaymentStatus, BotEvent, ChannelPost
 
     async with AsyncSessionFactory() as session:
         # Юзеры
@@ -1862,7 +1887,7 @@ async def cmd_neyra_status(message: Message) -> None:
     last_post_str = '—'
     if last_post_row:
         topic, cta, dt = last_post_row
-        from datetime import timezone, timedelta
+        from datetime import timedelta, timezone
         msk = timezone(timedelta(hours=3))
         dt_str = dt.astimezone(msk).strftime('%d.%m %H:%M') if dt else '?'
         last_post_str = f'{dt_str} · {cta} · <i>{topic[:50]}</i>'
@@ -2009,7 +2034,7 @@ async def cmd_addpromo(message: Message) -> None:
     from app.database.repo.promos import create_promo
     async with AsyncSessionFactory() as session:
         try:
-            promo = await create_promo(session, code, credits, max_uses, expires_at)
+            await create_promo(session, code, credits, max_uses, expires_at)
             await session.commit()
         except Exception:
             await message.answer(f'❌ Промокод <code>{code}</code> уже существует.', parse_mode='HTML')
@@ -2153,6 +2178,7 @@ async def _build_showcase_collage(bot, male_fid: str, female_fid: str) -> bytes:
     отправить одним сообщением с inline-кнопкой — у альбома (media_group)
     кнопки нет, а у одиночного фото есть."""
     import io
+
     from PIL import Image
 
     async def _dl(fid: str) -> bytes:
@@ -2224,12 +2250,13 @@ async def cmd_showcase(message: Message) -> None:
         )
         return
 
-    from sqlalchemy import select, and_
+    from sqlalchemy import and_, select
+
     from app.database.models import User
     cutoff = datetime.utcnow() - timedelta(days=30)
     async with AsyncSessionFactory() as session:
         ids = (await session.execute(select(User.telegram_id).where(and_(
-            User.is_banned == False, User.last_active_at >= cutoff,
+            not User.is_banned, User.last_active_at >= cutoff,
         )))).scalars().all()
 
     total = len(ids)

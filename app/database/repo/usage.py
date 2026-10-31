@@ -74,6 +74,7 @@ async def check_limit(
 
 async def get_messages_today_total(session: AsyncSession) -> int:
     from sqlalchemy import func
+
     from app.utils import today_msk
     today = today_msk()
     result = await session.execute(

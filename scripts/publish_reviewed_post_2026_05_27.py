@@ -7,7 +7,7 @@ channel_posts и ставит skip_next, чтобы авто-пост не за�
 """
 import asyncio
 import json
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from aiogram import Bot
 from aiogram.client.default import DefaultBotProperties
@@ -48,8 +48,8 @@ async def main():
             await s.execute(sql_insert(ChannelPost).values(
                 topic=data.get('topic', 'catch-up 27.05'), body=caption,
                 cta_type=data.get('cta_type', 'neira_plain'),
-                scheduled_at=datetime.now(timezone.utc),
-                published_at=datetime.now(timezone.utc),
+                scheduled_at=datetime.now(UTC),
+                published_at=datetime.now(UTC),
                 message_id=sent.message_id, status='published',
             ))
             await set_config_value(s, 'pending_review_post', '')

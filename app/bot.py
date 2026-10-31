@@ -8,11 +8,27 @@ from aiogram.fsm.storage.redis import RedisStorage
 from redis.asyncio import Redis
 
 from app.config import settings
-from app.handlers import admin, channel_admin, channel_traffic, chat, image, image_edit, payments, promo, shop, start, subscription, support, templates, vision, voice, wheel
+from app.handlers import (
+    admin,
+    channel_admin,
+    channel_traffic,
+    chat,
+    image,
+    image_edit,
+    payments,
+    promo,
+    shop,
+    start,
+    subscription,
+    support,
+    templates,
+    vision,
+    voice,
+    wheel,
+)
 from app.middlewares.command_reset import CommandResetStateMiddleware
 from app.middlewares.rate_limit import RateLimitMiddleware
 from app.middlewares.user import UserMiddleware
-
 
 _bot_instance: Bot | None = None
 

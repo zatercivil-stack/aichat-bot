@@ -2,6 +2,7 @@
 Запуск: docker compose exec -T bot bash -c 'PYTHONPATH=/app python3 -m scripts.seed_batch3_2026_05_25'
 """
 import asyncio
+
 from sqlalchemy import select
 
 from app.database.base import AsyncSessionFactory

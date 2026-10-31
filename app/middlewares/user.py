@@ -5,7 +5,7 @@ from typing import Any
 
 import structlog
 from aiogram import BaseMiddleware
-from aiogram.types import TelegramObject, Update
+from aiogram.types import TelegramObject
 
 from app.database.base import AsyncSessionFactory
 from app.database.repo.credits import update_streak
@@ -22,7 +22,7 @@ class UserMiddleware(BaseMiddleware):
         event: TelegramObject,
         data: dict[str, Any],
     ) -> Any:
-        update: Update = data.get('event_update') or data.get('update')
+        data.get('event_update') or data.get('update')
 
         tg_user = None
         if hasattr(event, 'from_user') and event.from_user:

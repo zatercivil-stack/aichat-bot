@@ -24,7 +24,7 @@ recurring card). Если pm_payload не передан (источник = che
 from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
-from typing import Any, Optional
+from typing import Any
 
 import structlog
 from sqlalchemy import update as sa_update
@@ -32,7 +32,7 @@ from sqlalchemy import update as sa_update
 from app.database.base import AsyncSessionFactory
 from app.database.models import Payment, PaymentStatus, Subscription
 from app.database.repo.credits import SUBSCRIPTION_PLANS, add_credits
-from app.database.repo.payments import get_payment, update_payment
+from app.database.repo.payments import update_payment
 from app.database.repo.subscriptions import extend_subscription
 from app.database.repo.users import get_user
 
@@ -41,8 +41,8 @@ logger = structlog.get_logger(__name__)
 
 async def process_succeeded_payment(
     payment_db_id: int,
-    external_id: Optional[str] = None,
-    pm_payload: Optional[dict[str, Any]] = None,
+    external_id: str | None = None,
+    pm_payload: dict[str, Any] | None = None,
     bot=None,
 ) -> bool:
     """Активирует SUCCEEDED-платёж: зачисляет кредиты, активирует подписку,
@@ -153,11 +153,15 @@ async def process_succeeded_payment(
             except Exception as exc:
                 logger.error('process_payment: subscription activation failed',
                              payment_db_id=payment_db_id, error=str(exc)[:200])
+                await session.rollback()
+                return False
 
         # Реф-кэшбэк (вариант B): фиксируем ДО пометки SUCCEEDED — был ли это
         # ПЕРВЫЙ платёж юзера (тогда его рефереру капнёт кэшбэк) и сколько своего
         # кэшбэка юзер потратил на эту покупку (спишем после commit).
-        from sqlalchemy import select as _sel, func as _func
+        from sqlalchemy import func as _func
+        from sqlalchemy import select as _sel
+
         from app.database.models import Payment as _Pay
         _prior_succeeded = await session.scalar(
             _sel(_func.count()).select_from(_Pay).where(

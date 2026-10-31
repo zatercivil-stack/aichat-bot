@@ -80,6 +80,7 @@ def _get_redis():
     global _redis_singleton
     if _redis_singleton is None:
         from redis.asyncio import Redis
+
         from app.config import settings
         _redis_singleton = Redis.from_url(settings.REDIS_URL, decode_responses=True)
     return _redis_singleton
@@ -96,7 +97,7 @@ async def grant_daily_aware(bot: Bot, session, user) -> int:
 
     Возвращает сумму начисленных кредитов (0 если уже начислено сегодня).
     """
-    from app.database.repo.credits import grant_daily_if_needed, DAILY_FREE_CREDITS
+    from app.database.repo.credits import DAILY_FREE_CREDITS, grant_daily_if_needed
     from app.utils import today_msk
 
     today = today_msk()

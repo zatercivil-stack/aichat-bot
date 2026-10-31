@@ -4,7 +4,9 @@
 - cat_beanie: female_only=True (убираем мужскую версию)
 """
 import asyncio
+
 from sqlalchemy import select
+
 from app.database.base import AsyncSessionFactory
 from app.database.models import CustomPreset
 from app.handlers.image_edit import reload_custom_presets

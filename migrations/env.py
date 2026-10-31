@@ -7,8 +7,8 @@ from alembic import context
 from sqlalchemy.ext.asyncio import create_async_engine
 
 from app.config import settings
-from app.database.base import Base
 from app.database import models  # noqa: F401 — импорт нужен для регистрации моделей
+from app.database.base import Base
 
 config = context.config
 if config.config_file_name is not None:

@@ -18,7 +18,6 @@ from __future__ import annotations
 
 import io
 import logging
-from typing import Optional
 
 logger = logging.getLogger(__name__)
 
@@ -46,7 +45,7 @@ _PERIOD_CFG_KEY = 'welcome_collage_period'  # текущее 3-дневное о
 
 def _current_period() -> int:
     """Номер текущего 3-дневного окна (UTC). Меняется → коллаж пересобирается."""
-    from datetime import datetime, timezone
+    from datetime import datetime
     return datetime.now(timezone.utc).date().toordinal() // _ROTATE_DAYS
 
 
@@ -81,8 +80,9 @@ async def _download_fid(bot, fid: str) -> bytes:
     return buf.getvalue()
 
 
-async def _build_collage_bytes(bot, presets: list[tuple[str, int]] | None = None) -> Optional[bytes]:
+async def _build_collage_bytes(bot, presets: list[tuple[str, int]] | None = None) -> bytes | None:
     from PIL import Image
+
     from app.database.base import AsyncSessionFactory
     from app.database.repo.preset_previews import get_preview_file_id
 
@@ -131,12 +131,13 @@ async def invalidate_welcome_collage() -> None:
         await session.commit()
 
 
-async def get_or_build_welcome_collage_fid(bot) -> Optional[str]:
+async def get_or_build_welcome_collage_fid(bot) -> str | None:
     """Возвращает file_id коллажа для ТЕКУЩЕГО 3-дневного окна. Если кэш пуст
     ИЛИ окно сменилось — пересобирает (новый набор сцен), заливает в админ-чат,
     сохраняет file_id + номер окна в bot_config. Внутри окна — тот же file_id
     без сборки."""
     from aiogram.types import BufferedInputFile
+
     from app.config import settings
     from app.database.base import AsyncSessionFactory
     from app.database.repo.bot_config import get_config_value, set_config_value

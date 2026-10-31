@@ -6,24 +6,47 @@ import io
 import json
 import os
 import re
+import secrets as _secrets
 import sqlite3
 from datetime import datetime, timedelta, timezone
-from typing import List, Optional
 
 import structlog
 from fastapi import APIRouter, Cookie, File, Form, Request, Response, UploadFile
 from fastapi.responses import HTMLResponse, RedirectResponse, StreamingResponse
 from redis.asyncio import Redis
-from sqlalchemy import and_, func, or_, select, text as sa_text, update
+from sqlalchemy import and_, func, or_, select, update
+from sqlalchemy import text as sa_text
 
 from app.config import settings
 from app.constants import HELP_TEXT, WELCOME_TEXT
 from app.database.base import AsyncSessionFactory
-from app.database.models import AdminAction, BotEvent, Broadcast, ChatMessage, Experiment, ExperimentAssignment, Payment, PaymentStatus, PhotoTemplate, PromoCode, Subscription, User
-from app.database.repo.bot_config import DEFAULT_CONFIG, ensure_defaults, get_all_config, set_config_value
-from app.database.repo.broadcasts import get_broadcast_by_id, get_broadcasts, get_promo_conversion_funnel, get_promo_stats
+from app.database.models import (
+    AdminAction,
+    BotEvent,
+    Broadcast,
+    ChatMessage,
+    Experiment,
+    ExperimentAssignment,
+    Payment,
+    PaymentStatus,
+    PhotoTemplate,
+    PromoCode,
+    Subscription,
+    User,
+)
 from app.database.repo.analytics import get_activity_heatmap, get_cohort_retention
 from app.database.repo.audit import log_action_bg
+from app.database.repo.bot_config import (
+    ensure_defaults,
+    get_all_config,
+    set_config_value,
+)
+from app.database.repo.broadcasts import (
+    get_broadcast_by_id,
+    get_broadcasts,
+    get_promo_conversion_funnel,
+    get_promo_stats,
+)
 from app.database.repo.events import get_dashboard_stats
 from app.database.repo.experiments import get_experiment_results
 from app.database.repo.finance import (
@@ -55,7 +78,9 @@ _ACTIVE_TOKEN: str = settings.ADMIN_TOKEN
 # ── AUTH HELPERS ──────────────────────────────────────────────────────────────
 
 def _check_auth(token: str | None) -> bool:
-    return bool(token and token == _ACTIVE_TOKEN)
+    if not token or not _ACTIVE_TOKEN:
+        return False
+    return _secrets.compare_digest(token, _ACTIVE_TOKEN)
 
 
 async def load_active_token() -> None:
@@ -216,7 +241,7 @@ async def login(request: Request, token: str = Form(...)):
         logger.warning('admin login BLOCKED (rate limit)', ip=ip)
         return render('login.html',
                       error='Слишком много попыток. Подожди 15 минут.')
-    if token != _ACTIVE_TOKEN:
+    if not _secrets.compare_digest(token or '', _ACTIVE_TOKEN or ''):
         await _login_record_fail(ip)
         logger.warning('admin login FAILED', ip=ip)
         log_action_bg('unknown', 'admin_login_failed', ip=ip)
@@ -246,7 +271,7 @@ async def logout():
 
 # ── DASHBOARD ──────────────────────────────────────────────────────────────────
 
-async def _collect_alerts(fal_balance_usd: Optional[float], errors_24h: int) -> list[dict]:
+async def _collect_alerts(fal_balance_usd: float | None, errors_24h: int) -> list[dict]:
     """Собирает условия, которые админу важно увидеть СРАЗУ.
     level: 'danger' | 'warning' | 'info'."""
     alerts: list[dict] = []
@@ -285,7 +310,7 @@ async def _collect_alerts(fal_balance_usd: Optional[float], errors_24h: int) -> 
 
 
 @router.get('/', response_class=HTMLResponse)
-async def dashboard(admin_session: Optional[str] = Cookie(default=None), msg: str = ''):
+async def dashboard(admin_session: str | None = Cookie(default=None), msg: str = ''):
     if not _check_auth(admin_session):
         return _redirect_login()
 
@@ -340,7 +365,7 @@ async def dashboard(admin_session: Optional[str] = Cookie(default=None), msg: st
 
 
 @router.post('/api/fal-sync')
-async def fal_sync(request: Request, admin_session: Optional[str] = Cookie(default=None)):
+async def fal_sync(request: Request, admin_session: str | None = Cookie(default=None)):
     """Запрашивает реальный баланс fal и обновляет локальный baseline.
     Полезно после пополнения или когда оценка ушла."""
     if not _check_auth(admin_session):
@@ -363,7 +388,7 @@ async def fal_sync(request: Request, admin_session: Optional[str] = Cookie(defau
 
 @router.get('/users', response_class=HTMLResponse)
 async def users_list(
-    admin_session: Optional[str] = Cookie(default=None),
+    admin_session: str | None = Cookie(default=None),
     search: str = '', plan: str = '', activity: str = '',
     credits_min: str = '', credits_max: str = '',
     page: int = 1, msg: str = '',
@@ -387,13 +412,13 @@ async def users_list(
                     User.full_name.ilike(f'%{search}%'),
                 ))
         if plan == 'free':
-            sub_active = select(Subscription.user_id).where(Subscription.is_active == True)
+            sub_active = select(Subscription.user_id).where(Subscription.is_active)
             filters.append(~User.id.in_(sub_active))
         elif plan == 'paid':
-            sub_active = select(Subscription.user_id).where(Subscription.is_active == True)
+            sub_active = select(Subscription.user_id).where(Subscription.is_active)
             filters.append(User.id.in_(sub_active))
         elif plan == 'banned':
-            filters.append(User.is_banned == True)
+            filters.append(User.is_banned)
 
         now = datetime.now(timezone.utc)
         if activity == '24h':
@@ -444,7 +469,7 @@ async def users_list(
 @router.get('/users/{user_id}', response_class=HTMLResponse)
 async def user_detail(
     user_id: int,
-    admin_session: Optional[str] = Cookie(default=None),
+    admin_session: str | None = Cookie(default=None),
     msg: str = '', event_type: str = '', show_dialog: int = 0,
 ):
     if not _check_auth(admin_session):
@@ -541,7 +566,7 @@ async def user_detail(
 
 
 @router.get('/users/{user_id}/dialog', response_class=HTMLResponse)
-async def user_dialog(user_id: int, admin_session: Optional[str] = Cookie(default=None)):
+async def user_dialog(user_id: int, admin_session: str | None = Cookie(default=None)):
     if not _check_auth(admin_session):
         return _redirect_login()
     return RedirectResponse(f'/admin/users/{user_id}?show_dialog=1', status_code=302)
@@ -549,7 +574,7 @@ async def user_dialog(user_id: int, admin_session: Optional[str] = Cookie(defaul
 
 @router.get('/users/{user_id}/chat', response_class=HTMLResponse)
 async def user_chat_history(
-    user_id: int, admin_session: Optional[str] = Cookie(default=None),
+    user_id: int, admin_session: str | None = Cookie(default=None),
     page: int = 1,
 ):
     if not _check_auth(admin_session):
@@ -580,7 +605,7 @@ async def user_chat_history(
 
 
 @router.get('/users/{user_id}/chat/export.txt')
-async def user_chat_export(user_id: int, admin_session: Optional[str] = Cookie(default=None)):
+async def user_chat_export(user_id: int, admin_session: str | None = Cookie(default=None)):
     if not _check_auth(admin_session):
         return _redirect_login()
     async with AsyncSessionFactory() as session:
@@ -609,7 +634,7 @@ async def user_chat_export(user_id: int, admin_session: Optional[str] = Cookie(d
 
 
 @router.post('/users/{user_id}/ban')
-async def ban_user(user_id: int, request: Request, admin_session: Optional[str] = Cookie(default=None)):
+async def ban_user(user_id: int, request: Request, admin_session: str | None = Cookie(default=None)):
     if not _check_auth(admin_session):
         return _redirect_login()
     async with AsyncSessionFactory() as session:
@@ -629,7 +654,7 @@ async def ban_user(user_id: int, request: Request, admin_session: Optional[str] 
 async def adjust_credits(
     user_id: int, request: Request,
     amount: int = Form(...),
-    admin_session: Optional[str] = Cookie(default=None),
+    admin_session: str | None = Cookie(default=None),
 ):
     if not _check_auth(admin_session):
         return _redirect_login()
@@ -650,7 +675,7 @@ async def adjust_credits(
 # ── BULK USER ACTIONS ─────────────────────────────────────────────────────────
 
 @router.post('/users/bulk')
-async def users_bulk(request: Request, admin_session: Optional[str] = Cookie(default=None)):
+async def users_bulk(request: Request, admin_session: str | None = Cookie(default=None)):
     if not _check_auth(admin_session):
         return _redirect_login()
     form = await request.form()
@@ -682,7 +707,7 @@ async def users_bulk(request: Request, admin_session: Optional[str] = Cookie(def
             if not value:
                 return Response('No broadcast text', status_code=400)
             tg_ids = (await session.execute(
-                select(User.telegram_id).where(User.id.in_(user_ids), User.is_banned == False)
+                select(User.telegram_id).where(User.id.in_(user_ids), not User.is_banned)
             )).scalars().all()
             asyncio.create_task(_do_broadcast(list(tg_ids), value))
         else:
@@ -697,7 +722,7 @@ async def users_bulk(request: Request, admin_session: Optional[str] = Cookie(def
 
 @router.get('/promos', response_class=HTMLResponse)
 async def promos_list(
-    admin_session: Optional[str] = Cookie(default=None),
+    admin_session: str | None = Cookie(default=None),
     msg: str = '',
     promo: str = '',
 ):
@@ -737,7 +762,7 @@ async def create_promo(
     credits: int = Form(...),
     max_uses: int = Form(0),
     expires_days: int = Form(0),
-    admin_session: Optional[str] = Cookie(default=None),
+    admin_session: str | None = Cookie(default=None),
 ):
     if not _check_auth(admin_session):
         return _redirect_login()
@@ -754,7 +779,7 @@ async def create_promo(
 
 
 @router.post('/promos/{promo_id}/deactivate')
-async def deactivate_promo(promo_id: int, request: Request, admin_session: Optional[str] = Cookie(default=None)):
+async def deactivate_promo(promo_id: int, request: Request, admin_session: str | None = Cookie(default=None)):
     if not _check_auth(admin_session):
         return _redirect_login()
     async with AsyncSessionFactory() as session:
@@ -773,7 +798,7 @@ async def deactivate_promo(promo_id: int, request: Request, admin_session: Optio
 # ── PRICING (models + packs) ───────────────────────────────────────────────────
 
 @router.get('/pricing', response_class=HTMLResponse)
-async def pricing_page(admin_session: Optional[str] = Cookie(default=None), msg: str = ''):
+async def pricing_page(admin_session: str | None = Cookie(default=None), msg: str = ''):
     if not _check_auth(admin_session):
         return _redirect_login()
     async with AsyncSessionFactory() as session:
@@ -790,7 +815,7 @@ async def pricing_page(admin_session: Optional[str] = Cookie(default=None), msg:
         ('model_cost_voice',  'Голос (транскрипция)',   '🎤', 'success'),
     ]
     # Подсветим РЕАЛЬНЫЕ текущие цены фото-операций (read-only, идут из кода).
-    from app.database.repo.credits import MODEL_COSTS, ALL_PACKS
+    from app.database.repo.credits import ALL_PACKS, MODEL_COSTS
     photo_prices = [
         ('Правка фото · quality (2K)', MODEL_COSTS.get('image_edit', 0)),
         ('Правка фото · fast',         MODEL_COSTS.get('image_edit_fast', 0)),
@@ -807,7 +832,7 @@ async def pricing_page(admin_session: Optional[str] = Cookie(default=None), msg:
 
 
 @router.post('/pricing')
-async def save_pricing(request: Request, admin_session: Optional[str] = Cookie(default=None)):
+async def save_pricing(request: Request, admin_session: str | None = Cookie(default=None)):
     if not _check_auth(admin_session):
         return _redirect_login()
     form = await request.form()
@@ -837,7 +862,7 @@ async def save_pricing(request: Request, admin_session: Optional[str] = Cookie(d
 # ── BOT TEXTS ──────────────────────────────────────────────────────────────────
 
 @router.get('/texts', response_class=HTMLResponse)
-async def texts_page(admin_session: Optional[str] = Cookie(default=None), msg: str = ''):
+async def texts_page(admin_session: str | None = Cookie(default=None), msg: str = ''):
     if not _check_auth(admin_session):
         return _redirect_login()
     async with AsyncSessionFactory() as session:
@@ -858,7 +883,7 @@ async def texts_page(admin_session: Optional[str] = Cookie(default=None), msg: s
 
 
 @router.post('/texts')
-async def save_texts(request: Request, admin_session: Optional[str] = Cookie(default=None)):
+async def save_texts(request: Request, admin_session: str | None = Cookie(default=None)):
     if not _check_auth(admin_session):
         return _redirect_login()
     form = await request.form()
@@ -878,12 +903,12 @@ async def save_texts(request: Request, admin_session: Optional[str] = Cookie(def
 # ── BROADCAST (sender) ─────────────────────────────────────────────────────────
 
 @router.get('/broadcast', response_class=HTMLResponse)
-async def broadcast_page(admin_session: Optional[str] = Cookie(default=None), msg: str = ''):
+async def broadcast_page(admin_session: str | None = Cookie(default=None), msg: str = ''):
     if not _check_auth(admin_session):
         return _redirect_login()
     from app.database.repo.bot_config import get_config_value
     async with AsyncSessionFactory() as session:
-        total = await session.scalar(select(func.count()).select_from(User).where(User.is_banned == False))
+        total = await session.scalar(select(func.count()).select_from(User).where(not User.is_banned))
         test_user = (await get_config_value(session, 'test_broadcast_username') or 'grelok').lstrip('@')
     return render('broadcasts/send.html', title='Новая рассылка', active='broadcasts',
                   msg=msg, total=total or 0, test_user=test_user)
@@ -911,7 +936,7 @@ async def do_broadcast(
     request: Request,
     text: str = Form(...),
     audience: str = Form('all'),
-    admin_session: Optional[str] = Cookie(default=None),
+    admin_session: str | None = Cookie(default=None),
 ):
     if not _check_auth(admin_session):
         return _redirect_login()
@@ -922,12 +947,12 @@ async def do_broadcast(
         elif audience == 'admin_only':
             user_ids = list(settings.admin_ids_list or [])
         else:
-            q = select(User.telegram_id).where(User.is_banned == False)
+            q = select(User.telegram_id).where(not User.is_banned)
             if audience == 'free':
-                subq = select(Subscription.user_id).where(Subscription.is_active == True)
+                subq = select(Subscription.user_id).where(Subscription.is_active)
                 q = q.where(~User.id.in_(subq))
             elif audience == 'paid':
-                subq = select(Subscription.user_id).where(Subscription.is_active == True)
+                subq = select(Subscription.user_id).where(Subscription.is_active)
                 q = q.where(User.id.in_(subq))
             result = await session.execute(q)
             user_ids = [row[0] for row in result.all()]
@@ -943,7 +968,7 @@ async def do_broadcast(
 
 @router.get('/events', response_class=HTMLResponse)
 async def events_page(
-    admin_session: Optional[str] = Cookie(default=None),
+    admin_session: str | None = Cookie(default=None),
     event_type: str = '', days: int = 7, user_tg: str = '', limit: int = 200,
 ):
     if not _check_auth(admin_session):
@@ -989,7 +1014,7 @@ async def events_page(
 # ── REALTIME LOG STREAM (SSE) ──────────────────────────────────────────────────
 
 @router.get('/logs', response_class=HTMLResponse)
-async def logs_page(admin_session: Optional[str] = Cookie(default=None)):
+async def logs_page(admin_session: str | None = Cookie(default=None)):
     if not _check_auth(admin_session):
         return _redirect_login()
     # active='events' — logs и events слиты в один пункт меню «События»
@@ -1011,7 +1036,7 @@ def _ev_payload(ev: BotEvent, uname: str | None, tg_id: int | None, uid: int | N
 
 
 @router.get('/api/events/stream')
-async def events_stream(admin_session: Optional[str] = Cookie(default=None)):
+async def events_stream(admin_session: str | None = Cookie(default=None)):
     if not _check_auth(admin_session):
         return Response(status_code=403)
 
@@ -1063,7 +1088,7 @@ async def events_stream(admin_session: Optional[str] = Cookie(default=None)):
 # Keyed by photo_template_id. Stored in DB after first upload.
 
 @router.get('/broadcasts/photo', response_class=HTMLResponse)
-async def photo_templates_list(admin_session: Optional[str] = Cookie(default=None)):
+async def photo_templates_list(admin_session: str | None = Cookie(default=None)):
     if not _check_auth(admin_session):
         return _redirect_login()
     async with AsyncSessionFactory() as session:
@@ -1076,7 +1101,7 @@ async def photo_templates_list(admin_session: Optional[str] = Cookie(default=Non
 
 
 @router.get('/broadcasts/photo/new', response_class=HTMLResponse)
-async def photo_templates_new(admin_session: Optional[str] = Cookie(default=None)):
+async def photo_templates_new(admin_session: str | None = Cookie(default=None)):
     if not _check_auth(admin_session):
         return _redirect_login()
     return render('broadcasts/photo_new.html', title='Новый фото-шаблон',
@@ -1089,7 +1114,7 @@ async def photo_templates_create(
     photo: UploadFile = File(...),
     caption: str = Form(''),
     prompt_used: str = Form(''),
-    admin_session: Optional[str] = Cookie(default=None),
+    admin_session: str | None = Cookie(default=None),
 ):
     if not _check_auth(admin_session):
         return _redirect_login()
@@ -1101,6 +1126,7 @@ async def photo_templates_create(
         caption = caption[:1000]
 
     from aiogram.types import BufferedInputFile
+
     from app.bot import get_bot
     bot = get_bot()
     if not bot:
@@ -1141,7 +1167,7 @@ async def photo_templates_create(
 
 @router.get('/broadcasts/photo/{tpl_id}', response_class=HTMLResponse)
 async def photo_templates_detail(
-    tpl_id: int, admin_session: Optional[str] = Cookie(default=None), msg: str = '',
+    tpl_id: int, admin_session: str | None = Cookie(default=None), msg: str = '',
 ):
     if not _check_auth(admin_session):
         return _redirect_login()
@@ -1151,7 +1177,7 @@ async def photo_templates_detail(
         if not tpl:
             return HTMLResponse('Не найдено', status_code=404)
         total_all = await session.scalar(
-            select(func.count()).select_from(User).where(User.is_banned == False)
+            select(func.count()).select_from(User).where(not User.is_banned)
         ) or 0
         test_user = (await get_config_value(session, 'test_broadcast_username') or 'grelok').lstrip('@')
     return render('broadcasts/photo_detail.html',
@@ -1160,7 +1186,7 @@ async def photo_templates_detail(
 
 
 @router.get('/broadcasts/photo/{tpl_id}/thumb')
-async def photo_templates_thumb(tpl_id: int, admin_session: Optional[str] = Cookie(default=None)):
+async def photo_templates_thumb(tpl_id: int, admin_session: str | None = Cookie(default=None)):
     """Proxy preview of TG photo by file_id, so admin can see it in the dashboard."""
     if not _check_auth(admin_session):
         return Response(status_code=403)
@@ -1194,7 +1220,9 @@ async def _resolve_test_user_tg_id(session) -> list[int]:
 
 async def _do_photo_template_broadcast(tpl_id: int, audience: str) -> None:
     """Sends the photo template to the chosen audience and updates counters."""
-    from aiogram.types import InlineKeyboardButton as IB, InlineKeyboardMarkup as IM
+    from aiogram.types import InlineKeyboardButton as IB
+    from aiogram.types import InlineKeyboardMarkup as IM
+
     from app.bot import get_bot
     bot = get_bot()
     if not bot:
@@ -1212,12 +1240,12 @@ async def _do_photo_template_broadcast(tpl_id: int, audience: str) -> None:
         elif audience == 'test_user':
             tg_ids = await _resolve_test_user_tg_id(session)
         else:
-            q = select(User.telegram_id).where(User.is_banned == False)
+            q = select(User.telegram_id).where(not User.is_banned)
             if audience == 'free':
-                subq = select(Subscription.user_id).where(Subscription.is_active == True)
+                subq = select(Subscription.user_id).where(Subscription.is_active)
                 q = q.where(~User.id.in_(subq))
             elif audience == 'paid':
-                subq = select(Subscription.user_id).where(Subscription.is_active == True)
+                subq = select(Subscription.user_id).where(Subscription.is_active)
                 q = q.where(User.id.in_(subq))
             elif audience == 'low_credits':
                 q = q.where(User.credits <= 100)
@@ -1276,7 +1304,7 @@ async def _do_photo_template_broadcast(tpl_id: int, audience: str) -> None:
 async def photo_templates_send(
     tpl_id: int, request: Request,
     audience: str = Form('admin_only'),
-    admin_session: Optional[str] = Cookie(default=None),
+    admin_session: str | None = Cookie(default=None),
 ):
     if not _check_auth(admin_session):
         return _redirect_login()
@@ -1290,7 +1318,7 @@ async def photo_templates_send(
 @router.post('/broadcasts/photo/{tpl_id}/delete')
 async def photo_templates_delete(
     tpl_id: int, request: Request,
-    admin_session: Optional[str] = Cookie(default=None),
+    admin_session: str | None = Cookie(default=None),
 ):
     if not _check_auth(admin_session):
         return _redirect_login()
@@ -1307,29 +1335,29 @@ async def photo_templates_delete(
 
 # ── BULK ACTIONS (массовые операции с сегментами юзеров) ──────────────────────
 @router.get('/bulk', response_class=HTMLResponse)
-async def bulk_page(admin_session: Optional[str] = Cookie(default=None), msg: str = ''):
+async def bulk_page(admin_session: str | None = Cookie(default=None), msg: str = ''):
     if not _check_auth(admin_session):
         return _redirect_login()
     now = datetime.now(timezone.utc)
     async with AsyncSessionFactory() as session:
-        sub_active = select(Subscription.user_id).where(Subscription.is_active == True)
+        sub_active = select(Subscription.user_id).where(Subscription.is_active)
         counts = {
             'active_7d': await session.scalar(
                 select(func.count()).select_from(User).where(
-                    User.is_banned == False,
+                    not User.is_banned,
                     User.last_active_at >= now - timedelta(days=7))) or 0,
             'active_14d': await session.scalar(
                 select(func.count()).select_from(User).where(
-                    User.is_banned == False,
+                    not User.is_banned,
                     User.last_active_at >= now - timedelta(days=14))) or 0,
             'free': await session.scalar(
                 select(func.count()).select_from(User).where(
-                    User.is_banned == False, ~User.id.in_(sub_active))) or 0,
+                    not User.is_banned, ~User.id.in_(sub_active))) or 0,
             'paid': await session.scalar(
                 select(func.count()).select_from(User).where(
-                    User.is_banned == False, User.id.in_(sub_active))) or 0,
+                    not User.is_banned, User.id.in_(sub_active))) or 0,
             'all': await session.scalar(
-                select(func.count()).select_from(User).where(User.is_banned == False)) or 0,
+                select(func.count()).select_from(User).where(not User.is_banned)) or 0,
         }
     return render('bulk.html', title='Массовые операции', active='bulk', msg=msg, counts=counts)
 
@@ -1341,8 +1369,8 @@ async def _do_bulk_credits(segment: str, amount: int, notify_text: str) -> None:
     now = datetime.now(timezone.utc)
     bot = get_bot()
     async with AsyncSessionFactory() as session:
-        sub_active = select(Subscription.user_id).where(Subscription.is_active == True)
-        q = select(User).where(User.is_banned == False)
+        sub_active = select(Subscription.user_id).where(Subscription.is_active)
+        q = select(User).where(not User.is_banned)
         if segment == 'active_7d':
             q = q.where(User.last_active_at >= now - timedelta(days=7))
         elif segment == 'active_14d':
@@ -1373,7 +1401,7 @@ async def _do_bulk_credits(segment: str, amount: int, notify_text: str) -> None:
 @router.post('/bulk/credits')
 async def bulk_credits(
     request: Request, segment: str = Form(...), amount: int = Form(...),
-    notify_text: str = Form(''), admin_session: Optional[str] = Cookie(default=None),
+    notify_text: str = Form(''), admin_session: str | None = Cookie(default=None),
 ):
     if not _check_auth(admin_session):
         return _redirect_login()
@@ -1394,7 +1422,7 @@ async def bulk_credits(
 # каталоге у юзера» без захода в Telegram.
 @router.get('/gallery', response_class=HTMLResponse)
 async def gallery_page(
-    admin_session: Optional[str] = Cookie(default=None), msg: str = '',
+    admin_session: str | None = Cookie(default=None), msg: str = '',
     g: str = 'all', cat: str = 'all', f: str = 'all', sort: str = 'alpha',
 ):
     """Галерея всех превью с действиями. Фильтры: пол (g), категория (cat),
@@ -1402,10 +1430,10 @@ async def gallery_page(
     if not _check_auth(admin_session):
         return _redirect_login()
     import app.handlers.image_edit as ie
-    from app.handlers.image_edit import EDIT_PRESETS, PRESET_PAGES, _FEMALE_ONLY_PRESETS
-    from app.database.repo.preset_previews import get_preview_file_id
     from app.database.repo.custom_presets import list_custom_presets
     from app.database.repo.preset_launch import get_launch_map
+    from app.database.repo.preset_previews import get_preview_file_id
+    from app.handlers.image_edit import _FEMALE_ONLY_PRESETS, EDIT_PRESETS, PRESET_PAGES
     # Актуальный состав «🆕 Новинки» (для бейджа и кнопки «Сделать новым»).
     await ie.refresh_fresh_presets()
     badge_keys = ie._BADGE_KEYS
@@ -1485,11 +1513,13 @@ async def gallery_page(
                   total=len(items))
 
 
-def _gallery_resolve_prompt(key: str) -> tuple[str, str, Optional[str], bool, Optional[int]]:
+def _gallery_resolve_prompt(key: str) -> tuple[str, str, str | None, bool, int | None]:
     """Возвращает (label, prompt, male_prompt, female_only, custom_id) для любого
     пресета (хардкод или DB). Для хардкод-пресета custom_id=None."""
     from app.handlers.image_edit import (
-        EDIT_PRESETS, _MALE_PRESET_OVERRIDES, _FEMALE_ONLY_PRESETS,
+        _FEMALE_ONLY_PRESETS,
+        _MALE_PRESET_OVERRIDES,
+        EDIT_PRESETS,
     )
     label, prompt = EDIT_PRESETS.get(key, (key, ''))
     male_prompt = _MALE_PRESET_OVERRIDES.get(key)
@@ -1500,7 +1530,7 @@ def _gallery_resolve_prompt(key: str) -> tuple[str, str, Optional[str], bool, Op
 @router.post('/gallery/{key}/regen')
 async def gallery_regen(
     key: str, request: Request, pos: str = Form('both'),
-    admin_session: Optional[str] = Cookie(default=None),
+    admin_session: str | None = Cookie(default=None),
 ):
     """Перегенерить превью пресета по ключу. pos: 'both' / 'female' / 'male'.
     Цена ~$0.12 за каждое (fal 2K)."""
@@ -1523,13 +1553,13 @@ async def gallery_regen(
     log_action_bg('token', 'gallery.regen',
                   ip=request.client.host if request.client else None, key=key, pos=pos)
     return RedirectResponse(
-        f'/admin/gallery?msg=Регенерю+превью+(fal+~$0.12+за+каждое)+—+результат+в+Telegram', status_code=302)
+        '/admin/gallery?msg=Регенерю+превью+(fal+~$0.12+за+каждое)+—+результат+в+Telegram', status_code=302)
 
 
 @router.post('/gallery/{key}/delete-thumb/{position}')
 async def gallery_delete_thumb(
     key: str, position: int, request: Request,
-    admin_session: Optional[str] = Cookie(default=None),
+    admin_session: str | None = Cookie(default=None),
 ):
     """Удалить конкретное превью (положение 0/1). Сам пресет не трогает."""
     if not _check_auth(admin_session):
@@ -1545,7 +1575,7 @@ async def gallery_delete_thumb(
         await session.commit()
     # Удалили превью, попавшее в welcome-коллаж — сбрасываем кэш.
     try:
-        from app.services.welcome_collage import is_collage_preset, invalidate_welcome_collage
+        from app.services.welcome_collage import invalidate_welcome_collage, is_collage_preset
         if is_collage_preset(key, position):
             await invalidate_welcome_collage()
     except Exception:
@@ -1557,7 +1587,7 @@ async def gallery_delete_thumb(
 
 @router.get('/gallery/{key}/broadcast', response_class=HTMLResponse)
 async def gallery_broadcast_form(
-    key: str, admin_session: Optional[str] = Cookie(default=None), msg: str = '',
+    key: str, admin_session: str | None = Cookie(default=None), msg: str = '',
 ):
     """Форма рассылки по любому пресету из галереи (хардкод или custom)."""
     if not _check_auth(admin_session):
@@ -1574,7 +1604,7 @@ async def gallery_broadcast_form(
         has_male = bool(await get_preview_file_id(session, key, position=1))
         has_female = bool(await get_preview_file_id(session, key, position=0))
         total_all = await session.scalar(
-            select(func.count()).select_from(User).where(User.is_banned == False)
+            select(func.count()).select_from(User).where(not User.is_banned)
         ) or 0
     label = EDIT_PRESETS[key][0]
     default_caption = (
@@ -1593,7 +1623,7 @@ async def gallery_broadcast_form(
 async def gallery_broadcast(
     key: str, request: Request,
     audience: str = Form('all'), caption: str = Form(''),
-    admin_session: Optional[str] = Cookie(default=None),
+    admin_session: str | None = Cookie(default=None),
 ):
     if not _check_auth(admin_session):
         return _redirect_login()
@@ -1614,7 +1644,7 @@ async def gallery_broadcast(
 
 @router.post('/gallery/{key}/toggle-featured')
 async def gallery_toggle_featured(
-    key: str, request: Request, admin_session: Optional[str] = Cookie(default=None),
+    key: str, request: Request, admin_session: str | None = Cookie(default=None),
 ):
     """Featured toggle с галереи — работает только для custom-пресетов
     (у хардкодных нет записи в БД, для них featured концептуально невозможен
@@ -1638,14 +1668,15 @@ async def gallery_toggle_featured(
 
 @router.post('/gallery/{key}/mark-new')
 async def gallery_mark_new(
-    key: str, request: Request, admin_session: Optional[str] = Cookie(default=None),
+    key: str, request: Request, admin_session: str | None = Cookie(default=None),
 ):
     """Снова сделать пресет «новым»: launched_at=now → попадёт в «🆕 Новинки»
     на окно свежести. Работает для ЛЮБОГО пресета (код или DB) — реестр
     preset_launch keyed by preset_key, миграция не нужна (в отличие от featured)."""
     if not _check_auth(admin_session):
         return _redirect_login()
-    from datetime import datetime, timezone
+    from datetime import datetime
+
     from app.database.repo.preset_launch import set_launch
     from app.handlers.image_edit import EDIT_PRESETS, reload_custom_presets
     if key not in EDIT_PRESETS:
@@ -1660,7 +1691,7 @@ async def gallery_mark_new(
 
 @router.post('/gallery/{key}/create-override')
 async def gallery_create_override(
-    key: str, request: Request, admin_session: Optional[str] = Cookie(default=None),
+    key: str, request: Request, admin_session: str | None = Cookie(default=None),
 ):
     """Создаёт custom-пресет с тем же key, что и хардкод — он перетирает
     хардкод-промпт через reload (см. snapshot-логику в image_edit.py).
@@ -1669,13 +1700,16 @@ async def gallery_create_override(
     хардкод чисто вернётся обратно."""
     if not _check_auth(admin_session):
         return _redirect_login()
-    from app.handlers.image_edit import (
-        EDIT_PRESETS, PRESET_QUALITY_MAP, _MALE_PRESET_OVERRIDES,
-        _FEMALE_ONLY_PRESETS, PRESET_PAGES,
-    )
-    from app.database.repo.custom_presets import get_by_key
     from app.database.models import CustomPreset
-    from app.handlers.image_edit import reload_custom_presets
+    from app.database.repo.custom_presets import get_by_key
+    from app.handlers.image_edit import (
+        _FEMALE_ONLY_PRESETS,
+        _MALE_PRESET_OVERRIDES,
+        EDIT_PRESETS,
+        PRESET_PAGES,
+        PRESET_QUALITY_MAP,
+        reload_custom_presets,
+    )
 
     if key not in EDIT_PRESETS:
         return RedirectResponse('/admin/gallery?msg=Пресет+не+найден', status_code=302)
@@ -1709,19 +1743,23 @@ async def gallery_create_override(
 
 @router.get('/gallery/{key}/inspect', response_class=HTMLResponse)
 async def gallery_inspect(
-    key: str, admin_session: Optional[str] = Cookie(default=None), msg: str = '',
+    key: str, admin_session: str | None = Cookie(default=None), msg: str = '',
 ):
     """Read-only детали пресета — РЕАЛЬНЫЙ актуальный промпт (основной + мужской
     override, который сейчас идёт в fal). Для custom можно сразу перейти в edit;
     для хардкод — промпт правится только в коде (но видно что именно)."""
     if not _check_auth(admin_session):
         return _redirect_login()
-    from app.handlers.image_edit import (
-        EDIT_PRESETS, PRESET_QUALITY_MAP, _MALE_PRESET_OVERRIDES,
-        _MALE_STYLE_SUFFIX, _FEMALE_ONLY_PRESETS, PRESET_PAGES,
-    )
     from app.database.repo.custom_presets import get_by_key
     from app.database.repo.preset_previews import get_preview_file_id
+    from app.handlers.image_edit import (
+        _FEMALE_ONLY_PRESETS,
+        _MALE_PRESET_OVERRIDES,
+        _MALE_STYLE_SUFFIX,
+        EDIT_PRESETS,
+        PRESET_PAGES,
+        PRESET_QUALITY_MAP,
+    )
 
     if key not in EDIT_PRESETS:
         return HTMLResponse('Пресет не найден', status_code=404)
@@ -1753,7 +1791,7 @@ async def gallery_inspect(
 
 
 @router.get('/gallery/thumb/{position}/{key}')
-async def gallery_thumb(position: int, key: str, admin_session: Optional[str] = Cookie(default=None)):
+async def gallery_thumb(position: int, key: str, admin_session: str | None = Cookie(default=None)):
     """Прокси превью по KEY+position (для галереи — там работаем с key, а не id)."""
     if not _check_auth(admin_session):
         return Response(status_code=403)
@@ -1779,7 +1817,7 @@ async def gallery_thumb(position: int, key: str, admin_session: Optional[str] = 
 # Прогон произвольного промпта через fal на base-лице — для итерации промптов
 # ДО сохранения как пресет. Стоит $0.12, требует подтверждения в браузере.
 @router.get('/sandbox', response_class=HTMLResponse)
-async def sandbox_page(admin_session: Optional[str] = Cookie(default=None), msg: str = ''):
+async def sandbox_page(admin_session: str | None = Cookie(default=None), msg: str = ''):
     if not _check_auth(admin_session):
         return _redirect_login()
     return render('sandbox.html', title='Песочница промптов', active='sandbox', msg=msg)
@@ -1787,10 +1825,12 @@ async def sandbox_page(admin_session: Optional[str] = Cookie(default=None), msg:
 
 async def _do_sandbox_run(prompt: str, gender: str) -> None:
     import os
+
     from aiogram.types import BufferedInputFile
+
     from app.bot import get_bot
-    from app.services import fal_image_service as F
     from app.handlers.image_edit import _MALE_STYLE_SUFFIX
+    from app.services import fal_image_service as F
 
     bot = get_bot()
     admin = settings.admin_ids_list[0] if settings.admin_ids_list else None
@@ -1821,7 +1861,7 @@ async def _do_sandbox_run(prompt: str, gender: str) -> None:
 @router.post('/sandbox/run')
 async def sandbox_run(
     request: Request, prompt: str = Form(...), gender: str = Form('female'),
-    admin_session: Optional[str] = Cookie(default=None),
+    admin_session: str | None = Cookie(default=None),
 ):
     if not _check_auth(admin_session):
         return _redirect_login()
@@ -1848,7 +1888,7 @@ def _preset_categories() -> list[str]:
 
 
 @router.get('/presets', response_class=HTMLResponse)
-async def presets_list(admin_session: Optional[str] = Cookie(default=None), msg: str = ''):
+async def presets_list(admin_session: str | None = Cookie(default=None), msg: str = ''):
     if not _check_auth(admin_session):
         return _redirect_login()
     from app.database.repo.custom_presets import list_custom_presets
@@ -1881,14 +1921,14 @@ async def presets_list(admin_session: Optional[str] = Cookie(default=None), msg:
             rows.append({'p': p, 'has_female': bool(f0), 'has_male': bool(f1),
                          'gen_count_30d': s['cnt'], 'last_used': s['last']})
         total_users = await session.scalar(
-            select(func.count()).select_from(User).where(User.is_banned == False)
+            select(func.count()).select_from(User).where(not User.is_banned)
         ) or 0
     return render('presets/list.html', title='Пресеты', active='presets', msg=msg,
                   rows=rows, total_users=total_users)
 
 
 @router.get('/presets/new', response_class=HTMLResponse)
-async def presets_new(admin_session: Optional[str] = Cookie(default=None), msg: str = ''):
+async def presets_new(admin_session: str | None = Cookie(default=None), msg: str = ''):
     if not _check_auth(admin_session):
         return _redirect_login()
     return render('presets/form.html', title='Новый пресет', active='presets', msg=msg,
@@ -1896,7 +1936,7 @@ async def presets_new(admin_session: Optional[str] = Cookie(default=None), msg: 
 
 
 @router.get('/presets/{preset_id}/edit', response_class=HTMLResponse)
-async def presets_edit(preset_id: int, admin_session: Optional[str] = Cookie(default=None), msg: str = ''):
+async def presets_edit(preset_id: int, admin_session: str | None = Cookie(default=None), msg: str = ''):
     if not _check_auth(admin_session):
         return _redirect_login()
     from app.database.repo.custom_presets import get_custom_preset
@@ -1919,12 +1959,12 @@ async def presets_create(
     male_prompt: str = Form(''), quality_mode: str = Form('quality'),
     category: str = Form(''), female_only: str = Form(''),
     featured: str = Form(''),
-    admin_session: Optional[str] = Cookie(default=None),
+    admin_session: str | None = Cookie(default=None),
 ):
     if not _check_auth(admin_session):
         return _redirect_login()
+    from app.database.repo.custom_presets import get_by_key
     from app.handlers.image_edit import EDIT_PRESETS, reload_custom_presets
-    from app.database.repo.custom_presets import get_by_key, create_custom_preset
     norm_key = key.strip().lower().replace(' ', '_')
     if not norm_key or not label.strip() or not prompt.strip():
         return RedirectResponse('/admin/presets/new?msg=Заполни+ключ,+название+и+промпт', status_code=302)
@@ -1947,11 +1987,11 @@ async def presets_create(
 
 
 @router.post('/presets/{preset_id}/toggle-featured')
-async def presets_toggle_featured(preset_id: int, request: Request, admin_session: Optional[str] = Cookie(default=None)):
+async def presets_toggle_featured(preset_id: int, request: Request, admin_session: str | None = Cookie(default=None)):
     if not _check_auth(admin_session):
         return _redirect_login()
-    from app.handlers.image_edit import reload_custom_presets
     from app.database.repo.custom_presets import toggle_featured
+    from app.handlers.image_edit import reload_custom_presets
     async with AsyncSessionFactory() as session:
         new_state = await toggle_featured(session, preset_id)
         await session.commit()
@@ -1965,15 +2005,15 @@ async def presets_toggle_featured(preset_id: int, request: Request, admin_sessio
 @router.post('/presets/import')
 async def presets_import(
     request: Request, payload: str = Form(...),
-    admin_session: Optional[str] = Cookie(default=None),
+    admin_session: str | None = Cookie(default=None),
 ):
     """Массовый импорт пресетов из JSON. Формат — список объектов:
     [{"key":"x","label":"...","prompt":"...","male_prompt":"...","category":"...","quality_mode":"quality","female_only":false,"featured":false}, ...]"""
     if not _check_auth(admin_session):
         return _redirect_login()
-    from app.handlers.image_edit import EDIT_PRESETS, reload_custom_presets
-    from app.database.repo.custom_presets import get_by_key
     from app.database.models import CustomPreset
+    from app.database.repo.custom_presets import get_by_key
+    from app.handlers.image_edit import EDIT_PRESETS, reload_custom_presets
     try:
         items = json.loads(payload)
         if not isinstance(items, list):
@@ -2034,12 +2074,12 @@ async def presets_update(
     male_prompt: str = Form(''), quality_mode: str = Form('quality'),
     category: str = Form(''), female_only: str = Form(''),
     featured: str = Form(''),
-    admin_session: Optional[str] = Cookie(default=None),
+    admin_session: str | None = Cookie(default=None),
 ):
     if not _check_auth(admin_session):
         return _redirect_login()
-    from app.handlers.image_edit import reload_custom_presets
     from app.database.repo.custom_presets import update_custom_preset
+    from app.handlers.image_edit import reload_custom_presets
     async with AsyncSessionFactory() as session:
         ok = await update_custom_preset(
             session, preset_id, label=label.strip(), prompt=prompt.strip(),
@@ -2057,11 +2097,11 @@ async def presets_update(
 
 
 @router.post('/presets/{preset_id}/toggle')
-async def presets_toggle(preset_id: int, request: Request, admin_session: Optional[str] = Cookie(default=None)):
+async def presets_toggle(preset_id: int, request: Request, admin_session: str | None = Cookie(default=None)):
     if not _check_auth(admin_session):
         return _redirect_login()
-    from app.handlers.image_edit import reload_custom_presets
     from app.database.repo.custom_presets import toggle_custom_preset
+    from app.handlers.image_edit import reload_custom_presets
     async with AsyncSessionFactory() as session:
         new_state = await toggle_custom_preset(session, preset_id)
         await session.commit()
@@ -2073,11 +2113,11 @@ async def presets_toggle(preset_id: int, request: Request, admin_session: Option
 
 
 @router.post('/presets/{preset_id}/delete')
-async def presets_delete(preset_id: int, request: Request, admin_session: Optional[str] = Cookie(default=None)):
+async def presets_delete(preset_id: int, request: Request, admin_session: str | None = Cookie(default=None)):
     if not _check_auth(admin_session):
         return _redirect_login()
-    from app.handlers.image_edit import reload_custom_presets
     from app.database.repo.custom_presets import delete_custom_preset
+    from app.handlers.image_edit import reload_custom_presets
     async with AsyncSessionFactory() as session:
         key = await delete_custom_preset(session, preset_id)
         await session.commit()
@@ -2088,7 +2128,7 @@ async def presets_delete(preset_id: int, request: Request, admin_session: Option
 
 
 @router.get('/presets/{preset_id}/thumb/{position}')
-async def presets_thumb(preset_id: int, position: int, admin_session: Optional[str] = Cookie(default=None)):
+async def presets_thumb(preset_id: int, position: int, admin_session: str | None = Cookie(default=None)):
     """Прокси превью пресета (по key+position) — чтобы видеть картинку в дашборде."""
     if not _check_auth(admin_session):
         return Response(status_code=403)
@@ -2117,18 +2157,20 @@ async def presets_thumb(preset_id: int, position: int, admin_session: Optional[s
 
 async def _do_generate_preview_by_key(
     key: str, label: str, prompt: str,
-    male_prompt: Optional[str], female_only: bool,
-    positions: Optional[set[int]] = None,
+    male_prompt: str | None, female_only: bool,
+    positions: set[int] | None = None,
 ) -> None:
     """Генерит 2K-превью по ключу (работает и для хардкод, и для custom-пресетов).
     positions ограничивает, что генерить: {0} жен / {1} муж / None обе.
     ~$0.12 за каждое (fal 2K). Шлёт админу отчёт."""
     import os
+
     from aiogram.types import BufferedInputFile
+
     from app.bot import get_bot
-    from app.services import fal_image_service as F
-    from app.handlers.image_edit import _MALE_STYLE_SUFFIX
     from app.database.repo.preset_previews import save_preview
+    from app.handlers.image_edit import _MALE_STYLE_SUFFIX
+    from app.services import fal_image_service as F
 
     bot = get_bot()
     admin = settings.admin_ids_list[0] if settings.admin_ids_list else None
@@ -2164,7 +2206,10 @@ async def _do_generate_preview_by_key(
             # Если регенерим один из 3 превью, попавших в welcome-коллаж,
             # сбрасываем кэш — иначе /start будет показывать старую версию.
             try:
-                from app.services.welcome_collage import is_collage_preset, invalidate_welcome_collage
+                from app.services.welcome_collage import (
+                    invalidate_welcome_collage,
+                    is_collage_preset,
+                )
                 if is_collage_preset(key, pos):
                     await invalidate_welcome_collage()
             except Exception:
@@ -2194,7 +2239,7 @@ async def _do_generate_preview(preset_id: int) -> None:
 
 
 @router.post('/presets/{preset_id}/generate')
-async def presets_generate(preset_id: int, request: Request, admin_session: Optional[str] = Cookie(default=None)):
+async def presets_generate(preset_id: int, request: Request, admin_session: str | None = Cookie(default=None)):
     if not _check_auth(admin_session):
         return _redirect_login()
     asyncio.create_task(_do_generate_preview(preset_id))
@@ -2211,9 +2256,10 @@ async def _do_broadcast_by_key(
     муж+жен (или одиночное фото) + подпись + tracked-кнопка bc_open:<id>.
     Broadcast создаётся СРАЗУ для получения id."""
     from aiogram.types import BufferedInputFile, InlineKeyboardButton, InlineKeyboardMarkup
+
     from app.bot import get_bot
     from app.database.repo.preset_previews import get_preview_file_id
-    from app.handlers.admin import _build_showcase_collage, PE_SPARKLES
+    from app.handlers.admin import PE_SPARKLES, _build_showcase_collage
     from app.handlers.image_edit import NO_BROADCAST_PRESETS
 
     # Defense-in-depth: даже если кто-то напрямую дёрнул _do_broadcast_by_key
@@ -2294,12 +2340,12 @@ async def _do_broadcast_by_key(
         elif audience == 'test_user':
             tg_ids = await _resolve_test_user_tg_id(session)
         else:
-            q = select(User.telegram_id).where(User.is_banned == False)
+            q = select(User.telegram_id).where(not User.is_banned)
             if audience == 'free':
-                subq = select(Subscription.user_id).where(Subscription.is_active == True)
+                subq = select(Subscription.user_id).where(Subscription.is_active)
                 q = q.where(~User.id.in_(subq))
             elif audience == 'paid':
-                subq = select(Subscription.user_id).where(Subscription.is_active == True)
+                subq = select(Subscription.user_id).where(Subscription.is_active)
                 q = q.where(User.id.in_(subq))
             elif audience == 'zero_gen':
                 # «Тёплая база с балансом, но БЕЗ единой генерации» — у нас 80%
@@ -2362,7 +2408,7 @@ async def _do_preset_broadcast(preset_id: int, audience: str, caption_override: 
 
 @router.get('/presets/{preset_id}/broadcast', response_class=HTMLResponse)
 async def presets_broadcast_form(
-    preset_id: int, admin_session: Optional[str] = Cookie(default=None), msg: str = '',
+    preset_id: int, admin_session: str | None = Cookie(default=None), msg: str = '',
 ):
     """Страница рассылки пресета — позволяет отредактировать подпись и выбрать
     аудиторию ДО запуска. Превью муж+жен показываем сразу."""
@@ -2377,7 +2423,7 @@ async def presets_broadcast_form(
         has_male = bool(await get_preview_file_id(session, preset.key, position=1))
         has_female = bool(await get_preview_file_id(session, preset.key, position=0))
         total_all = await session.scalar(
-            select(func.count()).select_from(User).where(User.is_banned == False)
+            select(func.count()).select_from(User).where(not User.is_banned)
         ) or 0
     # Дефолтный caption — тот же, что отдаёт _do_preset_broadcast при пустом.
     default_caption = (
@@ -2397,7 +2443,7 @@ async def presets_broadcast(
     preset_id: int, request: Request,
     audience: str = Form('all'), caption: str = Form(''),
     send_at: str = Form(''),
-    admin_session: Optional[str] = Cookie(default=None),
+    admin_session: str | None = Cookie(default=None),
 ):
     if not _check_auth(admin_session):
         return _redirect_login()
@@ -2408,7 +2454,7 @@ async def presets_broadcast(
         try:
             local_naive = datetime.fromisoformat(send_at.strip())
             msk = timezone(timedelta(hours=3))
-            send_at_utc = local_naive.replace(tzinfo=msk).astimezone(timezone.utc)
+            send_at_utc = local_naive.replace(tzinfo=msk).astimezone(UTC)
         except Exception:
             return RedirectResponse(
                 f'/admin/presets/{preset_id}/broadcast?msg=Некорректное+время', status_code=302)
@@ -2435,10 +2481,10 @@ async def presets_broadcast(
 
 
 @router.get('/scheduled', response_class=HTMLResponse)
-async def scheduled_list(admin_session: Optional[str] = Cookie(default=None), msg: str = ''):
+async def scheduled_list(admin_session: str | None = Cookie(default=None), msg: str = ''):
     if not _check_auth(admin_session):
         return _redirect_login()
-    from app.database.models import ScheduledBroadcast, CustomPreset
+    from app.database.models import CustomPreset, ScheduledBroadcast
     async with AsyncSessionFactory() as session:
         rows = (await session.execute(
             select(ScheduledBroadcast, CustomPreset.label, CustomPreset.key)
@@ -2452,7 +2498,7 @@ async def scheduled_list(admin_session: Optional[str] = Cookie(default=None), ms
 
 
 @router.post('/scheduled/{sb_id}/cancel')
-async def scheduled_cancel(sb_id: int, request: Request, admin_session: Optional[str] = Cookie(default=None)):
+async def scheduled_cancel(sb_id: int, request: Request, admin_session: str | None = Cookie(default=None)):
     if not _check_auth(admin_session):
         return _redirect_login()
     from app.database.models import ScheduledBroadcast
@@ -2470,7 +2516,7 @@ async def scheduled_cancel(sb_id: int, request: Request, admin_session: Optional
 
 @router.get('/broadcasts', response_class=HTMLResponse)
 async def broadcasts_list(
-    admin_session: Optional[str] = Cookie(default=None),
+    admin_session: str | None = Cookie(default=None),
     source: str = '', page: int = 1,
 ):
     if not _check_auth(admin_session):
@@ -2496,7 +2542,7 @@ async def broadcasts_list(
 
 @router.get('/broadcasts/{broadcast_id}', response_class=HTMLResponse)
 async def broadcast_detail(
-    broadcast_id: int, admin_session: Optional[str] = Cookie(default=None), msg: str = '',
+    broadcast_id: int, admin_session: str | None = Cookie(default=None), msg: str = '',
 ):
     if not _check_auth(admin_session):
         return _redirect_login()
@@ -2517,7 +2563,7 @@ async def analytics_legacy_redirect(promo: str = ''):
 
 
 @router.get('/api/promos/{promo_code}/conversion')
-async def promo_conversion_api(promo_code: str, admin_session: Optional[str] = Cookie(default=None)):
+async def promo_conversion_api(promo_code: str, admin_session: str | None = Cookie(default=None)):
     if not _check_auth(admin_session):
         return Response(status_code=403)
     async with AsyncSessionFactory() as session:
@@ -2527,7 +2573,7 @@ async def promo_conversion_api(promo_code: str, admin_session: Optional[str] = C
 # ── FINANCE ─────────────────────────────────────────────────────────────────────
 
 @router.get('/finance', response_class=HTMLResponse)
-async def finance_page(admin_session: Optional[str] = Cookie(default=None), days: int = 30):
+async def finance_page(admin_session: str | None = Cookie(default=None), days: int = 30):
     if not _check_auth(admin_session):
         return _redirect_login()
     days = max(7, min(days, 365))
@@ -2560,7 +2606,7 @@ async def finance_page(admin_session: Optional[str] = Cookie(default=None), days
 
 @router.get('/payments', response_class=HTMLResponse)
 async def payments_page(
-    admin_session: Optional[str] = Cookie(default=None),
+    admin_session: str | None = Cookie(default=None),
     status: str = '', method: str = '', user_id: str = '',
     page: int = 1, msg: str = '',
 ):
@@ -2613,7 +2659,7 @@ async def payments_page(
 
 
 @router.post('/payments/{payment_id}/refund')
-async def refund_payment(payment_id: int, request: Request, admin_session: Optional[str] = Cookie(default=None)):
+async def refund_payment(payment_id: int, request: Request, admin_session: str | None = Cookie(default=None)):
     if not _check_auth(admin_session):
         return _redirect_login()
     async with AsyncSessionFactory() as session:
@@ -2639,7 +2685,7 @@ async def refund_payment(payment_id: int, request: Request, admin_session: Optio
 
 
 @router.post('/payments/{payment_id}/cancel')
-async def cancel_payment(payment_id: int, request: Request, admin_session: Optional[str] = Cookie(default=None)):
+async def cancel_payment(payment_id: int, request: Request, admin_session: str | None = Cookie(default=None)):
     if not _check_auth(admin_session):
         return _redirect_login()
     async with AsyncSessionFactory() as session:
@@ -2659,7 +2705,7 @@ async def cancel_payment(payment_id: int, request: Request, admin_session: Optio
 # ── AURUM CROSS-BOT TRAFFIC ─────────────────────────────────────────────────────
 
 @router.get('/channel-traffic', response_class=HTMLResponse)
-async def channel_traffic_page(admin_session: Optional[str] = Cookie(default=None)):
+async def channel_traffic_page(admin_session: str | None = Cookie(default=None)):
     """Дашборд трафика @conturD: разбивка джойнов по invite-ссылкам + retention.
     Источник: таблица channel_traffic, заполняется хендлером
     app/handlers/channel_traffic.py (chat_member updates)."""
@@ -2745,7 +2791,7 @@ async def channel_traffic_page(admin_session: Optional[str] = Cookie(default=Non
 
 
 @router.get('/aurum-traffic', response_class=HTMLResponse)
-async def aurum_traffic_page(admin_session: Optional[str] = Cookie(default=None)):
+async def aurum_traffic_page(admin_session: str | None = Cookie(default=None)):
     if not _check_auth(admin_session):
         return _redirect_login()
     from app.services import aurum_traffic
@@ -2765,7 +2811,7 @@ async def aurum_traffic_page(admin_session: Optional[str] = Cookie(default=None)
 
 @router.get('/audit', response_class=HTMLResponse)
 async def audit_page(
-    admin_session: Optional[str] = Cookie(default=None),
+    admin_session: str | None = Cookie(default=None),
     page: int = 1, action: str = '',
 ):
     if not _check_auth(admin_session):
@@ -2798,7 +2844,7 @@ async def audit_page(
 # ── HEALTH DASHBOARD ────────────────────────────────────────────────────────────
 
 @router.get('/health', response_class=HTMLResponse)
-async def health_page(admin_session: Optional[str] = Cookie(default=None)):
+async def health_page(admin_session: str | None = Cookie(default=None)):
     if not _check_auth(admin_session):
         return _redirect_login()
 
@@ -2876,7 +2922,7 @@ async def health_page(admin_session: Optional[str] = Cookie(default=None)):
             if last_evt and last_evt.created_at:
                 lm_at = last_evt.created_at
                 if lm_at.tzinfo is None:
-                    lm_at = lm_at.replace(tzinfo=timezone.utc)
+                    lm_at = lm_at.replace(tzinfo=UTC)
                 delta = (now - lm_at).total_seconds() / 60
                 health['last_msg_min'] = int(delta)
                 health['last_msg_tier'] = _AI_TYPE_RU.get(last_evt.event_type, last_evt.event_type)
@@ -2903,7 +2949,11 @@ async def health_page(admin_session: Optional[str] = Cookie(default=None)):
     # чат-чейн (TIER_MODELS: DeepSeek/GPT/Gemini) убран: чат вторичен и работает
     # на бесплатной DeepSeek — в health он только зашумлял список.
     try:
-        from app.services.image_edit_service import EDIT_MODELS_QUALITY, EDIT_MODELS_FAST, FACE_SWAP_MODELS
+        from app.services.image_edit_service import (
+            EDIT_MODELS_FAST,
+            EDIT_MODELS_QUALITY,
+            FACE_SWAP_MODELS,
+        )
         all_models: list[str] = []
         seen = set()
         for src in (EDIT_MODELS_QUALITY, EDIT_MODELS_FAST, FACE_SWAP_MODELS):
@@ -2927,7 +2977,7 @@ async def health_page(admin_session: Optional[str] = Cookie(default=None)):
 # ── COHORTS & HEATMAP ───────────────────────────────────────────────────────────
 
 @router.get('/cohorts', response_class=HTMLResponse)
-async def cohorts_page(admin_session: Optional[str] = Cookie(default=None)):
+async def cohorts_page(admin_session: str | None = Cookie(default=None)):
     if not _check_auth(admin_session):
         return _redirect_login()
     async with AsyncSessionFactory() as session:
@@ -2937,7 +2987,7 @@ async def cohorts_page(admin_session: Optional[str] = Cookie(default=None)):
 
 
 @router.get('/heatmap', response_class=HTMLResponse)
-async def heatmap_page(admin_session: Optional[str] = Cookie(default=None), days: int = 30):
+async def heatmap_page(admin_session: str | None = Cookie(default=None), days: int = 30):
     if not _check_auth(admin_session):
         return _redirect_login()
     days = max(1, min(days, 365))
@@ -2950,7 +3000,7 @@ async def heatmap_page(admin_session: Optional[str] = Cookie(default=None), days
 # ── A/B EXPERIMENTS ─────────────────────────────────────────────────────────────
 
 @router.get('/experiments', response_class=HTMLResponse)
-async def experiments_list(admin_session: Optional[str] = Cookie(default=None)):
+async def experiments_list(admin_session: str | None = Cookie(default=None)):
     if not _check_auth(admin_session):
         return _redirect_login()
     async with AsyncSessionFactory() as session:
@@ -2968,7 +3018,7 @@ async def experiments_list(admin_session: Optional[str] = Cookie(default=None)):
 
 
 @router.get('/experiments/new', response_class=HTMLResponse)
-async def experiments_new(admin_session: Optional[str] = Cookie(default=None)):
+async def experiments_new(admin_session: str | None = Cookie(default=None)):
     if not _check_auth(admin_session):
         return _redirect_login()
     return render('experiments/new.html', title='Новый эксперимент', active='experiments')
@@ -2976,7 +3026,7 @@ async def experiments_new(admin_session: Optional[str] = Cookie(default=None)):
 
 @router.post('/experiments/create')
 async def experiments_create(
-    request: Request, admin_session: Optional[str] = Cookie(default=None),
+    request: Request, admin_session: str | None = Cookie(default=None),
 ):
     if not _check_auth(admin_session):
         return _redirect_login()
@@ -3001,7 +3051,7 @@ async def experiments_create(
 
 
 @router.get('/experiments/{exp_id}', response_class=HTMLResponse)
-async def experiments_detail(exp_id: int, admin_session: Optional[str] = Cookie(default=None)):
+async def experiments_detail(exp_id: int, admin_session: str | None = Cookie(default=None)):
     if not _check_auth(admin_session):
         return _redirect_login()
     async with AsyncSessionFactory() as session:
@@ -3015,7 +3065,7 @@ async def experiments_detail(exp_id: int, admin_session: Optional[str] = Cookie(
 
 
 @router.post('/experiments/{exp_id}/toggle')
-async def experiments_toggle(exp_id: int, admin_session: Optional[str] = Cookie(default=None)):
+async def experiments_toggle(exp_id: int, admin_session: str | None = Cookie(default=None)):
     if not _check_auth(admin_session):
         return _redirect_login()
     async with AsyncSessionFactory() as session:
@@ -3027,7 +3077,7 @@ async def experiments_toggle(exp_id: int, admin_session: Optional[str] = Cookie(
 
 
 @router.post('/experiments/{exp_id}/delete')
-async def experiments_delete(exp_id: int, admin_session: Optional[str] = Cookie(default=None)):
+async def experiments_delete(exp_id: int, admin_session: str | None = Cookie(default=None)):
     if not _check_auth(admin_session):
         return _redirect_login()
     async with AsyncSessionFactory() as session:
@@ -3057,7 +3107,7 @@ def _csv_response(rows: list[list], header: list[str], filename: str) -> Streami
 
 
 @router.get('/api/export/users.csv')
-async def export_users_csv(admin_session: Optional[str] = Cookie(default=None)):
+async def export_users_csv(admin_session: str | None = Cookie(default=None)):
     if not _check_auth(admin_session):
         return _redirect_login()
     async with AsyncSessionFactory() as session:
@@ -3076,7 +3126,7 @@ async def export_users_csv(admin_session: Optional[str] = Cookie(default=None)):
 
 @router.get('/api/export/payments.csv')
 async def export_payments_csv(
-    admin_session: Optional[str] = Cookie(default=None),
+    admin_session: str | None = Cookie(default=None),
     status: str = '', method: str = '',
 ):
     if not _check_auth(admin_session):
@@ -3106,7 +3156,7 @@ async def export_payments_csv(
 
 @router.get('/api/export/events.csv')
 async def export_events_csv(
-    admin_session: Optional[str] = Cookie(default=None),
+    admin_session: str | None = Cookie(default=None),
     event_type: str = '', days: int = 30,
 ):
     if not _check_auth(admin_session):
@@ -3138,7 +3188,7 @@ async def export_events_csv(
 
 @router.get('/support', response_class=HTMLResponse)
 async def support_list(
-    admin_session: Optional[str] = Cookie(default=None), status: str = '',
+    admin_session: str | None = Cookie(default=None), status: str = '',
 ):
     if not _check_auth(admin_session):
         return _redirect_login()
@@ -3151,7 +3201,7 @@ async def support_list(
 
 @router.get('/support/{ticket_id}', response_class=HTMLResponse)
 async def support_thread(
-    ticket_id: int, admin_session: Optional[str] = Cookie(default=None), msg: str = '',
+    ticket_id: int, admin_session: str | None = Cookie(default=None), msg: str = '',
 ):
     if not _check_auth(admin_session):
         return _redirect_login()
@@ -3170,11 +3220,12 @@ async def support_thread(
 async def support_reply(
     ticket_id: int, request: Request,
     body: str = Form(...),
-    admin_session: Optional[str] = Cookie(default=None),
+    admin_session: str | None = Cookie(default=None),
 ):
     if not _check_auth(admin_session):
         return _redirect_login()
     import html as _html
+
     from app.database.repo.support import add_admin_reply, add_system_note, get_ticket
 
     body = (body or '').strip()
@@ -3193,7 +3244,9 @@ async def support_reply(
     delivered = False  # ставим True только после фактической отправки
     if telegram_id:
         from aiogram.exceptions import TelegramForbiddenError
-        from aiogram.types import InlineKeyboardButton as IB, InlineKeyboardMarkup as IM
+        from aiogram.types import InlineKeyboardButton as IB
+        from aiogram.types import InlineKeyboardMarkup as IM
+
         from app.bot import get_bot
         bot = get_bot()
         if bot:
@@ -3231,7 +3284,7 @@ async def support_reply(
 @router.post('/support/{ticket_id}/close')
 async def support_close(
     ticket_id: int, request: Request,
-    admin_session: Optional[str] = Cookie(default=None),
+    admin_session: str | None = Cookie(default=None),
 ):
     if not _check_auth(admin_session):
         return _redirect_login()
@@ -3247,7 +3300,7 @@ async def support_close(
 
 @router.get('/support/{ticket_id}/attachment/{message_id}')
 async def support_attachment(
-    ticket_id: int, message_id: int, admin_session: Optional[str] = Cookie(default=None),
+    ticket_id: int, message_id: int, admin_session: str | None = Cookie(default=None),
 ):
     """Proxy фото вложения тикета по attachment_file_id (как photo_templates_thumb)."""
     if not _check_auth(admin_session):
@@ -3470,7 +3523,7 @@ def _load_aurelina_stats() -> dict:
 
 
 @router.get('/aurelina', response_class=HTMLResponse)
-async def aurelina(admin_session: Optional[str] = Cookie(default=None)):
+async def aurelina(admin_session: str | None = Cookie(default=None)):
     if not _check_auth(admin_session):
         return _redirect_login()
     data = await asyncio.to_thread(_load_aurelina_stats)
@@ -3594,7 +3647,7 @@ def _aur_send_sync(chat_id: int, text: str, reply_markup: dict | None) -> dict:
 
 
 @router.get('/aurelina/support', response_class=HTMLResponse)
-async def aurelina_support_list(admin_session: Optional[str] = Cookie(default=None),
+async def aurelina_support_list(admin_session: str | None = Cookie(default=None),
                                 status: str = ''):
     if not _check_auth(admin_session):
         return _redirect_login()
@@ -3606,7 +3659,7 @@ async def aurelina_support_list(admin_session: Optional[str] = Cookie(default=No
 
 @router.get('/aurelina/support/{ticket_id}', response_class=HTMLResponse)
 async def aurelina_support_thread(ticket_id: int,
-                                  admin_session: Optional[str] = Cookie(default=None),
+                                  admin_session: str | None = Cookie(default=None),
                                   msg: str = ''):
     if not _check_auth(admin_session):
         return _redirect_login()
@@ -3620,7 +3673,7 @@ async def aurelina_support_thread(ticket_id: int,
 @router.post('/aurelina/support/{ticket_id}/reply')
 async def aurelina_support_reply(ticket_id: int, request: Request,
                                  body: str = Form(...),
-                                 admin_session: Optional[str] = Cookie(default=None)):
+                                 admin_session: str | None = Cookie(default=None)):
     if not _check_auth(admin_session):
         return _redirect_login()
     import html as _html
@@ -3656,7 +3709,7 @@ async def aurelina_support_reply(ticket_id: int, request: Request,
 
 @router.post('/aurelina/support/{ticket_id}/close')
 async def aurelina_support_close(ticket_id: int, request: Request,
-                                 admin_session: Optional[str] = Cookie(default=None)):
+                                 admin_session: str | None = Cookie(default=None)):
     if not _check_auth(admin_session):
         return _redirect_login()
     await asyncio.to_thread(_aur_close, ticket_id)
@@ -3695,7 +3748,7 @@ def _aur_fetch_file_sync(file_id: str) -> bytes:
 
 @router.get('/aurelina/support/{ticket_id}/attachment/{message_id}')
 async def aurelina_support_attachment(ticket_id: int, message_id: int,
-                                      admin_session: Optional[str] = Cookie(default=None)):
+                                      admin_session: str | None = Cookie(default=None)):
     """Proxy a ticket photo via the Aurelina bot token (getFile + download)."""
     if not _check_auth(admin_session):
         return Response(status_code=403)
@@ -3766,7 +3819,7 @@ def _aur_list_users(q: str | None = None, limit: int = 300) -> dict:
 
 
 @router.get('/aurelina/users', response_class=HTMLResponse)
-async def aurelina_users(admin_session: Optional[str] = Cookie(default=None), q: str = ''):
+async def aurelina_users(admin_session: str | None = Cookie(default=None), q: str = ''):
     if not _check_auth(admin_session):
         return _redirect_login()
     data = await asyncio.to_thread(_aur_list_users, q or None)
@@ -3845,7 +3898,7 @@ def _aur_user_detail(tg_id: int) -> dict | None:
 
 
 @router.get('/aurelina/users/{tg_id}', response_class=HTMLResponse)
-async def aurelina_user(tg_id: int, admin_session: Optional[str] = Cookie(default=None)):
+async def aurelina_user(tg_id: int, admin_session: str | None = Cookie(default=None)):
     if not _check_auth(admin_session):
         return _redirect_login()
     data = await asyncio.to_thread(_aur_user_detail, tg_id)

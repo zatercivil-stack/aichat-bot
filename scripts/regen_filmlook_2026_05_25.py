@@ -3,6 +3,7 @@ film-look treatment-блоком (фидбэк 25.05: матчить грейд/
 оригинала, без глянцевого 8k-хвоста). Обновляет prompt в custom_presets +
 reload + регенерит превью (перезаписывает кривые)."""
 import asyncio
+
 from sqlalchemy import select
 
 from app.database.base import AsyncSessionFactory

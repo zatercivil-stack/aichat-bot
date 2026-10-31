@@ -118,6 +118,7 @@ async def main_menu_kb_for_user(user_tg_id: int, credits: int) -> InlineKeyboard
     low_credits = credits is not None and credits < 50
     try:
         from redis.asyncio import Redis
+
         from app.config import settings
         r = Redis.from_url(settings.REDIS_URL, decode_responses=True)
         try:

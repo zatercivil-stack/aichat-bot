@@ -28,14 +28,15 @@ from aiogram import Bot
 from aiogram.client.default import DefaultBotProperties
 from aiogram.enums import ParseMode
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
-from sqlalchemy import select, text as sa_text
+from sqlalchemy import select
+from sqlalchemy import text as sa_text
 
 from app.config import settings
 from app.constants import REFERRAL_BONUS
 from app.database.base import AsyncSessionFactory
 from app.database.models import Broadcast
 from app.database.repo.events import log_event
-from app.keyboards.main import PE_GIFT, PE_HANDSHAKE, PE_FIRE
+from app.keyboards.main import PE_FIRE, PE_GIFT, PE_HANDSHAKE
 
 logger = structlog.get_logger(__name__)
 
@@ -149,7 +150,7 @@ async def _finalize(broadcast_id: int, sent: int, blocked: int, errors: int) -> 
         if b.started_at:
             started = b.started_at
             if started.tzinfo is None:
-                started = started.replace(tzinfo=timezone.utc)
+                started = started.replace(tzinfo=UTC)
             b.duration_seconds = int((b.completed_at - started).total_seconds())
         b.status = 'completed'
         await session.commit()
@@ -169,7 +170,7 @@ async def run(dry_run: bool) -> None:
         print(f'Recipients:      {total} (сделали ≥1 фото, баланс 1–199)')
         print(f'Средний баланс:  {avg_cr} кр')
         print(f'Collage fid:     {"OK" if collage_fid else "NONE (текстом)"}')
-        print(f'Стоимость fal:   0₽ (file_id reuse, кредиты не начисляем)')
+        print('Стоимость fal:   0₽ (file_id reuse, кредиты не начисляем)')
         print('==========================================\n')
 
         if dry_run:

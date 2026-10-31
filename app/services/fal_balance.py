@@ -20,10 +20,9 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
-from typing import Optional
 
 import structlog
-from sqlalchemy import select, func
+from sqlalchemy import select
 
 from app.database.base import AsyncSessionFactory
 from app.database.models import BotEvent
@@ -63,7 +62,7 @@ async def set_baseline(balance_usd: float) -> None:
     logger.info('fal baseline set', balance=balance_usd, at=now_iso)
 
 
-async def fetch_real_balance() -> Optional[float]:
+async def fetch_real_balance() -> float | None:
     """Опрашивает официальное fal.ai API (/v1/account/billing) и возвращает
     точный баланс в USD. Требует FAL_BILLING_API_KEY (admin-scoped, отличный
     от модельного FAL_AI_API_KEY). None если ключ не задан или API не ответил.
@@ -95,7 +94,7 @@ async def fetch_real_balance() -> Optional[float]:
         return None
 
 
-async def sync_baseline_from_real() -> Optional[float]:
+async def sync_baseline_from_real() -> float | None:
     """Опрашивает реальный баланс и переустанавливает baseline под него.
     Возвращает реальный баланс или None если не удалось получить.
 
@@ -110,7 +109,7 @@ async def sync_baseline_from_real() -> Optional[float]:
     return bal
 
 
-async def _get_baseline() -> tuple[float, Optional[datetime]]:
+async def _get_baseline() -> tuple[float, datetime | None]:
     """Возвращает (baseline_usd, timestamp_utc). (0, None) если не задан."""
     async with AsyncSessionFactory() as session:
         raw_bal = await get_config_value(session, KEY_BASELINE_USD)
@@ -121,7 +120,7 @@ async def _get_baseline() -> tuple[float, Optional[datetime]]:
         bal = float(raw_bal)
         at = datetime.fromisoformat(raw_at)
         if at.tzinfo is None:
-            at = at.replace(tzinfo=timezone.utc)
+            at = at.replace(tzinfo=UTC)
         return bal, at
     except Exception as exc:
         logger.warning('fal baseline parse failed', error=str(exc)[:200])
@@ -166,7 +165,7 @@ async def _calculate_spent_since(since: datetime) -> float:
     return total
 
 
-async def get_balance() -> Optional[float]:
+async def get_balance() -> float | None:
     """Текущий оценочный баланс fal.ai в USD.
     None если baseline не установлен (админ ещё не сказал сколько).
     """
@@ -208,7 +207,7 @@ async def should_alert_admin() -> bool:
     try:
         last_dt = datetime.fromisoformat(last)
         if last_dt.tzinfo is None:
-            last_dt = last_dt.replace(tzinfo=timezone.utc)
+            last_dt = last_dt.replace(tzinfo=UTC)
         hours_since = (datetime.now(timezone.utc) - last_dt).total_seconds() / 3600
         return hours_since >= 24
     except Exception:

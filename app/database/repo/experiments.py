@@ -6,11 +6,11 @@ the same variant. Conversions are recorded on the assignment row.
 from __future__ import annotations
 
 import hashlib
+from collections.abc import Mapping
 from datetime import datetime, timezone
-from typing import Mapping
 
 import structlog
-from sqlalchemy import and_, func, select
+from sqlalchemy import func, select
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -33,7 +33,7 @@ async def get_active_experiment(session: AsyncSession, target: str) -> Experimen
     return await session.scalar(
         select(Experiment).where(
             Experiment.target == target,
-            Experiment.is_active == True,
+            Experiment.is_active,
         ).order_by(Experiment.created_at.desc()).limit(1)
     )
 

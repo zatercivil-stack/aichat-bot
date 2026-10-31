@@ -2,7 +2,12 @@ from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 
 from app.database.repo.credits import BURN_PACKS, CREDIT_PACKS, DAILY_FREE_CREDITS, MODEL_COSTS
 from app.keyboards.main import (
-    PE_AU_GOLD, PE_BACK, PE_CARD, PE_FIRE, PE_LIGHTNING, PE_ROCKET,
+    PE_AU_GOLD,
+    PE_BACK,
+    PE_CARD,
+    PE_FIRE,
+    PE_LIGHTNING,
+    PE_ROCKET,
 )
 
 # Маппинг fallback-эмодзи пака → premium-аналог.

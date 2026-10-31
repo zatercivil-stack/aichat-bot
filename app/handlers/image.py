@@ -1,18 +1,27 @@
 from __future__ import annotations
 
-from datetime import date
 from io import BytesIO
 
 import structlog
 from aiogram import Router
 from aiogram.filters import Command, CommandObject
 from aiogram.fsm.context import FSMContext
-from aiogram.types import BufferedInputFile, CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup, Message
+from aiogram.types import (
+    BufferedInputFile,
+    CallbackQuery,
+    InlineKeyboardButton,
+    InlineKeyboardMarkup,
+    Message,
+)
 
 from app.database.base import AsyncSessionFactory
-from app.database.repo.credits import MODEL_COSTS, add_credits, deduct_credits, grant_daily_if_needed
+from app.database.repo.credits import (
+    MODEL_COSTS,
+    add_credits,
+    deduct_credits,
+)
 from app.database.repo.users import get_user, is_paid_user
-from app.keyboards.main import PE_CARD, PE_CROSS, buy_or_invite_kb
+from app.keyboards.main import PE_CROSS, buy_or_invite_kb
 from app.services import image_service, watermark
 from app.states import ImageState
 
@@ -68,10 +77,10 @@ async def cb_img_start(callback: CallbackQuery, state: FSMContext) -> None:
 @router.callback_query(lambda c: c.data == 'cancel_img')
 async def cb_cancel_img(callback: CallbackQuery, state: FSMContext) -> None:
     await state.clear()
-    from app.keyboards.main import main_menu_kb_for_user
-    from app.handlers.start import build_menu_text, _send_welcome_with_collage
     from app.database.base import AsyncSessionFactory
     from app.database.repo.users import get_user
+    from app.handlers.start import _send_welcome_with_collage, build_menu_text
+    from app.keyboards.main import main_menu_kb_for_user
     async with AsyncSessionFactory() as session:
         user = await get_user(session, callback.from_user.id)
         text = await build_menu_text(session, callback.message.bot, user)

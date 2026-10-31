@@ -9,7 +9,6 @@ admin pricing screen (to show base vs effective).
 from __future__ import annotations
 
 from datetime import date as _date
-from typing import Optional
 
 import structlog
 

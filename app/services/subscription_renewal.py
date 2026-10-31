@@ -17,18 +17,21 @@ from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 
 import structlog
-from sqlalchemy import select, update as sa_update
+from sqlalchemy import select
+from sqlalchemy import update as sa_update
 
 from app.database.base import AsyncSessionFactory
 from app.database.models import (
-    Payment, PaymentStatus, Plan, Subscription, User,
+    PaymentStatus,
+    Plan,
+    Subscription,
+    User,
 )
 from app.database.repo.credits import (
-    SUBSCRIPTION_PLANS, add_credits, get_subscription_plan,
+    SUBSCRIPTION_PLANS,
 )
 from app.database.repo.payments import create_payment, update_payment
 from app.keyboards.main import PE_AU_GOLD, PE_CALENDAR, PE_CARD, PE_HOME
-from app.database.repo.subscriptions import extend_subscription
 
 logger = structlog.get_logger(__name__)
 
@@ -77,7 +80,9 @@ async def _attempt_recurring_charge(
     """Создаёт recurring-платёж через YooKassa с saved payment_method_id.
     Возвращает (success, payment_id_or_error)."""
     try:
-        from yookassa import Configuration, Payment as YKPayment
+        from yookassa import Configuration
+        from yookassa import Payment as YKPayment
+
         from app.config import settings
         Configuration.account_id = settings.YOOKASSA_SHOP_ID
         Configuration.secret_key = settings.YOOKASSA_SECRET_KEY
@@ -152,12 +157,12 @@ async def run_subscription_renewals(bot) -> None:
             select(Subscription, User)
             .join(User, User.id == Subscription.user_id)
             .where(
-                Subscription.auto_renew == True,
+                Subscription.auto_renew,
                 Subscription.payment_method_id.isnot(None),
-                Subscription.is_active == True,
+                Subscription.is_active,
                 Subscription.expires_at.isnot(None),
                 Subscription.expires_at <= remind_cutoff,
-                User.is_banned == False,
+                not User.is_banned,
             )
         )
         rows = result.all()

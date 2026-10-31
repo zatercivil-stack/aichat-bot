@@ -9,9 +9,8 @@ preset_previews по тому же key (position 0=жен, 1=муж).
 """
 from __future__ import annotations
 
-from alembic import op
 import sqlalchemy as sa
-
+from alembic import op
 
 revision = '021'
 down_revision = '020'

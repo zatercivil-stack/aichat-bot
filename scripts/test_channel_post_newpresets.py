@@ -6,16 +6,18 @@
 import asyncio
 
 from aiogram import Bot
-from aiogram.enums import ParseMode
 from aiogram.client.default import DefaultBotProperties
+from aiogram.enums import ParseMode
 from aiogram.types import (
-    BufferedInputFile, InlineKeyboardButton, InlineKeyboardMarkup,
+    BufferedInputFile,
+    InlineKeyboardButton,
+    InlineKeyboardMarkup,
 )
 
 from app.config import settings
 from app.database.base import AsyncSessionFactory
 from app.database.repo.preset_previews import get_preview_file_id
-from app.handlers.admin import _build_showcase_collage, PE_SPARKLES
+from app.handlers.admin import PE_SPARKLES, _build_showcase_collage
 
 CAPTION = (
     "🆕 <b>В Нейре — большое пополнение сцен.</b>\n\n"

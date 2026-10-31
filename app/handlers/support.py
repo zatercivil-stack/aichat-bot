@@ -8,13 +8,19 @@ from aiogram import F, Router
 from aiogram.filters import Command, StateFilter
 from aiogram.fsm.context import FSMContext
 from aiogram.types import (
-    CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup, Message,
+    CallbackQuery,
+    InlineKeyboardButton,
+    InlineKeyboardMarkup,
+    Message,
 )
 
 from app.database.base import AsyncSessionFactory
 from app.database.repo.events import log_event_bg
 from app.database.repo.support import (
-    add_user_message, close_ticket, get_ticket, open_or_append_ticket,
+    add_user_message,
+    close_ticket,
+    get_ticket,
+    open_or_append_ticket,
 )
 from app.database.repo.users import get_user
 from app.services.admin_notify import alert_admins
@@ -173,11 +179,14 @@ async def _process_ticket_submission(
     # Тело юзера экранируем — алерт уходит с parse_mode='HTML' (инъекция/слом разметки).
     preview = html.escape((body or '📎 фото')[:200])
     safe_username = html.escape(username) if username else '—'
+    from app.config import settings
+    admin_link = ''
+    if settings.ADMIN_BASE_URL:
+        admin_link = f'\n\n<a href="{settings.ADMIN_BASE_URL.rstrip("/")}/admin/support/{ticket_id}">Открыть в панели</a>'
     await alert_admins(
         f"🆘 <b>Новое обращение №{ticket_id}</b>\n\n"
         f"Юзер: @{safe_username} (<code>{user_tg_id}</code>)\n"
-        f"{preview}\n\n"
-        f"<a href=\"http://202.148.55.149:8181/admin/support/{ticket_id}\">Открыть в панели</a>"
+        f"{preview}{admin_link}"
     )
 
 

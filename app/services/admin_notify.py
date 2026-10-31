@@ -9,6 +9,11 @@ import structlog
 
 from app.config import settings
 
+
+def _admin_url(path: str) -> str:
+    base = settings.ADMIN_BASE_URL.rstrip('/')
+    return f'{base}{path}' if base else ''
+
 logger = structlog.get_logger(__name__)
 
 
@@ -42,21 +47,25 @@ async def alert_big_payment(user_id: int, telegram_id: int, username: str | None
     if currency == 'RUB' and amount < rub_threshold:
         return
     flag = '💎' if amount >= 1000 else '💰'
+    _link = _admin_url(f'/admin/users/{user_id}')
+    link_html = f'<a href="{_link}">Открыть в админке</a>' if _link else ''
     text = (
         f'{flag} <b>Платёж получен</b>\n\n'
         f'Сумма: <b>{amount:,.0f} {currency}</b>\n'
         f'Метод: {method}\n'
         f'Юзер: @{username or "—"} (<code>{telegram_id}</code>)\n'
-        f'<a href="http://202.148.55.149:8181/admin/users/{user_id}">Открыть в админке</a>'
+        + (link_html + '\n' if link_html else '')
     )
     await alert_admins(text)
 
 
 async def alert_error_spike(error_type: str, count: int, window_min: int) -> None:
+    _link = _admin_url('/admin/events?event_type=error')
+    link_html = f'<a href="{_link}">События</a>' if _link else ''
     text = (
         f'⚠️ <b>Всплеск ошибок</b>\n\n'
         f'Тип: <code>{error_type}</code>\n'
         f'Кол-во: <b>{count}</b> за {window_min} мин\n'
-        f'<a href="http://202.148.55.149:8181/admin/events?event_type=error">События</a>'
+        + (link_html + '\n' if link_html else '')
     )
     await alert_admins(text)

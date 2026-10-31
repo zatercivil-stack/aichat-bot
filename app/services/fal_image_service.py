@@ -12,7 +12,6 @@ from __future__ import annotations
 
 import asyncio
 import base64
-from typing import Any
 
 import httpx
 import structlog
@@ -80,8 +79,9 @@ def _detect_aspect_from_bytes(image_bytes: bytes) -> str | None:
     """Подбирает ближайший дискретный aspect_ratio к фактическому соотношению
     входной картинки. None при ошибке открытия."""
     try:
-        from PIL import Image
         import io as _io
+
+        from PIL import Image
         img = Image.open(_io.BytesIO(image_bytes))
         w, h = img.size
         if not w or not h:
@@ -299,7 +299,7 @@ async def edit_image(
         logger.warning('fal edit_image: no input images')
         return None
     image_urls_list = [_b64_data_url(b, mime) for b in image_bytes_list]
-    img_url = image_urls_list[0]  # для совместимости логирования
+    image_urls_list[0]  # для совместимости логирования
 
     # Identity-lock wrapper: жёстко описываем АНАТОМИЮ лица + «99% identical»
     # framing. Без триггерных слов вроде «ethnicity» / «deepfake» — safety

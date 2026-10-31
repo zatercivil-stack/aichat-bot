@@ -23,14 +23,15 @@ from __future__ import annotations
 
 import argparse
 import asyncio
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import structlog
 from aiogram import Bot
 from aiogram.client.default import DefaultBotProperties
 from aiogram.enums import ParseMode
 from aiogram.types import FSInputFile, InlineKeyboardButton, InlineKeyboardMarkup
-from sqlalchemy import select, text as sa_text
+from sqlalchemy import select
+from sqlalchemy import text as sa_text
 
 from app.config import settings
 from app.database.base import AsyncSessionFactory
@@ -97,7 +98,7 @@ async def _create_broadcast_row(total: int) -> int:
     async with AsyncSessionFactory() as session:
         b = Broadcast(source=SOURCE, promo_code=PROMO_CODE,
                       total_recipients=total,
-                      started_at=datetime.now(timezone.utc), status='running')
+                      started_at=datetime.now(UTC), status='running')
         session.add(b)
         await session.commit()
         return b.id
@@ -109,11 +110,11 @@ async def _finalize(broadcast_id: int, sent: int, blocked: int, errors: int) -> 
         if not b:
             return
         b.sent_count, b.blocked_count, b.error_count = sent, blocked, errors
-        b.completed_at = datetime.now(timezone.utc)
+        b.completed_at = datetime.now(UTC)
         if b.started_at:
             started = b.started_at
             if started.tzinfo is None:
-                started = started.replace(tzinfo=timezone.utc)
+                started = started.replace(tzinfo=UTC)
             b.duration_seconds = int((b.completed_at - started).total_seconds())
         b.status = 'completed'
         await session.commit()

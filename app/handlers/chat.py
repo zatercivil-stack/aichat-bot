@@ -1,34 +1,35 @@
 from __future__ import annotations
 
+
 import structlog
 from aiogram import F, Router
 from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
 from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup, Message
 
-from datetime import date
-
 from app.constants import MODEL_LABEL
 from app.database.base import AsyncSessionFactory
-from app.database.models import Plan, User
+from app.database.models import User
 from app.database.repo.credits import (
     DAILY_CHANNEL_CREDITS,
     DAILY_FREE_CREDITS,
     MODEL_COSTS,
     add_credits,
-    deduct_credits,
-    grant_daily_if_needed,
-    update_streak,
 )
 from app.database.repo.events import log_event_bg
-from app.database.repo.messages import save_message_bg
 from app.database.repo.users import add_referral_bonus, get_user, set_preferred_model
 from app.keyboards.main import (
-    PE_AU_GOLD, PE_CARD, PE_CHECK, PE_FRAME, PE_HOME, PE_MEGAPHONE, PE_ROBOT,
-    buy_or_invite_kb, main_menu_kb, model_selection_kb, settings_menu_kb,
+    PE_CHECK,
+    PE_FRAME,
+    PE_HOME,
+    PE_MEGAPHONE,
+    PE_ROBOT,
+    buy_or_invite_kb,
+    main_menu_kb,
+    model_selection_kb,
+    settings_menu_kb,
 )
-from app.services import ai_service, channel_service, context_service
-from app.utils import markdown_to_html, send_long as _send_long
+from app.services import channel_service, context_service
 
 LOW_CREDITS_NUDGE = (
     "\n\n━━━━━━━━━━━━━━━━━━━━\n"
@@ -220,7 +221,8 @@ async def _maybe_grant_referral_bonus(redis, user_tg_id: int, bot) -> None:
     тут → выплата ровно раз). Бонус — СГОРАЕМЫЙ (7 дней): реферер обязан
     вернуться и потратить. Milestone 5/10 друзей → неделя/месяц без водяного
     знака (через эфемерный Redis-флаг wm_free:<id>, без миграции)."""
-    from datetime import datetime, timezone, timedelta
+    from datetime import datetime, timedelta
+
     from app.handlers.start import REFERRAL_BONUS, REFERRAL_PENDING_KEY
     key = REFERRAL_PENDING_KEY.format(user_id=user_tg_id)
     referrer_id_bytes = await redis.get(key)
@@ -241,7 +243,7 @@ async def _maybe_grant_referral_bonus(redis, user_tg_id: int, bot) -> None:
             if bu_raw:
                 bu = datetime.fromisoformat(bu_raw)
                 if bu.tzinfo is None:
-                    bu = bu.replace(tzinfo=timezone.utc)
+                    bu = bu.replace(tzinfo=UTC)
                 if now <= bu:
                     amt = (await get_config_value(session, 'referral_boost_amount') or '500').strip()
                     bonus_amount = max(REFERRAL_BONUS, int(amt))

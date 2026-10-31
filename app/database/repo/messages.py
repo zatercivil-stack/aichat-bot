@@ -3,7 +3,6 @@ from __future__ import annotations
 import asyncio
 
 import structlog
-from sqlalchemy import select, func
 
 from app.database.base import AsyncSessionFactory
 from app.database.models import ChatMessage

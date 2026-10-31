@@ -217,7 +217,7 @@ async def get_dashboard_stats(session: AsyncSession) -> dict:
 
     # Banned users count
     banned_count = await session.scalar(
-        select(func.count()).select_from(User).where(User.is_banned == True)
+        select(func.count()).select_from(User).where(User.is_banned)
     )
 
     # Errors (24h)
@@ -230,7 +230,7 @@ async def get_dashboard_stats(session: AsyncSession) -> dict:
     # (≥1→≥2 фото). Считаем по реальным юзерам (без тех и забаненных).
     total_real = await session.scalar(
         select(func.count()).select_from(User)
-        .where(User.id.notin_(exclude_uids), User.is_banned == False)
+        .where(User.id.notin_(exclude_uids), not User.is_banned)
     ) or 0
     users_1plus_gen = await session.scalar(
         select(func.count(func.distinct(BotEvent.user_id)))

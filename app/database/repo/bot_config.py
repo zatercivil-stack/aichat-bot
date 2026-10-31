@@ -1,11 +1,11 @@
 from __future__ import annotations
 
 from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.dialects.postgresql import insert
+from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.constants import HELP_TEXT, WELCOME_TEXT
 from app.database.models import BotConfig
-from app.constants import WELCOME_TEXT, HELP_TEXT
 
 # Default config values — synced with credits.py
 DEFAULT_CONFIG: dict[str, tuple[str, str]] = {

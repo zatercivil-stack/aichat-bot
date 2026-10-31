@@ -22,7 +22,6 @@ from __future__ import annotations
 
 import json
 import random
-from typing import Optional
 
 import structlog
 
@@ -60,11 +59,12 @@ _CONFIG_KEY = 'mystery_today_data'
 
 def _redis():
     from redis.asyncio import Redis
+
     from app.config import settings
     return Redis.from_url(settings.REDIS_URL, decode_responses=True)
 
 
-async def get_today_mystery() -> Optional[dict]:
+async def get_today_mystery() -> dict | None:
     """Возвращает {date, preset_key, label} для сегодняшнего Mystery или None
     если что-то пошло не так. Ленивая ротация: если в БД дата != сегодня, или
     нет записи — выбираем новый пресет, сохраняем.

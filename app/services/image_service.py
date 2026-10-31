@@ -1,8 +1,9 @@
 from __future__ import annotations
 
 import base64
-import structlog
+
 import httpx
+import structlog
 from openai import AsyncOpenAI
 
 from app.config import settings

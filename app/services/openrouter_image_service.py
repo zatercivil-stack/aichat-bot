@@ -15,7 +15,6 @@ from __future__ import annotations
 import base64
 import io
 import re
-from typing import Optional
 
 import httpx
 import structlog
@@ -89,7 +88,7 @@ def _to_16_9(img_bytes: bytes, target_w: int = 1820, target_h: int = 1024) -> by
     return out.getvalue()
 
 
-async def _download_url(url: str) -> Optional[bytes]:
+async def _download_url(url: str) -> bytes | None:
     """Скачивает изображение по URL (если модель отдала ссылку, а не base64)."""
     try:
         async with httpx.AsyncClient(timeout=30.0) as http:
@@ -101,7 +100,7 @@ async def _download_url(url: str) -> Optional[bytes]:
         return None
 
 
-async def generate_image(prompt: str, aspect: str = '16:9') -> Optional[bytes]:
+async def generate_image(prompt: str, aspect: str = '16:9') -> bytes | None:
     """Генерирует картинку по промпту через OpenRouter. Возвращает bytes (PNG/JPEG)
     или None если что-то пошло не так. Не бросает исключений — caller обычно
     fallback'ится на следующий провайдер.
@@ -177,7 +176,7 @@ async def generate_image(prompt: str, aspect: str = '16:9') -> Optional[bytes]:
         logger.warning('openrouter image: unexpected image schema', sample=str(first)[:200])
         return None
 
-    raw: Optional[bytes] = None
+    raw: bytes | None = None
     m = _DATA_URL_RE.match(url)
     if m:
         try:

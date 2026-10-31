@@ -15,15 +15,16 @@ from __future__ import annotations
 
 import argparse
 import asyncio
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from urllib.parse import quote
 
 import structlog
 from aiogram import Bot
 from aiogram.client.default import DefaultBotProperties
 from aiogram.enums import ParseMode
-from aiogram.types import BufferedInputFile, InlineKeyboardButton, InlineKeyboardMarkup
-from sqlalchemy import select, text as sa_text
+from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
+from sqlalchemy import select
+from sqlalchemy import text as sa_text
 
 from app.config import settings
 from app.constants import REFERRAL_BONUS
@@ -111,7 +112,7 @@ async def _send_one(bot: Bot, tg_id: int, collage_fid: str | None) -> str:
 async def _create_broadcast_row(total: int) -> int:
     async with AsyncSessionFactory() as session:
         b = Broadcast(source=SOURCE, promo_code=PROMO_CODE, total_recipients=total,
-                      started_at=datetime.now(timezone.utc), status='running')
+                      started_at=datetime.now(UTC), status='running')
         session.add(b)
         await session.commit()
         return b.id
@@ -123,11 +124,11 @@ async def _finalize(bid: int, sent: int, blocked: int, errors: int) -> None:
         if not b:
             return
         b.sent_count, b.blocked_count, b.error_count = sent, blocked, errors
-        b.completed_at = datetime.now(timezone.utc)
+        b.completed_at = datetime.now(UTC)
         if b.started_at:
             st = b.started_at
             if st.tzinfo is None:
-                st = st.replace(tzinfo=timezone.utc)
+                st = st.replace(tzinfo=UTC)
             b.duration_seconds = int((b.completed_at - st).total_seconds())
         b.status = 'completed'
         await session.commit()
@@ -144,7 +145,7 @@ async def run(dry_run: bool) -> None:
         print(f'Recipients:  {total} (≥1 фото, активны ≤14д)')
         print(f'Collage:     {"OK" if collage else "NONE (текстом)"}')
         print(f'Спарк:       до {BOOST_UNTIL_HUMAN} награда {BOOST_AMOUNT} (база {REFERRAL_BONUS})')
-        print(f'Стоимость:   0₽ (file_id reuse, кредиты не начисляем)')
+        print('Стоимость:   0₽ (file_id reuse, кредиты не начисляем)')
         print('===============================\n')
         if dry_run:
             admins = settings.admin_ids_list

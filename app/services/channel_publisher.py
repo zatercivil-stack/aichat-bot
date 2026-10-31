@@ -1,22 +1,20 @@
 from __future__ import annotations
 
 import random
+import re
 from datetime import datetime, timezone
 
 import structlog
 from aiogram import Bot
-from openai import AsyncOpenAI
-
-import re
-
 from aiogram.types import BufferedInputFile
+from openai import AsyncOpenAI
 
 from app.config import settings
 from app.database.base import AsyncSessionFactory
 from app.database.repo.bot_config import get_config_value, set_config_value
-from app.services.channel_topics import CHANNEL_TOPICS
-from app.services.channel_feature_topics import FEATURE_TOPICS
 from app.services import fal_image_service, openrouter_image_service
+from app.services.channel_feature_topics import FEATURE_TOPICS
+from app.services.channel_topics import CHANNEL_TOPICS
 from app.services.image_service import generate_image as _flux_generate_image
 from app.utils import premium_text
 
@@ -647,8 +645,9 @@ async def _maybe_inject_secret_promo(post_text: str) -> str:
         logger.info('skip secret promo: post too long', post_len=len(post_text))
         return post_text
     try:
-        from app.database.models import PromoCode
         from datetime import timedelta
+
+        from app.database.models import PromoCode
         code = f'SECRET{random.randint(1000, 9999)}'
         expires = datetime.now(timezone.utc) + timedelta(hours=SECRET_PROMO_TTL_HOURS)
         async with AsyncSessionFactory() as session:
@@ -893,7 +892,7 @@ async def publish_pending_channel_post(bot) -> None:
     конфиг. На ошибке НЕ чистит — повторит через минуту. Для ручных
     отложенных постов (showcase новинок и т.п.)."""
     import json
-    from datetime import datetime, timezone
+    from datetime import datetime
     try:
         async with AsyncSessionFactory() as session:
             raw = await get_config_value(session, "pending_channel_post")
@@ -905,7 +904,7 @@ async def publish_pending_channel_post(bot) -> None:
         data = json.loads(raw)
         pub_at = datetime.fromisoformat(data["publish_at_iso"])
         if pub_at.tzinfo is None:
-            pub_at = pub_at.replace(tzinfo=timezone.utc)
+            pub_at = pub_at.replace(tzinfo=UTC)
         if datetime.now(timezone.utc) < pub_at:
             return  # ещё не время
     except Exception as exc:
@@ -928,8 +927,9 @@ async def publish_pending_channel_post(bot) -> None:
                 chat_id=CHANNEL_ID, text=caption, parse_mode="HTML",
                 disable_web_page_preview=True, disable_notification=True,
             )
-        from app.database.models import ChannelPost
         from sqlalchemy import insert as sql_insert
+
+        from app.database.models import ChannelPost
         async with AsyncSessionFactory() as session:
             await session.execute(sql_insert(ChannelPost).values(
                 topic=data.get("topic", "Showcase новинок"), body=caption,
@@ -965,6 +965,7 @@ async def _create_post_promo(
     try:
         import uuid as _uuid
         from datetime import timedelta as _td
+
         from app.database.models import PromoCode
         suffix = _uuid.uuid4().hex[:6].upper()
         if preset_key:
@@ -1064,7 +1065,7 @@ async def _build_post(
     # — там он выставлен осознанно.
     # Раньше тут 65% постов уходили в ?start=channel (без кода, без трекинга, без
     # пресета) — это и сломало воронку промокодов (последний CHAN-код ~26.05).
-    show_bonus = bool(cta_override) or random.random() < 0.50
+    bool(cta_override) or random.random() < 0.50
 
     # Опциональный веб-контекст из Brave Search — реальные факты вместо
     # AI-галлюцинаций. Особенно важно для нейтральных постов где репутация
@@ -1099,7 +1100,7 @@ async def _build_post(
     # заменяем на released-новинку, иначе free с поста упрётся в paywall.
     if preset_key:
         try:
-            from app.handlers.image_edit import _is_early_access, _get_new_preset_keys
+            from app.handlers.image_edit import _get_new_preset_keys, _is_early_access
             if _is_early_access(preset_key):
                 alts = [k for k in await _get_new_preset_keys() if not _is_early_access(k)]
                 preset_key = alts[0] if alts else None
@@ -1313,8 +1314,9 @@ async def generate_and_publish(
     mode='daily'   — обычный evergreen-пост, случайный CTA (Aurum/Neyra/none)
     mode='feature' — фишечный пост с прямой промо Нейры (Ср + Вс)
     """
-    from app.database.models import ChannelPost
     from sqlalchemy import insert as sql_insert
+
+    from app.database.models import ChannelPost
 
     scheduled_at = datetime.now(timezone.utc)
     chosen_topic = topic or await _pick_topic(mode=mode)
@@ -1433,6 +1435,7 @@ async def run_scheduled_post(bot: Bot) -> None:
         logger.info("Skipping next post as requested by admin")
         async with AsyncSessionFactory() as session:
             from sqlalchemy import insert as sql_insert
+
             from app.database.models import ChannelPost
             await session.execute(
                 sql_insert(ChannelPost).values(

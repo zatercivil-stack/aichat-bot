@@ -1,9 +1,11 @@
 """Генерит минималистичный логотип-аватарку и шлёт админу. ~$0.08."""
 import asyncio
+
 from aiogram import Bot
-from aiogram.enums import ParseMode
 from aiogram.client.default import DefaultBotProperties
+from aiogram.enums import ParseMode
 from aiogram.types import BufferedInputFile
+
 from app.config import settings
 from app.services import fal_image_service as F
 

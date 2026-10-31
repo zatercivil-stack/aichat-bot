@@ -51,7 +51,7 @@ async def run_payment_recovery(bot_instance) -> None:
                 .where(
                     Payment.status == PaymentStatus.PENDING,
                     Payment.created_at < too_recent,
-                    User.is_banned == False,
+                    not User.is_banned,
                 )
                 .order_by(Payment.user_id, Payment.created_at.desc())
                 .limit(500)
@@ -86,7 +86,7 @@ async def run_payment_recovery(bot_instance) -> None:
                 for payment, _u in items:
                     created = payment.created_at
                     if created and created.tzinfo is None:
-                        created = created.replace(tzinfo=timezone.utc)
+                        created = created.replace(tzinfo=UTC)
                     if created and created < too_old:
                         payment.status = PaymentStatus.FAILED
                         payment.updated_at = now
@@ -99,7 +99,7 @@ async def run_payment_recovery(bot_instance) -> None:
                         try:
                             rs_dt = datetime.fromisoformat(rs)
                             if rs_dt.tzinfo is None:
-                                rs_dt = rs_dt.replace(tzinfo=timezone.utc)
+                                rs_dt = rs_dt.replace(tzinfo=UTC)
                             if last_recovery_dt is None or rs_dt > last_recovery_dt:
                                 last_recovery_dt = rs_dt
                         except (ValueError, TypeError):
@@ -116,7 +116,8 @@ async def run_payment_recovery(bot_instance) -> None:
                 # 3. Шлём ОДНО сообщение юзеру и помечаем ВСЕ его pending'и
                 try:
                     from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
-                    from app.keyboards.main import PE_CARD, PE_BACK
+
+                    from app.keyboards.main import PE_BACK, PE_CARD
                     kb = InlineKeyboardMarkup(inline_keyboard=[
                         [InlineKeyboardButton.model_construct(
                             text='Вернуться в магазин',

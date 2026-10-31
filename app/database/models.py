@@ -1,10 +1,11 @@
 from __future__ import annotations
 
 import enum
-from datetime import date, datetime
+from datetime import date, datetime, timezone
 from decimal import Decimal
 
 from sqlalchemy import (
+    JSON,
     BigInteger,
     Boolean,
     Date,
@@ -12,7 +13,6 @@ from sqlalchemy import (
     Enum,
     ForeignKey,
     Integer,
-    JSON,
     Numeric,
     String,
     Text,
@@ -24,14 +24,14 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.database.base import Base
 
 
-class Plan(str, enum.Enum):
+class Plan(enum.StrEnum):
     FREE = 'free'
     BASIC = 'basic'
     PRO = 'pro'
     MAX = 'max'
 
 
-class PaymentStatus(str, enum.Enum):
+class PaymentStatus(enum.StrEnum):
     PENDING = 'pending'
     SUCCEEDED = 'succeeded'
     FAILED = 'failed'
@@ -87,12 +87,12 @@ class User(Base):
     @property
     def active_burn(self) -> int:
         """Непросроченные сгораемые кредиты (read-only, без мутации) — для UI."""
-        from datetime import datetime, timezone
+        from datetime import datetime
         burn = self.burn_credits or 0
         if burn and self.burn_expires_at:
             exp = self.burn_expires_at
             if exp.tzinfo is None:
-                exp = exp.replace(tzinfo=timezone.utc)
+                exp = exp.replace(tzinfo=UTC)
             if exp <= datetime.now(timezone.utc):
                 return 0
         return burn

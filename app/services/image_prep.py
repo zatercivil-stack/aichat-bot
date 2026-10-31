@@ -77,9 +77,9 @@ def prepare_face_image(image_bytes: bytes) -> bytes:
     (caller получает «как есть» — fal попробует обработать сам).
     """
     try:
-        from PIL import Image, ImageOps
-        import numpy as np
         import cv2
+        import numpy as np
+        from PIL import Image, ImageOps
 
         img = Image.open(io.BytesIO(image_bytes))
         img = ImageOps.exif_transpose(img)  # EXIF auto-rotate

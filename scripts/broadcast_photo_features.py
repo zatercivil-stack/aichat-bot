@@ -15,19 +15,19 @@ from __future__ import annotations
 
 import argparse
 import asyncio
-import sys
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import structlog
 from aiogram import Bot
 from aiogram.client.default import DefaultBotProperties
 from aiogram.enums import ParseMode
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
-from sqlalchemy import select, text as sa_text
+from sqlalchemy import select
+from sqlalchemy import text as sa_text
 
 from app.config import settings
 from app.database.base import AsyncSessionFactory
-from app.database.models import Broadcast, User
+from app.database.models import Broadcast
 from app.database.repo.events import log_event
 
 logger = structlog.get_logger(__name__)
@@ -133,7 +133,7 @@ async def _create_broadcast_row(total: int) -> int:
             source=SOURCE,
             promo_code=PROMO_CODE,
             total_recipients=total,
-            started_at=datetime.now(timezone.utc),
+            started_at=datetime.now(UTC),
             status='running',
         )
         session.add(b)
@@ -150,11 +150,11 @@ async def _finalize_broadcast(broadcast_id: int, sent: int, blocked: int,
         b.sent_count = sent
         b.blocked_count = blocked
         b.error_count = errors
-        b.completed_at = datetime.now(timezone.utc)
+        b.completed_at = datetime.now(UTC)
         if b.started_at:
             started = b.started_at
             if started.tzinfo is None:
-                started = started.replace(tzinfo=timezone.utc)
+                started = started.replace(tzinfo=UTC)
             b.duration_seconds = int((b.completed_at - started).total_seconds())
         b.status = status
         await session.commit()
@@ -190,13 +190,13 @@ async def run(dry_run: bool) -> None:
         bonus_eligible = sum(1 for _, _, _, b in recipients if b)
         bonus_total_cost = bonus_eligible * BONUS_AMOUNT
 
-        print(f'\n=== BROADCAST PLAN ===')
+        print('\n=== BROADCAST PLAN ===')
         print(f'Mode:                {"DRY-RUN" if dry_run else "REAL SEND"}')
         print(f'Recipients (active): {total}')
         print(f'Bonus-eligible:      {bonus_eligible} (<{BONUS_THRESHOLD} кр)')
         print(f'Bonus total cost:    {bonus_total_cost} кр')
         print(f'Bonus per user:      {BONUS_AMOUNT} кр')
-        print(f'====================\n')
+        print('====================\n')
 
         if dry_run:
             # Send sample to each admin only
@@ -212,7 +212,7 @@ async def run(dry_run: bool) -> None:
                                        parse_mode='HTML')
                 await asyncio.sleep(0.2)
                 await _send_one(bot, aid, credits=5, get_bonus=True)
-            print(f'✓ Dry-run complete. Check Telegram for samples.')
+            print('✓ Dry-run complete. Check Telegram for samples.')
             return
 
         # REAL SEND
@@ -238,12 +238,12 @@ async def run(dry_run: bool) -> None:
 
         await _finalize_broadcast(broadcast_id, sent, blocked, errors, 'completed')
 
-        print(f'\n=== BROADCAST DONE ===')
+        print('\n=== BROADCAST DONE ===')
         print(f'Sent:    {sent}')
         print(f'Blocked: {blocked}')
         print(f'Errors:  {errors}')
         print(f'Bonus granted: {granted}')
-        print(f'======================\n')
+        print('======================\n')
     finally:
         await bot.session.close()
 

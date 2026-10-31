@@ -3,10 +3,10 @@
 file_id + число сегодняшних новинок."""
 import asyncio
 import io
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from PIL import Image
-from sqlalchemy import select, func
+from sqlalchemy import func, select
 
 from app.config import settings
 from app.database.base import AsyncSessionFactory
@@ -83,8 +83,8 @@ async def main():
         async with AsyncSessionFactory() as s:
             cnt = await s.scalar(
                 select(func.count()).select_from(CustomPreset).where(
-                    CustomPreset.enabled == True,
-                    CustomPreset.created_at >= datetime(2026, 5, 25, tzinfo=timezone.utc),
+                    CustomPreset.enabled,
+                    CustomPreset.created_at >= datetime(2026, 5, 25, tzinfo=UTC),
                 )
             )
         print('новинок сегодня (enabled):', cnt)

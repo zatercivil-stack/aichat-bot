@@ -9,8 +9,8 @@
 """
 from __future__ import annotations
 
-from datetime import datetime
 from collections.abc import Iterable
+from datetime import datetime
 
 from sqlalchemy import select
 from sqlalchemy.dialects.postgresql import insert as pg_insert

@@ -6,12 +6,13 @@ from __future__ import annotations
 import asyncio
 import sys
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from aiogram import Bot
 from aiogram.exceptions import TelegramBadRequest, TelegramRetryAfter
 from aiogram.types import InputMediaPhoto
-from sqlalchemy import select, insert as sql_insert
+from sqlalchemy import insert as sql_insert
+from sqlalchemy import select
 
 from app.config import settings
 from app.database.base import AsyncSessionFactory
@@ -653,7 +654,7 @@ async def main():
                 continue
 
             status = None
-            for attempt in range(4):
+            for _attempt in range(4):
                 try:
                     await bot.edit_message_media(
                         chat_id=CHANNEL, message_id=e.msg_id,
@@ -693,8 +694,8 @@ async def main():
                         await session.execute(
                             sql_insert(ChannelPost).values(
                                 topic=e.topic, body=e.body, cta_type='neyra',
-                                scheduled_at=datetime.now(timezone.utc),
-                                published_at=datetime.now(timezone.utc),
+                                scheduled_at=datetime.now(UTC),
+                                published_at=datetime.now(UTC),
                                 message_id=e.msg_id, status='published',
                             )
                         )

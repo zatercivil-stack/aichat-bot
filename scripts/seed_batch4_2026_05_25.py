@@ -3,7 +3,9 @@ grade-matching по каждому. Запуск:
 docker compose exec -T bot bash -c 'PYTHONPATH=/app python3 -m scripts.seed_batch4_2026_05_25'
 """
 import asyncio
+
 from sqlalchemy import select
+
 from app.database.base import AsyncSessionFactory
 from app.database.models import CustomPreset
 from app.database.repo.custom_presets import create_custom_preset

@@ -41,8 +41,8 @@ async def run_trial_end_push(bot_instance) -> None:
             stmt = select(User).where(and_(
                 User.trial_ended_at.is_not(None),
                 User.trial_ended_at <= threshold,
-                User.trial_end_push_sent == False,
-                User.is_banned == False,
+                not User.trial_end_push_sent,
+                not User.is_banned,
                 User.last_active_at < activity_cutoff,  # давайте активным дочитать
             )).limit(500)
             users = (await session.execute(stmt)).scalars().all()

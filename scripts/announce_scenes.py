@@ -15,12 +15,14 @@ from __future__ import annotations
 
 import argparse
 import asyncio
-import sys
+from datetime import UTC
 from pathlib import Path
 
 import structlog
 from aiogram.types import (
-    BufferedInputFile, InlineKeyboardButton, InlineKeyboardMarkup,
+    BufferedInputFile,
+    InlineKeyboardButton,
+    InlineKeyboardMarkup,
     InputMediaPhoto,
 )
 from sqlalchemy import select
@@ -83,17 +85,17 @@ async def _resolve_audience(audience: str) -> list[int]:
             return [user.telegram_id]
         elif audience == 'active':
             # Активные за последние 30 дней, не забанены
-            from datetime import datetime, timedelta, timezone
-            cutoff = datetime.now(timezone.utc) - timedelta(days=30)
+            from datetime import datetime, timedelta
+            cutoff = datetime.now(UTC) - timedelta(days=30)
             rows = await session.execute(
                 select(User.telegram_id)
-                .where(User.is_banned == False)
+                .where(not User.is_banned)
                 .where(User.last_active_at >= cutoff)
             )
             return [r[0] for r in rows.all()]
         elif audience == 'all':
             rows = await session.execute(
-                select(User.telegram_id).where(User.is_banned == False)
+                select(User.telegram_id).where(not User.is_banned)
             )
             return [r[0] for r in rows.all()]
         else:

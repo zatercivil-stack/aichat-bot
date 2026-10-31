@@ -8,17 +8,17 @@
 """
 import asyncio
 import os
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from aiogram import Bot
-from aiogram.enums import ParseMode
 from aiogram.client.default import DefaultBotProperties
+from aiogram.enums import ParseMode
 from aiogram.types import BufferedInputFile, InlineKeyboardButton, InlineKeyboardMarkup
 
 from app.config import settings
 from app.database.base import AsyncSessionFactory
 from app.database.repo.preset_previews import get_preview_file_id
-from app.handlers.admin import _build_showcase_collage, PE_SPARKLES
+from app.handlers.admin import PE_SPARKLES, _build_showcase_collage
 
 CHANNEL_ID = "@conturD"
 
@@ -88,8 +88,8 @@ async def main():
             s.add(ChannelPost(
                 topic='Анонс новых пресетов: Костюм и сигарета + Кадр из багажника (01.06)',
                 body=CAPTION, cta_type='neyra',
-                scheduled_at=datetime.now(timezone.utc),
-                published_at=datetime.now(timezone.utc),
+                scheduled_at=datetime.now(UTC),
+                published_at=datetime.now(UTC),
                 message_id=sent.message_id, status='published',
             ))
             await s.commit()

@@ -11,8 +11,6 @@ API: https://api.search.brave.com/res/v1/web/search
 """
 from __future__ import annotations
 
-from typing import Optional
-
 import httpx
 import structlog
 
@@ -27,7 +25,7 @@ def is_enabled() -> bool:
     return bool(getattr(settings, 'BRAVE_SEARCH_API_KEY', ''))
 
 
-async def search(query: str, count: int = 5, freshness: Optional[str] = None) -> list[dict]:
+async def search(query: str, count: int = 5, freshness: str | None = None) -> list[dict]:
     """Возвращает [{title, url, description, age}] или [] при ошибке.
 
     Args:

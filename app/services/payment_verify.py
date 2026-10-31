@@ -29,7 +29,8 @@ async def verify_yookassa_payment(yk_payment_id: str, payment_db_id: int) -> boo
         return False
 
     def _find():
-        from yookassa import Configuration, Payment as YKPayment
+        from yookassa import Configuration
+        from yookassa import Payment as YKPayment
         Configuration.account_id = settings.YOOKASSA_SHOP_ID
         Configuration.secret_key = settings.YOOKASSA_SECRET_KEY
         return YKPayment.find_one(yk_payment_id)

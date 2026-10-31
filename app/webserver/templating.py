@@ -3,7 +3,6 @@ from __future__ import annotations
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
-from fastapi import Request
 from fastapi.responses import HTMLResponse
 from jinja2 import Environment, FileSystemLoader, select_autoescape
 
@@ -20,7 +19,7 @@ def _to_msk(value):
         return value
     # Naive datetime в нашей БД = UTC (server_default=func.now() в Postgres).
     if value.tzinfo is None:
-        value = value.replace(tzinfo=timezone.utc)
+        value = value.replace(tzinfo=UTC)
     return value.astimezone(MSK_TZ)
 
 
@@ -91,7 +90,7 @@ NAV_ITEMS = [
 
 
 def render(template: str, **context) -> HTMLResponse:
-    from app.webserver.csrf import current_session, csrf_for
+    from app.webserver.csrf import csrf_for, current_session
     context.setdefault('nav_items', NAV_ITEMS)
     context.setdefault('active', '')
     context.setdefault('msg', '')
@@ -116,7 +115,8 @@ def _inject_csrf(html: str) -> str:
     утечка в query-строке = риск. Мутирующие формы объявляют method="post"
     явно, GET-формы — method="get" (проверено аудитом шаблонов)."""
     import re
-    from app.webserver.csrf import current_session, csrf_for
+
+    from app.webserver.csrf import csrf_for, current_session
     token = csrf_for(current_session.get())
     if not token:
         return html

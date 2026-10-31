@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import uuid
-from datetime import datetime, timedelta, timezone
+from datetime import datetime
 from decimal import Decimal
 
 import structlog
@@ -17,7 +17,13 @@ from app.database.repo.payments import create_payment, update_payment
 from app.database.repo.subscriptions import get_subscription
 from app.database.repo.users import get_user
 from app.keyboards.main import (
-    PE_AU_GOLD, PE_BACK, PE_CALENDAR, PE_CARD, PE_HOME, PE_LIGHTNING, PE_ROCKET,
+    PE_AU_GOLD,
+    PE_BACK,
+    PE_CALENDAR,
+    PE_CARD,
+    PE_HOME,
+    PE_LIGHTNING,
+    PE_ROCKET,
 )
 
 logger = structlog.get_logger(__name__)
@@ -176,14 +182,14 @@ async def _build_subscription_view(user_tg_id: int) -> tuple[str, InlineKeyboard
             )
         elif recurring_enabled:
             renew_line = (
-                f"🔁 Автопродление: <b>ВЫКЛ</b> — после окончания срока надо будет "
-                f"оформить заново.\n\n"
+                "🔁 Автопродление: <b>ВЫКЛ</b> — после окончания срока надо будет "
+                "оформить заново.\n\n"
             )
         else:
             # Recurring глобально выключен — не упоминаем автопродление вообще.
             renew_line = (
-                f"<i>После окончания срока продли подпиской ещё раз — "
-                f"одна оплата = +30 дней.</i>\n\n"
+                "<i>После окончания срока продли подпиской ещё раз — "
+                "одна оплата = +30 дней.</i>\n\n"
             )
         text = (
             f"✅ <b>У тебя активна подписка {plan_dict['name']}</b>\n"
@@ -235,6 +241,7 @@ async def cb_sub_cancel_renew(callback: CallbackQuery) -> None:
                               show_alert=True)
         return
     from sqlalchemy import update as sa_update
+
     from app.database.models import Subscription
     async with AsyncSessionFactory() as session:
         user = await get_user(session, callback.from_user.id)
@@ -263,7 +270,9 @@ async def cb_sub_enable_renew(callback: CallbackQuery) -> None:
         await callback.answer('Автопродление сейчас не настроено — функция временно недоступна.',
                               show_alert=True)
         return
-    from sqlalchemy import update as sa_update, select as sa_select
+    from sqlalchemy import select as sa_select
+    from sqlalchemy import update as sa_update
+
     from app.database.models import Subscription
     async with AsyncSessionFactory() as session:
         user = await get_user(session, callback.from_user.id)
@@ -312,7 +321,8 @@ async def cb_choose_plan(callback: CallbackQuery) -> None:
     await callback.answer()
 
     try:
-        from yookassa import Configuration, Payment as YKPayment
+        from yookassa import Configuration
+        from yookassa import Payment as YKPayment
 
         Configuration.account_id = settings.YOOKASSA_SHOP_ID
         Configuration.secret_key = settings.YOOKASSA_SECRET_KEY
@@ -379,8 +389,8 @@ async def cb_choose_plan(callback: CallbackQuery) -> None:
         # Текст про автопродление показываем ТОЛЬКО если включён recurring флаг.
         # Иначе вводит юзера в заблуждение (платёж без save_payment_method).
         recurring_line = (
-            f'🔁 <b>Автопродление включено</b> — следующее списание через 30 дней. '
-            f'Отменить можно в любой момент в <code>/sub</code>.\n\n'
+            '🔁 <b>Автопродление включено</b> — следующее списание через 30 дней. '
+            'Отменить можно в любой момент в <code>/sub</code>.\n\n'
             if recurring_enabled else ''
         )
 

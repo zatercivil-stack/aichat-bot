@@ -10,7 +10,7 @@ from aiogram import Router
 from aiogram.filters import Command
 from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup, Message
 
-from app.keyboards.main import PE_BACK, PE_HOME, main_menu_kb
+from app.keyboards.main import PE_BACK, PE_HOME
 
 logger = structlog.get_logger(__name__)
 router = Router()

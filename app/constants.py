@@ -35,13 +35,15 @@ async def build_help_text() -> str:
     каналы и бонусы редактируются админкой. Статический текст в БД быстро
     устаревает и врёт юзеру.
     """
-    from app.services.pricing import get_promo_info
-    from app.database.repo.credits import (
-        DAILY_CHANNEL_CREDITS, DAILY_FREE_CREDITS, MODEL_COSTS,
-    )
     from app.database.base import AsyncSessionFactory
     from app.database.repo.bot_config import get_config_value
+    from app.database.repo.credits import (
+        DAILY_CHANNEL_CREDITS,
+        DAILY_FREE_CREDITS,
+        MODEL_COSTS,
+    )
     from app.handlers.image_edit import EDIT_PRESETS
+    from app.services.pricing import get_promo_info
 
     info = await get_promo_info()
     eff = info['effective_costs']

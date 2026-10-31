@@ -13,8 +13,8 @@ async def get_promo(session: AsyncSession, code: str) -> PromoCode | None:
     result = await session.execute(
         select(PromoCode).where(
             PromoCode.code == code.upper(),
-            PromoCode.is_active == True,
-            (PromoCode.expires_at == None) | (PromoCode.expires_at > now),
+            PromoCode.is_active,
+            (PromoCode.expires_at is None) | (PromoCode.expires_at > now),
         )
     )
     return result.scalar_one_or_none()

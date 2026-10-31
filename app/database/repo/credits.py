@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import date, datetime, timedelta, timezone
+from datetime import datetime, timedelta, timezone
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -95,7 +95,7 @@ async def grant_daily_if_needed(
 
     Флаг ставится ПОСЛЕ user.credits += bonus — если падает между этим,
     в БД ничего не записано (rollback), и следующая попытка переначислит."""
-    from app.utils import today_msk, now_msk
+    from app.utils import now_msk, today_msk
     today = today_msk()
 
     # Берём row-lock на user — параллельный grant_daily на той же строке ждёт.
@@ -116,8 +116,8 @@ async def grant_daily_if_needed(
     if sub and sub.is_active and sub.expires_at:
         sub_expires = sub.expires_at
         if sub_expires.tzinfo is None:
-            sub_expires = sub_expires.replace(tzinfo=timezone.utc)
-        if sub_expires > now_msk().astimezone(timezone.utc):
+            sub_expires = sub_expires.replace(tzinfo=UTC)
+        if sub_expires > now_msk().astimezone(UTC):
             plan_val = sub.plan.value if hasattr(sub.plan, 'value') else str(sub.plan)
             bonus = _plan_daily_bonus(plan_val)
     if bonus is None:
@@ -213,7 +213,7 @@ def _clean_expired_burn(user: User) -> None:
     if user.burn_expires_at:
         exp = user.burn_expires_at
         if exp.tzinfo is None:
-            exp = exp.replace(tzinfo=timezone.utc)
+            exp = exp.replace(tzinfo=UTC)
         if exp < datetime.now(timezone.utc):
             user.burn_credits = 0
             user.burn_expires_at = None
@@ -270,7 +270,7 @@ async def deduct_credits(session: AsyncSession, user: User, amount: int) -> bool
 
 async def add_credits(
     session: AsyncSession, user: User, amount: int,
-    burn_expires_at: 'datetime | None' = None,
+    burn_expires_at: datetime | None = None,
 ) -> None:
     """Добавляет amount кр. Если задан burn_expires_at — кладём в burn-pool с
     указанным сроком. Иначе — в обычные (без срока).
@@ -283,7 +283,7 @@ async def add_credits(
         user.burn_credits = (user.burn_credits or 0) + amount
         existing = user.burn_expires_at
         if existing is not None and existing.tzinfo is None:
-            existing = existing.replace(tzinfo=timezone.utc)
+            existing = existing.replace(tzinfo=UTC)
         if existing is None or burn_expires_at > existing:
             user.burn_expires_at = burn_expires_at
             user.burn_reminded_at = None  # сброс reminder-cooldown для нового срока
@@ -296,7 +296,7 @@ async def grant_welcome(session: AsyncSession, user: User) -> int:
     """Начисляет приветственный бонус (сгораемый) — та же логика, что в cmd_start.
     Вызывать ТОЛЬКО для новичков (is_new_user) — идемпотентность обеспечивает
     вызывающий гейт (is_new_user=True ровно на первом апдейте). Возвращает сумму."""
-    from datetime import datetime, timedelta, timezone
+    from datetime import datetime
 
     from app.database.repo.bot_config import get_config_value
     raw = (await get_config_value(session, 'welcome_bonus_credits') or '300').strip()

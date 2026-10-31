@@ -10,10 +10,9 @@ from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMar
 
 from app.config import settings
 from app.database.base import AsyncSessionFactory
-from app.database.models import Plan, PaymentStatus
-from app.database.repo.credits import CREDIT_PACKS, add_credits, get_pack_by_id
+from app.database.models import PaymentStatus, Plan
+from app.database.repo.credits import add_credits, get_pack_by_id
 from app.database.repo.payments import create_payment, get_pending_payments, update_payment
-from aiogram import Bot
 from app.database.repo.users import get_user
 from app.keyboards.main import PE_CARD
 from app.keyboards.shop import confirm_pack_kb, credits_info_text, shop_kb
@@ -92,7 +91,7 @@ async def cb_buy_pack(callback: CallbackQuery) -> None:
             f"{pack['emoji']} <b>{photos} фото · вечные кредиты</b>\n"
             f"<i>Без сроков — лежат годами. Платишь один раз.</i>\n\n"
         )
-        expire_line = f"✓ Кредиты <b>не сгорают</b> никогда\n"
+        expire_line = "✓ Кредиты <b>не сгорают</b> никогда\n"
 
     text = (
         f"{header}"
@@ -130,7 +129,8 @@ async def cb_pay_rub(callback: CallbackQuery) -> None:
     await callback.answer()
 
     try:
-        from yookassa import Configuration, Payment as YKPayment
+        from yookassa import Configuration
+        from yookassa import Payment as YKPayment
 
         Configuration.account_id = settings.YOOKASSA_SHOP_ID
         Configuration.secret_key = settings.YOOKASSA_SECRET_KEY
@@ -207,10 +207,10 @@ async def cb_pay_rub(callback: CallbackQuery) -> None:
         await safe_edit_or_answer(
             callback,
             pay_line + "\n\n"
-            f"Нажми «Перейти к оплате» 👇 Кредиты зачислятся автоматически "
-            f"за минуту.\n\n"
-            f"💡 <i>Если страница не открывается — выключи VPN, либо вернись "
-            f"и выбери Stars/крипту (работают без VPN).</i>",
+            "Нажми «Перейти к оплате» 👇 Кредиты зачислятся автоматически "
+            "за минуту.\n\n"
+            "💡 <i>Если страница не открывается — выключи VPN, либо вернись "
+            "и выбери Stars/крипту (работают без VPN).</i>",
             reply_markup=kb,
         )
 

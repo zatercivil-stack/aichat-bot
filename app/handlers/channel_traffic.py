@@ -17,12 +17,10 @@
 """
 from __future__ import annotations
 
-import json
-
+import structlog
 from aiogram import Bot, Router
 from aiogram.types import ChatJoinRequest, ChatMemberUpdated
 from redis.asyncio import Redis
-import structlog
 
 from app.database.base import AsyncSessionFactory
 from app.database.models import ChannelTraffic

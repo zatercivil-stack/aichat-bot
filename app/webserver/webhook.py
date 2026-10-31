@@ -5,8 +5,6 @@ from ipaddress import ip_address, ip_network
 import structlog
 from fastapi import FastAPI, Request, Response
 
-from app.config import settings
-
 logger = structlog.get_logger(__name__)
 
 app = FastAPI(docs_url=None, redoc_url=None)
@@ -21,7 +19,7 @@ async def csrf_and_session_middleware(request: Request, call_next):
     пропускаем. Сессию кладём в contextvar, чтобы render() вставил токен
     в формы.
     """
-    from app.webserver.csrf import current_session, csrf_valid
+    from app.webserver.csrf import csrf_valid, current_session
     session = request.cookies.get('admin_session')
     token = current_session.set(session)
     try:
@@ -51,6 +49,7 @@ async def csrf_and_session_middleware(request: Request, call_next):
         current_session.reset(token)
 
 from app.webserver.admin import router as admin_router
+
 app.include_router(admin_router)
 
 YOOKASSA_IP_NETWORKS = [
@@ -118,7 +117,7 @@ async def yookassa_webhook(request: Request) -> Response:
     yk_payment_id = obj.get('id', '')
     metadata = obj.get('metadata', {})
     payment_db_id_str = metadata.get('payment_db_id', '')
-    kind = metadata.get('kind', 'pack')
+    metadata.get('kind', 'pack')
 
     if not payment_db_id_str:
         logger.warning('YooKassa webhook: no payment_db_id in metadata', yk_id=yk_payment_id)

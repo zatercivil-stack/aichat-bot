@@ -61,8 +61,9 @@ async def update_payment(
 
 
 async def get_revenue_today(session: AsyncSession) -> Decimal:
-    from sqlalchemy import func
     from datetime import date
+
+    from sqlalchemy import func
     today = date.today()
     result = await session.execute(
         select(func.coalesce(func.sum(Payment.amount), 0))

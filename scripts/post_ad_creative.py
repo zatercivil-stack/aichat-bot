@@ -25,7 +25,10 @@ from pathlib import Path
 
 import structlog
 from aiogram.types import (
-    BufferedInputFile, FSInputFile, InlineKeyboardButton, InlineKeyboardMarkup,
+    BufferedInputFile,
+    FSInputFile,
+    InlineKeyboardButton,
+    InlineKeyboardMarkup,
 )
 
 from app.bot import create_bot, get_bot
@@ -147,8 +150,9 @@ def _build_collage(blobs: list[bytes], cell_size: int = 900) -> bytes:
     Раньше при разных aspect-ratio исходников фото клеились криво.
     Сейчас: каждое фото cover-fit'ится в square cell_size×cell_size (center crop),
     потом коллаж = N квадратов в ряд. Чистые границы, единая высота."""
-    from PIL import Image
     import io
+
+    from PIL import Image
 
     def _cover_fit(img: Image.Image, size: int) -> Image.Image:
         # Cover-fit: масштабируем чтобы покрыть size×size, лишнее обрезаем по центру

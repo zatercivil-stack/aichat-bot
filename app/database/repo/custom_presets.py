@@ -7,7 +7,6 @@ reload_custom_presets() в app/handlers/image_edit.py. Превью этих п�
 from __future__ import annotations
 
 from sqlalchemy import select
-
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database.models import CustomPreset

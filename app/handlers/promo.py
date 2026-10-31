@@ -121,7 +121,8 @@ async def _activate_promo(message: Message, code: str, redis) -> None:
             try:
                 from app.services import channel_service
                 if not await channel_service.check(message.bot, redis, user_tg_id):
-                    from aiogram.types import InlineKeyboardButton as IB, InlineKeyboardMarkup as IM
+                    from aiogram.types import InlineKeyboardButton as IB
+                    from aiogram.types import InlineKeyboardMarkup as IM
                     kb = IM(inline_keyboard=[
                         [IB(text='Открыть @conturD', url='https://t.me/conturD', style='primary')],
                         [IB(text='Я подписался — забрать кредиты',

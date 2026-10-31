@@ -25,7 +25,8 @@ from app.bot import create_bot, get_bot
 from app.config import settings
 from app.database.base import AsyncSessionFactory
 from app.database.repo.preset_previews import (
-    get_preview_file_id, save_preview,
+    get_preview_file_id,
+    save_preview,
 )
 from app.handlers.image_edit import EDIT_PRESETS
 from app.services.fal_image_service import generate_image, is_enabled
@@ -234,7 +235,7 @@ async def main():
             try:
                 img_bytes = await generate_image(prompt, image_size=size)
                 if not img_bytes:
-                    print(f'   ✗ fal.ai вернул пусто')
+                    print('   ✗ fal.ai вернул пусто')
                     failed += 1
                     continue
                 file_id = await _upload_to_tg_get_file_id(

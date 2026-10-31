@@ -2,11 +2,17 @@ from __future__ import annotations
 
 import structlog
 from aiogram import F, Router
-from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup, Message, PreCheckoutQuery
+from aiogram.types import (
+    CallbackQuery,
+    InlineKeyboardButton,
+    InlineKeyboardMarkup,
+    Message,
+    PreCheckoutQuery,
+)
 
 from app.config import settings
 from app.database.base import AsyncSessionFactory
-from app.database.repo.credits import add_credits, get_pack_by_id
+from app.database.repo.credits import add_credits
 from app.database.repo.users import get_user
 from app.keyboards.main import PE_FRAME, PE_HANDSHAKE, PE_PAINT
 

@@ -100,8 +100,8 @@ async def count_by_plan(session: AsyncSession) -> dict[str, int]:
     now = datetime.now(timezone.utc)
     result = await session.execute(
         select(Subscription.plan, func.count())
-        .where(Subscription.is_active == True)
-        .where((Subscription.expires_at == None) | (Subscription.expires_at > now))
+        .where(Subscription.is_active)
+        .where((Subscription.expires_at is None) | (Subscription.expires_at > now))
         .group_by(Subscription.plan)
     )
     return {row[0].value: row[1] for row in result}

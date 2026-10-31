@@ -15,7 +15,6 @@
 """
 from __future__ import annotations
 
-
 TOPICS_BY_PILLAR: dict[str, list[str]] = {
     # ═══════════════════════════════════════════════════════════════════════
     # СТОЛП 1 — НЕЙРА / AI-ФОТО (100% daily-постов)

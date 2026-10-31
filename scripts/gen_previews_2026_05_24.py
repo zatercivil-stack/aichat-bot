@@ -8,17 +8,20 @@ import os
 import sys
 
 from aiogram import Bot
-from aiogram.enums import ParseMode
 from aiogram.client.default import DefaultBotProperties
+from aiogram.enums import ParseMode
 from aiogram.types import BufferedInputFile
 
 from app.config import settings
 from app.database.base import AsyncSessionFactory
 from app.database.repo.preset_previews import save_preview
-from app.services import fal_image_service as F
 from app.handlers.image_edit import (
-    EDIT_PRESETS, _MALE_PRESET_OVERRIDES, _MALE_STYLE_SUFFIX, _FEMALE_ONLY_PRESETS,
+    _FEMALE_ONLY_PRESETS,
+    _MALE_PRESET_OVERRIDES,
+    _MALE_STYLE_SUFFIX,
+    EDIT_PRESETS,
 )
+from app.services import fal_image_service as F
 
 BASE_F = '/app/data/base_face.jpg'
 BASE_M = '/app/data/base_face_male.jpg'

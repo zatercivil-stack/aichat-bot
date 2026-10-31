@@ -59,9 +59,16 @@ class Settings(BaseSettings):
     # CryptoBot (Crypto Pay API) — оплата криптой. Токен из @CryptoBot → My Apps.
     CRYPTOBOT_TOKEN: str = ''
 
-    # Admin dashboard
-    ADMIN_TOKEN: str = 'change_me_in_env'
-    ADMIN_SECRET_KEY: str = 'admin_sessions_secret'
+    # Environment: 'development' disables strict secret checks for local runs.
+    ENV: str = 'production'
+
+    # Admin dashboard — MUST be set via env; empty default disables admin access.
+    ADMIN_TOKEN: str = ''
+    ADMIN_SECRET_KEY: str = ''
+
+    # Public base URL of the admin dashboard, used to build links in Telegram alerts.
+    # Must be HTTPS in production. Empty => admin links are omitted.
+    ADMIN_BASE_URL: str = ''
 
     # Misc
     TIMEZONE: str = 'Europe/Moscow'
@@ -95,4 +102,26 @@ class Settings(BaseSettings):
     def yookassa_return_url(self) -> str:
         return self.YOOKASSA_RETURN_URL or f'https://t.me/{self.BOT_USERNAME}'
 
+_WEAK_ADMIN_TOKENS = {'', 'change_me_in_env', 'admin', 'admin_token', 'token'}
+_WEAK_ADMIN_SECRETS = {'', 'admin_sessions_secret', 'secret', 'change_me'}
+
+
+def _validate_settings(s: Settings) -> None:
+    if s.ENV.lower() in ('development', 'dev', 'local', 'test'):
+        return
+    if s.ADMIN_TOKEN in _WEAK_ADMIN_TOKENS or len(s.ADMIN_TOKEN) < 16:
+        raise RuntimeError(
+            'ADMIN_TOKEN is missing or too weak. Set a strong ADMIN_TOKEN in .env '
+            '(generate with: python -c "import secrets; print(secrets.token_urlsafe(32))").'
+        )
+    if s.ADMIN_SECRET_KEY in _WEAK_ADMIN_SECRETS or len(s.ADMIN_SECRET_KEY) < 16:
+        raise RuntimeError(
+            'ADMIN_SECRET_KEY is missing or too weak. Set a strong ADMIN_SECRET_KEY in .env '
+            '(generate with: python -c "import secrets; print(secrets.token_urlsafe(32))").'
+        )
+    if s.ADMIN_BASE_URL and not s.ADMIN_BASE_URL.startswith('https://'):
+        raise RuntimeError('ADMIN_BASE_URL must use https:// in production.')
+
+
 settings = Settings()
+_validate_settings(settings)

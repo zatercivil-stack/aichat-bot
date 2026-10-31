@@ -20,7 +20,9 @@ from pathlib import Path
 
 import structlog
 from aiogram.types import (
-    BufferedInputFile, InlineKeyboardButton, InlineKeyboardMarkup,
+    BufferedInputFile,
+    InlineKeyboardButton,
+    InlineKeyboardMarkup,
 )
 from PIL import Image
 

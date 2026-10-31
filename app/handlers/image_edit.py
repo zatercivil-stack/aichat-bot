@@ -9,6 +9,7 @@ from io import BytesIO
 # По истечении: ImageEditState.waiting_prompt сбрасывается, текст уходит в обычный чат.
 PHOTO_AUTO_EDIT_TTL_S = 300  # 5 минут
 
+
 import structlog
 from aiogram import F, Router
 from aiogram.filters import Command
@@ -22,13 +23,30 @@ from aiogram.types import (
 )
 
 from app.database.base import AsyncSessionFactory
-from app.database.repo.credits import MODEL_COSTS, add_credits, deduct_credits, grant_daily_if_needed
+from app.database.repo.credits import (
+    MODEL_COSTS,
+    add_credits,
+    deduct_credits,
+)
 from app.database.repo.events import log_event_bg
 from app.database.repo.users import get_user, is_paid_user
 from app.keyboards.main import (
-    PE_AU_GOLD, PE_BACK, PE_CARD, PE_CITY, PE_CLIP, PE_CROSS, PE_FIRE, PE_FRAME,
-    PE_GIFT, PE_HANDSHAKE, PE_HOME, PE_LEFT, PE_MONEY, PE_MOON_DARK, PE_NEW, PE_PAINT,
-    PE_RIGHT, PE_ROBOT, PE_SPARKLES, PE_THEATER, PE_UNLOCK,
+    PE_AU_GOLD,
+    PE_BACK,
+    PE_CARD,
+    PE_CITY,
+    PE_CROSS,
+    PE_FIRE,
+    PE_FRAME,
+    PE_GIFT,
+    PE_HANDSHAKE,
+    PE_HOME,
+    PE_LEFT,
+    PE_NEW,
+    PE_RIGHT,
+    PE_ROBOT,
+    PE_SPARKLES,
+    PE_UNLOCK,
     buy_or_invite_kb,
 )
 from app.services import fal_image_service, image_edit_service, watermark
@@ -1459,7 +1477,9 @@ async def cb_edit_start(callback: CallbackQuery, state: FSMContext) -> None:
 async def cb_edit_again(callback: CallbackQuery, state: FSMContext) -> None:
     """«Применить другой стиль к этому фото» — тот же оригинал, новый пресет/промпт."""
     import json as _json
+
     from redis.asyncio import Redis
+
     from app.config import settings as _settings
 
     key = callback.data.split(':', 1)[1]
@@ -1514,8 +1534,10 @@ async def cb_refine_face(callback: CallbackQuery, state: FSMContext) -> None:
     )
     return
 
-    import json as _json  # noqa: код ниже мёртвый, оставлен для истории
+    import json as _json  # noqa: F401
+
     from redis.asyncio import Redis
+
     from app.config import settings as _settings
 
     key = callback.data.split(':', 1)[1]
@@ -1565,6 +1587,7 @@ async def cb_template_face_swap(callback: CallbackQuery, state: FSMContext) -> N
     """Виральный шаблон: юзер тыкнул 'Сделать с моим лицом' под фото-шаблоном.
     Сразу ставим waiting_face_source с шаблоном как base — просим только фото лица."""
     from sqlalchemy import select as _select
+
     from app.database.models import PhotoTemplate
 
     try:
@@ -1814,8 +1837,11 @@ async def _get_top_preset_keys(limit: int = 7) -> list[str]:
     """Топ-N пресетов по image_edited за последние 7 дней (без тех-юзеров).
     Возвращает [] если данных мало (preset_key пишется только с 22.05). При
     наполнении автоматически появится категория «🔥 Что выбирают сейчас»."""
-    from sqlalchemy import select as _sel, func
-    from datetime import datetime, timezone, timedelta
+    from datetime import datetime, timedelta
+
+    from sqlalchemy import func
+    from sqlalchemy import select as _sel
+
     from app.database.models import BotEvent
     from app.database.repo.events import get_excluded_user_ids
     cutoff = datetime.now(timezone.utc) - timedelta(days=7)
@@ -1847,6 +1873,7 @@ async def _get_top_preset_keys(limit: int = 7) -> list[str]:
     try:
         import random as _rnd
         from datetime import date as _date
+
         from app.database.repo.preset_previews import list_presets_with_previews
         async with AsyncSessionFactory() as session:
             pool = [k for k in await list_presets_with_previews(session) if k in EDIT_PRESETS]
@@ -1880,7 +1907,7 @@ _BADGE_KEYS: set[str] = set()           # = set(_NEW_SECTION); для _label_for
 # Ранний доступ: пресеты, запущенные в пределах early_access_days — платящим
 # раньше всех. Пересчитывается вместе со свежестью (тот же launch_map).
 _EARLY_ACCESS_KEYS: set[str] = set()
-_EARLY_ACCESS_UNTIL: dict[str, 'object'] = {}   # preset_key -> дата открытия для всех
+_EARLY_ACCESS_UNTIL: dict[str, object] = {}   # preset_key -> дата открытия для всех
 _EARLY_DEFAULT_DAYS = 7
 _FRESH_CACHE_TS: float = 0.0
 _FRESH_CACHE_TTL = 3600                  # 1ч
@@ -1894,7 +1921,7 @@ def _is_early_access(preset_key: str) -> bool:
 def _early_access_days_left(preset_key: str) -> int:
     """Сколько дней до открытия пресета всем (≥1). 0 — если не early-access."""
     import math
-    from datetime import datetime, timezone
+    from datetime import datetime
     rel = _EARLY_ACCESS_UNTIL.get(preset_key)
     if not rel:
         return 0
@@ -1910,7 +1937,8 @@ async def _user_has_early_access(session, user_db_id: int) -> bool:
     except Exception:
         subs_only = 0
     if subs_only:
-        from datetime import datetime, timezone
+        from datetime import datetime
+
         from app.database.repo.subscriptions import get_subscription
         sub = await get_subscription(session, user_db_id)
         if not (sub and sub.is_active):
@@ -1919,7 +1947,7 @@ async def _user_has_early_access(session, user_db_id: int) -> bool:
         if exp is None:
             return True
         if exp.tzinfo is None:
-            exp = exp.replace(tzinfo=timezone.utc)
+            exp = exp.replace(tzinfo=UTC)
         return exp > datetime.now(timezone.utc)
     return await is_paid_user(session, user_db_id)
 
@@ -1976,7 +2004,8 @@ async def refresh_fresh_presets(force: bool = False) -> None:
     global _NEW_SECTION, _BADGE_KEYS, _FRESH_CACHE_TS, _EARLY_ACCESS_KEYS, _EARLY_ACCESS_UNTIL
     if not force and _FRESH_CACHE_TS and (time.monotonic() - _FRESH_CACHE_TS) < _FRESH_CACHE_TTL:
         return
-    from datetime import datetime, timezone, timedelta
+    from datetime import datetime, timedelta
+
     from app.database.repo.preset_launch import get_launch_map
     from app.database.repo.preset_previews import list_presets_with_previews
     try:
@@ -2049,7 +2078,7 @@ async def _build_gallery_list(page_idx=None,
     (фолбэк на женское) и прячет _FEMALE_ONLY_PRESETS; «не важно» (af/am) ничего
     не прячет — состав каталога одинаков, меняется только показанное превью,
     поэтому idx стабилен при переключении тумблера M/Ж."""
-    from app.database.repo.preset_previews import list_presets_with_previews, get_preview_file_id
+    from app.database.repo.preset_previews import get_preview_file_id, list_presets_with_previews
     preview_is_male, hide_female_only, _ = _parse_gtoken(g)
     await refresh_fresh_presets()  # обновить бейдж «🆕» для _label_for (лениво по TTL)
     if page_idx == 'top':
@@ -2132,9 +2161,9 @@ async def _build_gallery_card(idx: int, page_idx: int | None = None,
     if isinstance(page_idx, int) and 0 <= page_idx < len(PRESET_PAGES):
         cat_hint = f"\n<i>Категория: {PRESET_PAGES[page_idx]['title']}</i>"
     elif page_idx == 'top':
-        cat_hint = f"\n<i>Категория: 🔥 Что выбирают сейчас</i>"
+        cat_hint = "\n<i>Категория: 🔥 Что выбирают сейчас</i>"
     elif page_idx == 'new':
-        cat_hint = f"\n<i>Категория: 🆕 Новинки</i>"
+        cat_hint = "\n<i>Категория: 🆕 Новинки</i>"
     # premium_text — чтобы 🪄/🆕/🔒/✨ были премиум-эмодзи (не обычные). Замок —
     # ОДИН (ведущий значок), без дубля в тексте.
     if locked:
@@ -2218,6 +2247,7 @@ async def _categories_kb(g: str = 'f') -> InlineKeyboardMarkup:
     — добавляем динамическую категорию «🔥 Что выбирают сейчас» первой
     строкой. Это соц-доказательство и помощь paralysis-of-choice."""
     import re
+
     from app.database.repo.preset_previews import list_presets_with_previews
     _, hide_female_only, _ = _parse_gtoken(g)
     async with AsyncSessionFactory() as session:
@@ -2535,7 +2565,9 @@ async def cb_gallery_open(callback: CallbackQuery, state: FSMContext) -> None:
     if refine_key:
         try:
             import json as _json
+
             from redis.asyncio import Redis
+
             from app.config import settings as _settings
             _redis = Redis.from_url(_settings.REDIS_URL, decode_responses=True)
             raw = await _redis.get(f'refine:{refine_key}')
@@ -2775,7 +2807,7 @@ async def cb_mystery_today(callback: CallbackQuery, state: FSMContext) -> None:
     SETNX до отправки превью — если юзер передумает, день «сгорает» (это
     осознанная цена за защиту от спама). Показываем превью ЭТОГО же пресета
     (пол-aware) — юзер видит, что именно получит, а не угадывает по названию."""
-    from app.services.mystery_preset import get_today_mystery, claim, is_used_today
+    from app.services.mystery_preset import claim, get_today_mystery, is_used_today
 
     mystery = await get_today_mystery()
     if not mystery:
@@ -3007,8 +3039,8 @@ async def cb_mface_run(callback: CallbackQuery, state: FSMContext) -> None:
 @router.callback_query(F.data == 'edit_cancel')
 async def cb_edit_cancel(callback: CallbackQuery, state: FSMContext) -> None:
     await state.clear()
+    from app.handlers.start import _send_welcome_with_collage, build_menu_text
     from app.keyboards.main import main_menu_kb_for_user
-    from app.handlers.start import build_menu_text, _send_welcome_with_collage
     async with AsyncSessionFactory() as session:
         user = await get_user(session, callback.from_user.id)
         text = await build_menu_text(session, callback.message.bot, user)
@@ -3117,8 +3149,8 @@ async def _receive_edit_photo_impl(message: Message, state: FSMContext, file_id:
     # регистрацией и image_edited — теперь видно где утечка (загрузил→не сгенерил).
     try:
         from app.database.base import AsyncSessionFactory
-        from app.database.repo.users import get_user
         from app.database.repo.events import log_event
+        from app.database.repo.users import get_user
         async with AsyncSessionFactory() as _s:
             _u = await get_user(_s, message.from_user.id)
         if _u:
@@ -3506,7 +3538,7 @@ async def _heartbeat_loop(bot, chat_id: int, status_msg, action_label: str, stop
             try:
                 await asyncio.wait_for(stop.wait(), timeout=12.0)
                 return  # stop event set during wait
-            except asyncio.TimeoutError:
+            except TimeoutError:
                 pass
             elapsed += 12
             try:
@@ -3549,7 +3581,9 @@ async def cb_quickscene(callback: CallbackQuery, state: FSMContext) -> None:
     orig = None
     try:
         import json as _json
+
         from redis.asyncio import Redis
+
         from app.config import settings as _settings
         _redis = Redis.from_url(_settings.REDIS_URL, decode_responses=True)
         raw = await _redis.get(f'refine:{refine_key}')
@@ -3582,7 +3616,7 @@ async def cb_freescene(callback: CallbackQuery, state: FSMContext) -> None:
     бесплатный пресет к ТОМУ ЖЕ селфи БЕЗ списания (claim + mystery_free).
     Формат: freescene:{refine_key}. Главный драйвер 2-й генерации."""
     refine_key = callback.data.split(':', 1)[1]
-    from app.services.mystery_preset import get_today_mystery, claim, is_used_today
+    from app.services.mystery_preset import claim, get_today_mystery, is_used_today
     mystery = await get_today_mystery()
     if not mystery or mystery['preset_key'] not in EDIT_PRESETS:
         await callback.answer('Подарок дня сейчас недоступен', show_alert=True)
@@ -3590,7 +3624,9 @@ async def cb_freescene(callback: CallbackQuery, state: FSMContext) -> None:
     orig = None
     try:
         import json as _json
+
         from redis.asyncio import Redis
+
         from app.config import settings as _settings
         _redis = Redis.from_url(_settings.REDIS_URL, decode_responses=True)
         raw = await _redis.get(f'refine:{refine_key}')
@@ -3629,7 +3665,9 @@ async def cb_retry_edit(callback: CallbackQuery, state: FSMContext) -> None:
     _redis = None
     try:
         import json as _json
+
         from redis.asyncio import Redis
+
         from app.config import settings as _settings
         _redis = Redis.from_url(_settings.REDIS_URL, decode_responses=True)
         raw = await _redis.get(f'retry:{key}')
@@ -3680,6 +3718,7 @@ async def _acquire_gen_lock(user_id: int) -> bool:
     заблокирован навсегда. Redis недоступен → fail-open (не блокируем)."""
     try:
         from redis.asyncio import Redis
+
         from app.config import settings as _s
         r = Redis.from_url(_s.REDIS_URL, decode_responses=True)
         try:
@@ -3693,6 +3732,7 @@ async def _acquire_gen_lock(user_id: int) -> bool:
 async def _release_gen_lock(user_id: int) -> None:
     try:
         from redis.asyncio import Redis
+
         from app.config import settings as _s
         r = Redis.from_url(_s.REDIS_URL, decode_responses=True)
         try:
@@ -3852,6 +3892,7 @@ async def _run_edit_inner(
     wm_free = False
     try:
         from redis.asyncio import Redis as _RedisWM
+
         from app.config import settings as _wmset
         _wmr = _RedisWM.from_url(_wmset.REDIS_URL, decode_responses=True)
         try:
@@ -3975,7 +4016,7 @@ async def _run_edit_inner(
         stop.set()
         try:
             await asyncio.wait_for(hb_task, timeout=2.0)
-        except (asyncio.TimeoutError, asyncio.CancelledError):
+        except (TimeoutError, asyncio.CancelledError):
             hb_task.cancel()
 
     if not result:
@@ -3996,8 +4037,11 @@ async def _run_edit_inner(
         # при временном сбое провайдера повтор того же кадра спасает.
         retry_rows: list[list[InlineKeyboardButton]] = []
         try:
-            import uuid as _uuid, json as _json
+            import json as _json
+            import uuid as _uuid
+
             from redis.asyncio import Redis
+
             from app.config import settings as _settings
             _redis = Redis.from_url(_settings.REDIS_URL, decode_responses=True)
             _rk = _uuid.uuid4().hex[:12]
@@ -4063,7 +4107,7 @@ async def _run_edit_inner(
             stop2.set()
             try:
                 await asyncio.wait_for(hb_task2, timeout=2.0)
-            except (asyncio.TimeoutError, asyncio.CancelledError):
+            except (TimeoutError, asyncio.CancelledError):
                 hb_task2.cancel()
         if swap_result:
             result = swap_result
@@ -4097,6 +4141,7 @@ async def _run_edit_inner(
     # удаляется внутри гранта → выплата ровно один раз. Тихо, не валит flow.
     try:
         from redis.asyncio import Redis as _Redis
+
         from app.config import settings as _rset
         from app.handlers.chat import _maybe_grant_referral_bonus
         _rconn = _Redis.from_url(_rset.REDIS_URL, decode_responses=True)
@@ -4133,7 +4178,9 @@ async def _run_edit_inner(
     if file_id:
         try:
             import uuid as _uuid
+
             from redis.asyncio import Redis
+
             from app.config import settings as _settings
             _redis = Redis.from_url(_settings.REDIS_URL, decode_responses=True)
             refine_key = _uuid.uuid4().hex[:12]
@@ -4167,6 +4214,7 @@ async def _run_edit_inner(
     share_url = None
     try:
         from urllib.parse import quote
+
         from app.config import settings as _refset
         _bu = _refset.BOT_USERNAME or 'NeyraChatBot'
         _ref_link = f'https://t.me/{_bu}?start=ref_{source_user_id}'
@@ -4429,7 +4477,7 @@ async def _gamify_after_edit(user_tg_id: int) -> tuple[str | None, str | None]:
     Безопасно (try/except) — если что-то падает, основной flow не страдает,
     юзер просто не видит празднование (не критично).
     """
-    from app.database.repo.credits import update_streak, add_credits
+    from app.database.repo.credits import add_credits, update_streak
     from app.database.repo.events import count_user_events
     streak_msg: str | None = None
     milestone_msg: str | None = None
@@ -4485,7 +4533,7 @@ async def _gamify_after_edit(user_tg_id: int) -> tuple[str | None, str | None]:
                 next_m = next((m for m in sorted(_PHOTO_MILESTONES) if m > total), None)
                 if next_m and total >= 1:
                     left = next_m - total
-                    plural = 'фото' if left % 10 == 1 and left % 100 != 11 else (
+                    'фото' if left % 10 == 1 and left % 100 != 11 else (
                         'фото' if 2 <= left % 10 <= 4 and not (12 <= left % 100 <= 14) else 'фото'
                     )
                     bonus_amt = _PHOTO_MILESTONES[next_m]
@@ -4586,7 +4634,7 @@ async def _run_face_swap(message: Message, state: FSMContext, extra_prompt: str,
         stop.set()
         try:
             await asyncio.wait_for(hb_task, timeout=2.0)
-        except (asyncio.TimeoutError, asyncio.CancelledError):
+        except (TimeoutError, asyncio.CancelledError):
             hb_task.cancel()
 
     if not result:
@@ -4608,6 +4656,7 @@ async def _run_face_swap(message: Message, state: FSMContext, extra_prompt: str,
     if photo_template_id:
         try:
             from sqlalchemy import select as _select
+
             from app.database.models import PhotoTemplate
             async with AsyncSessionFactory() as session:
                 tpl = await session.scalar(_select(PhotoTemplate).where(PhotoTemplate.id == photo_template_id))
@@ -4622,6 +4671,7 @@ async def _run_face_swap(message: Message, state: FSMContext, extra_prompt: str,
     wm_free = False
     try:
         from redis.asyncio import Redis as _RedisWM
+
         from app.config import settings as _wmset
         _wmr = _RedisWM.from_url(_wmset.REDIS_URL, decode_responses=True)
         try:

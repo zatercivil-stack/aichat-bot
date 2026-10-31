@@ -3,13 +3,12 @@ from __future__ import annotations
 import re
 from datetime import datetime, timedelta, timezone
 
-from sqlalchemy import select
-
 import structlog
 from aiogram import Router
 from aiogram.filters import Command, CommandObject, CommandStart
 from aiogram.fsm.context import FSMContext
 from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup, Message
+from sqlalchemy import select
 
 from app.config import settings
 from app.constants import REFERRAL_BONUS, WELCOME_TEXT, build_help_text
@@ -20,15 +19,18 @@ from app.database.repo.credits import add_credits
 from app.database.repo.events import log_event_bg
 from app.database.repo.experiments import get_user_variant
 from app.database.repo.promos import get_promo, has_redeemed, redeem_promo
-from app.database.repo.subscriptions import get_subscription, get_user_plan
-from app.database.repo.usage import PLAN_LIMITS, get_daily_count
-from app.database.repo.users import add_referral_bonus, get_or_create_user, get_user
+from app.database.repo.users import get_or_create_user, get_user
 from app.keyboards.main import (
-    PE_BACK, PE_CHECK, PE_GEAR, PE_HANDSHAKE, PE_HOME, PE_MEGAPHONE, PE_MONEY,
-    PE_ROBOT, PE_SPARKLES, PE_SPEAKER,
+    PE_BACK,
+    PE_CHECK,
+    PE_GEAR,
+    PE_HANDSHAKE,
+    PE_HOME,
+    PE_MEGAPHONE,
+    PE_ROBOT,
+    PE_SPARKLES,
     main_menu_kb,
 )
-from app.keyboards.subscription import plans_kb
 from app.utils import plural_ru, premium_text
 
 logger = structlog.get_logger(__name__)
@@ -54,7 +56,8 @@ async def _send_welcome_with_collage(message, text: str, reply_markup, parse_mod
       • Если send_photo упал (протухший file_id и т.п.) — сбрасываем кэш и
         шлём чистый текст, чтобы /start не вернул 500."""
     from app.services.welcome_collage import (
-        get_or_build_welcome_collage_fid, invalidate_welcome_collage,
+        get_or_build_welcome_collage_fid,
+        invalidate_welcome_collage,
     )
     # collage_fid override (напр. showcase новых сцен для канальных промо).
     # Если не задан — обычный welcome-коллаж.
@@ -106,7 +109,7 @@ async def build_menu_text(session, bot, user) -> str:
         Если не подписан → CTA, если подписан → благодарность. Этой инфы
         раньше не было нигде в интерфейсе.
     """
-    from app.database.repo.credits import DAILY_FREE_CREDITS, DAILY_CHANNEL_CREDITS, total_balance
+    from app.database.repo.credits import DAILY_CHANNEL_CREDITS, DAILY_FREE_CREDITS, total_balance
     from app.services import channel_service
 
     welcome = await get_text(session, 'text_welcome', WELCOME_TEXT)
@@ -120,10 +123,10 @@ async def build_menu_text(session, bot, user) -> str:
         if bal > 0:
             burn = user.burn_credits or 0
             if burn > 0 and user.burn_expires_at:
-                from datetime import datetime, timezone
+                from datetime import datetime
                 exp = user.burn_expires_at
                 if exp.tzinfo is None:
-                    exp = exp.replace(tzinfo=timezone.utc)
+                    exp = exp.replace(tzinfo=UTC)
                 days = max(1, (exp - datetime.now(timezone.utc)).days + 1)
                 parts.append(
                     f'💳 <b>На счету: {bal:,} кр</b> · '
@@ -425,7 +428,9 @@ async def cmd_start(
         preset_key = _preset_key_from_promo(code)
         if preset_key:
             from app.handlers.image_edit import (
-                EDIT_PRESETS, _gallery_index_for_preset, _send_gallery_card,
+                EDIT_PRESETS,
+                _gallery_index_for_preset,
+                _send_gallery_card,
             )
             if preset_key in EDIT_PRESETS:
                 idx = await _gallery_index_for_preset(preset_key)
@@ -458,7 +463,7 @@ async def cmd_start(
         total_credits = credits + (welcome_bonus if is_new_user else 0)
         credits_w_total = plural_ru(total_credits, 'кредит', 'кредита', 'кредитов')
         scenes_n = max(1, total_credits // 200)
-        scenes_w = plural_ru(scenes_n, 'сцена', 'сцены', 'сцен')
+        plural_ru(scenes_n, 'сцена', 'сцены', 'сцен')
 
         # Заголовок-целебрация. Адаптируем под источник, чтобы у юзера
         # сразу было ощущение «бот меня узнал, я не случайный».
@@ -591,8 +596,7 @@ async def cmd_start(
 
     # Достаём актуальный баланс юзера для персонализированной приписки
     async with AsyncSessionFactory() as session:
-        fresh_user = await get_user(session, tg_user.id)
-        current_credits = fresh_user.credits if fresh_user else 0
+        await get_user(session, tg_user.id)
 
     if is_new_user:
         log_event_bg(user_db_id, 'user_registered')
@@ -682,7 +686,8 @@ async def cmd_ref(message: Message) -> None:
 
 def _ref_content(tg_id: int, invited: int):
     from urllib.parse import quote
-    from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+
+    from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
     bot_username = settings.BOT_USERNAME or 'NeyraChatBot'
     link = f'https://t.me/{bot_username}?start=ref_{tg_id}'
     # 24.05: было «умный AI-помощник, отвечает на вопросы» — но Нейра уже год
@@ -704,7 +709,7 @@ def _ref_content(tg_id: int, invited: int):
     elif invited < 10:
         progress = f' · ещё <b>{10 - invited}</b> до следующего бонуса'
     else:
-        progress = f' · 🏆 топ-реферер!'
+        progress = ' · 🏆 топ-реферер!'
 
     text = premium_text(
         f'🤝 <b>Приглашай друзей — двойная выгода</b>\n\n'
@@ -792,11 +797,14 @@ async def cb_help(callback: CallbackQuery) -> None:
 
 
 async def _show_status(message: Message, edit: bool = False, redis=None) -> None:
-    from datetime import date as _date, timedelta as _td
-    from app.database.repo.credits import (
-        DAILY_FREE_CREDITS, DAILY_CHANNEL_CREDITS, MODEL_COSTS, SUBSCRIPTION_PLANS,
-    )
+    from datetime import timedelta as _td
+
     from app.database.models import Subscription
+    from app.database.repo.credits import (
+        DAILY_CHANNEL_CREDITS,
+        DAILY_FREE_CREDITS,
+        SUBSCRIPTION_PLANS,
+    )
     from app.services import channel_service
     tg_id = message.chat.id
     async with AsyncSessionFactory() as session:
@@ -821,7 +829,7 @@ async def _show_status(message: Message, edit: bool = False, redis=None) -> None
         burn_until = user.burn_expires_at
         invited = user.referral_bonus
         streak_last = user.streak_last_date
-        trial_left = getattr(user, 'trial_pro_messages_left', 0) or 0
+        getattr(user, 'trial_pro_messages_left', 0) or 0
 
         # Активная подписка — приоритет для расчёта daily bonus
         sub_plan_label: str | None = None
@@ -830,12 +838,12 @@ async def _show_status(message: Message, edit: bool = False, redis=None) -> None
         sub = await session.scalar(
             select(Subscription).where(Subscription.user_id == user.id)
         )
-        from datetime import datetime as _dt, timezone as _tz
+        from datetime import datetime as _dt
         if sub and sub.is_active and sub.expires_at:
             exp = sub.expires_at
             if exp.tzinfo is None:
-                exp = exp.replace(tzinfo=_tz.utc)
-            if exp > _dt.now(_tz.utc):
+                exp = exp.replace(tzinfo=UTC)
+            if exp > _dt.now(UTC):
                 plan_val = sub.plan.value if hasattr(sub.plan, 'value') else str(sub.plan)
                 plan_dict = next((p for p in SUBSCRIPTION_PLANS if p['plan_enum'] == plan_val), None)
                 if plan_dict:
@@ -857,19 +865,16 @@ async def _show_status(message: Message, edit: bool = False, redis=None) -> None
     # Фактический ежедневный бонус для этого юзера
     if sub_daily_bonus is not None:
         actual_bonus = sub_daily_bonus
-        bonus_source = sub_plan_label or 'подписка'
     elif is_channel_sub:
         actual_bonus = DAILY_CHANNEL_CREDITS
-        bonus_source = 'подписан на @conturD'
     else:
         actual_bonus = DAILY_FREE_CREDITS
-        bonus_source = None
 
     # Streak считаем актуальным только если последний день не позже вчера.
     # Время МСК — иначе ночью 0-3 МСК считает streak как протухший.
     from app.utils import today_msk
     today = today_msk()
-    streak_active = bool(
+    bool(
         streak_last and streak_last >= (today - _td(days=1)) and streak_days >= 1
     )
 
@@ -888,11 +893,11 @@ async def _show_status(message: Message, edit: bool = False, redis=None) -> None
     if streak_milestone:
         lines.append(f'🎉 <b>{streak_days} дней подряд — держи +{streak_milestone} кр в подарок!</b>')
     if burn_credits > 0 and burn_until:
-        from datetime import datetime as _dt, timezone as _tz
+        from datetime import datetime as _dt
         exp = burn_until
         if exp.tzinfo is None:
-            exp = exp.replace(tzinfo=_tz.utc)
-        days_left = max(0, (exp - _dt.now(_tz.utc)).days)
+            exp = exp.replace(tzinfo=UTC)
+        days_left = max(0, (exp - _dt.now(UTC)).days)
         exp_str = exp.strftime('%d.%m')
         lines.append(
             f'<i>🔥 {burn_credits:,} сгорят через {days_left} дн ({exp_str}) · '
@@ -944,7 +949,8 @@ async def _show_status(message: Message, edit: bool = False, redis=None) -> None
     # Кнопки. Текст БЕЗ ведущих эмодзи — иконку даёт icon_custom_emoji_id (premium),
     # дублирование в тексте отображается лишним символом у premium-юзеров.
     # Подбираем premium-иконки точно по смыслу действия.
-    from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+    from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
+
     from app.keyboards.main import PE_AU_GOLD, PE_CARD
     rows: list[list[InlineKeyboardButton]] = []
     if sub_plan_label:

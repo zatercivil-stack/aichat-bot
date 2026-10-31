@@ -11,7 +11,10 @@ from aiogram import F, Router
 from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
 from aiogram.types import (
-    CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup, Message,
+    CallbackQuery,
+    InlineKeyboardButton,
+    InlineKeyboardMarkup,
+    Message,
 )
 
 from app.config import settings
@@ -37,7 +40,7 @@ def _is_admin_uid(uid: int) -> bool:
 def _draft_kb() -> InlineKeyboardMarkup:
     """Кнопки под черновиком: публикация / правка текста / правка фото / отмена.
     Цвета: зелёный = публикация (главное), синие = правки, красный = отмена."""
-    from app.keyboards.main import PE_CHECK, PE_CROSS, PE_FRAME, PE_BUBBLE
+    from app.keyboards.main import PE_BUBBLE, PE_CHECK, PE_CROSS, PE_FRAME
     return InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton.model_construct(
             text='Опубликовать в канал', callback_data='chp:pub',
@@ -199,9 +202,10 @@ def _btn_markup(btn: dict | None) -> InlineKeyboardMarkup | None:
 async def _publish_post(bot, data: dict) -> int:
     """Шлёт пост в @conturD (silent, опц. инлайн-кнопка) + пишет в channel_posts.
     НЕ трогает хранилище черновиков (общий код для ручного и авто-флоу)."""
-    from app.services.channel_publisher import CHANNEL_ID
-    from app.database.models import ChannelPost
     from sqlalchemy import insert as sql_insert
+
+    from app.database.models import ChannelPost
+    from app.services.channel_publisher import CHANNEL_ID
     caption = data.get('caption', '')
     fid = data.get('image_fid')
     reply_markup = _btn_markup(data.get('btn'))
@@ -354,7 +358,8 @@ async def cmd_channel_status(message: Message) -> None:
     if not _is_admin(message):
         return
 
-    from sqlalchemy import select, desc
+    from sqlalchemy import desc, select
+
     from app.database.models import ChannelPost
 
     async with AsyncSessionFactory() as session:
@@ -376,9 +381,9 @@ async def cmd_channel_status(message: Message) -> None:
     skip_label = " | ⏭ Следующий пропускается" if skip_next else ""
 
     lines = [
-        f"📡 <b>Автопубликация @conturD</b>\n",
+        "📡 <b>Автопубликация @conturD</b>\n",
         f"Статус: <b>{status_icon}{skip_label}</b>",
-        f"Расписание: Mon–Sat, 19:03–19:17 МСК\n",
+        "Расписание: Mon–Sat, 19:03–19:17 МСК\n",
     ]
 
     if last_posts:
@@ -452,13 +457,18 @@ async def run_auto_post_drafts(bot, n_variants: int = 2) -> None:
     if not is_enabled():
         logger.info('auto_post skipped: OPENAI_API_KEY пуст')
         return
-    from app.services.channel_publisher import (
-        assemble_manual_post, _create_post_promo, _neyra_link, _link_signature,
-        _fix_markdown_bold)
-    from app.handlers.image_edit import EDIT_PRESETS
-    from app.database.repo.preset_previews import get_preview_file_id
-    from app.utils import premium_text
     from sqlalchemy import text as _sqltext
+
+    from app.database.repo.preset_previews import get_preview_file_id
+    from app.handlers.image_edit import EDIT_PRESETS
+    from app.services.channel_publisher import (
+        _create_post_promo,
+        _fix_markdown_bold,
+        _link_signature,
+        _neyra_link,
+        assemble_manual_post,
+    )
+    from app.utils import premium_text
 
     # пресеты с готовым превью (есть file_id) — из них выбираем образ
     async with AsyncSessionFactory() as s:
@@ -568,13 +578,18 @@ async def run_auto_post_publish(bot, mode: str = 'feature') -> None:
         logger.info('auto_publish: skip_next (one-shot)')
         return
 
-    from app.services.channel_publisher import (
-        assemble_manual_post, _create_post_promo, _neyra_link, _link_signature,
-        _fix_markdown_bold)
-    from app.handlers.image_edit import EDIT_PRESETS
-    from app.database.repo.preset_previews import get_preview_file_id
-    from app.utils import premium_text
     from sqlalchemy import text as _sqltext
+
+    from app.database.repo.preset_previews import get_preview_file_id
+    from app.handlers.image_edit import EDIT_PRESETS
+    from app.services.channel_publisher import (
+        _create_post_promo,
+        _fix_markdown_bold,
+        _link_signature,
+        _neyra_link,
+        assemble_manual_post,
+    )
+    from app.utils import premium_text
 
     # пресеты с готовым превью (file_id уже есть → fal.ai не тратится)
     async with AsyncSessionFactory() as s:

@@ -17,7 +17,7 @@ from datetime import datetime, timedelta, timezone
 
 import structlog
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
-from sqlalchemy import select, update as sa_update
+from sqlalchemy import select
 
 from app.database.base import AsyncSessionFactory
 from app.database.models import User
@@ -45,7 +45,7 @@ async def run_burn_expiry(bot_instance) -> None:
                 User.burn_expires_at.isnot(None),
                 User.burn_expires_at < expired_cutoff,
                 User.burn_credits > 0,
-                User.is_banned == False,
+                not User.is_banned,
             )
         )).scalars().all()
 
@@ -90,7 +90,7 @@ async def run_burn_expiry(bot_instance) -> None:
                 User.burn_expires_at > expired_cutoff,
                 User.burn_expires_at < pre_burn_cutoff,
                 User.burn_credits >= MIN_BURN_FOR_REMINDER,
-                User.is_banned == False,
+                not User.is_banned,
             )
         )).scalars().all()
 
@@ -99,12 +99,12 @@ async def run_burn_expiry(bot_instance) -> None:
             if u.burn_reminded_at:
                 rem = u.burn_reminded_at
                 if rem.tzinfo is None:
-                    rem = rem.replace(tzinfo=timezone.utc)
+                    rem = rem.replace(tzinfo=UTC)
                 if rem > reminder_cooldown:
                     continue
             exp = u.burn_expires_at
             if exp.tzinfo is None:
-                exp = exp.replace(tzinfo=timezone.utc)
+                exp = exp.replace(tzinfo=UTC)
             days_left = max(1, (exp - now).days)
             try:
                 kb = InlineKeyboardMarkup(inline_keyboard=[

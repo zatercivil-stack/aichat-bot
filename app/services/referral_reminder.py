@@ -4,7 +4,7 @@
 реферал до выплаты (= рост базы бесплатно)."""
 from __future__ import annotations
 
-from datetime import datetime, timezone, timedelta
+from datetime import datetime, timedelta, timezone
 from urllib.parse import quote
 
 import structlog
@@ -37,7 +37,7 @@ async def _current_reward() -> tuple[int, datetime | None]:
             if bu_raw:
                 bu = datetime.fromisoformat(bu_raw)
                 if bu.tzinfo is None:
-                    bu = bu.replace(tzinfo=timezone.utc)
+                    bu = bu.replace(tzinfo=UTC)
                 if datetime.now(timezone.utc) <= bu:
                     amt = (await get_config_value(s, 'referral_boost_amount') or '500').strip()
                     amount = max(REFERRAL_BONUS, int(amt))
@@ -49,6 +49,7 @@ async def _current_reward() -> tuple[int, datetime | None]:
 
 def _kb_for(referrer_tg: int):
     from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
+
     from app.keyboards.main import PE_HANDSHAKE
     bu = settings.BOT_USERNAME or 'NeyraChatBot'
     link = f'https://t.me/{bu}?start=ref_{referrer_tg}'

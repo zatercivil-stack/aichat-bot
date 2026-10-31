@@ -7,7 +7,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database.models import Payment, PaymentStatus, Subscription, User
 
-
 # Сколько дней после последнего успешного платежа юзер «свежеплативший»
 # (без watermark). Через PAID_PERIOD_DAYS возвращается watermark, если нет
 # активной подписки. Раньше было «один платёж = навсегда» — слишком либерально,
@@ -47,7 +46,7 @@ async def is_paid_user(session: AsyncSession, user_db_id: int) -> bool:
 
 async def get_all_telegram_ids(session: AsyncSession) -> list[int]:
     result = await session.execute(
-        select(User.telegram_id).where(User.is_banned == False)
+        select(User.telegram_id).where(not User.is_banned)
     )
     return list(result.scalars().all())
 

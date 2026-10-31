@@ -12,7 +12,7 @@ Workflow создания превью (в scripts/generate_preset_previews.py):
 """
 from __future__ import annotations
 
-from sqlalchemy import select, delete
+from sqlalchemy import delete, select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 

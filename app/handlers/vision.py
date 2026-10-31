@@ -1,31 +1,21 @@
 from __future__ import annotations
 
-import io
-from datetime import date
 import structlog
 from aiogram import F, Router
 from aiogram.fsm.context import FSMContext
-from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup, Message
+from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup, Message
 
 from app.database.base import AsyncSessionFactory
 from app.database.repo.credits import (
-    DAILY_CHANNEL_CREDITS,
-    DAILY_FREE_CREDITS,
     MODEL_COSTS,
-    add_credits,
-    deduct_credits,
-    grant_daily_if_needed,
 )
 from app.database.repo.events import log_event_bg
 from app.database.repo.users import get_user
-from app.handlers.chat import LOW_CREDITS_NUDGE, _CHANNEL_NUDGE_KB
 from app.keyboards.main import (
-    PE_AU_GOLD, PE_BACK, PE_CARD, PE_ROBOT, PE_SPARKLES, PE_SPEAKER,
+    PE_ROBOT,
     buy_or_invite_kb,
 )
-from app.services import channel_service, context_service, vision_service
 from app.states import ImageEditState
-from app.utils import edit_or_send_long, markdown_to_html
 
 logger = structlog.get_logger(__name__)
 router = Router()

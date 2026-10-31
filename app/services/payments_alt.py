@@ -22,7 +22,7 @@ from app.config import settings
 from app.database.base import AsyncSessionFactory
 from app.database.models import Plan
 from app.database.repo.credits import get_pack_by_id, get_subscription_plan
-from app.database.repo.payments import create_payment, update_payment
+from app.database.repo.payments import create_payment
 
 logger = structlog.get_logger(__name__)
 
@@ -174,8 +174,9 @@ async def create_crypto_invoice(user_id: int, user_tg_id: int, product_id: str,
     pay_url = res.get('bot_invoice_url') or res.get('pay_url') or res.get('mini_app_invoice_url')
     # сохраняем invoice_id в extra для поллинга
     try:
-        from sqlalchemy.orm.attributes import flag_modified
         from sqlalchemy import select
+        from sqlalchemy.orm.attributes import flag_modified
+
         from app.database.models import Payment
         async with AsyncSessionFactory() as s:
             p = await s.scalar(select(Payment).where(Payment.id == pid))
@@ -194,6 +195,7 @@ async def poll_crypto_payments(bot) -> None:
     """Поллер: берёт оплаченные инвойсы CryptoBot и активирует соответствующие
     PENDING-платежи через process_succeeded_payment. Идемпотентно."""
     from sqlalchemy import select
+
     from app.database.models import Payment, PaymentStatus
     from app.services.payment_processing import process_succeeded_payment
 

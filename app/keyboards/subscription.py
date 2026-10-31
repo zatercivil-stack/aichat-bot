@@ -1,6 +1,5 @@
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 
-from app.config import settings
 from app.keyboards.main import PE_BACK, PE_CARD, PE_FIRE, PE_GIFT, PE_LIGHTNING, PE_ROCKET
 
 
