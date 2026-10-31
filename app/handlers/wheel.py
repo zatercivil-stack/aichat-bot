@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import asyncio
 import random
+from datetime import UTC
 
 import structlog
 from aiogram import F, Router
@@ -212,7 +213,7 @@ async def notify_wheel_ready(bot) -> None:
     с 23:00 до 09:00 МСК шлём НЕ шлём — отложенные ждут утра."""
     import time
     from datetime import datetime, timedelta
-    msk_hour = (datetime.now(timezone.utc) + timedelta(hours=3)).hour
+    msk_hour = (datetime.now(UTC) + timedelta(hours=3)).hour
     if msk_hour < 9 or msk_hour >= 23:
         return  # ночь — не спамим, нотификы накопятся и пойдут утром
 

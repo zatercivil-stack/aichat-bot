@@ -19,7 +19,7 @@
 """
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import structlog
 from sqlalchemy import select
@@ -52,7 +52,7 @@ async def set_baseline(balance_usd: float) -> None:
     """Админ зовёт это после пополнения fal.ai.
     Сохраняет текущий баланс и время — это точка отсчёта для расчёта расхода.
     """
-    now_iso = datetime.now(timezone.utc).isoformat()
+    now_iso = datetime.now(UTC).isoformat()
     async with AsyncSessionFactory() as session:
         await set_config_value(session, KEY_BASELINE_USD, str(balance_usd))
         await set_config_value(session, KEY_BASELINE_AT, now_iso)
@@ -208,7 +208,7 @@ async def should_alert_admin() -> bool:
         last_dt = datetime.fromisoformat(last)
         if last_dt.tzinfo is None:
             last_dt = last_dt.replace(tzinfo=UTC)
-        hours_since = (datetime.now(timezone.utc) - last_dt).total_seconds() / 3600
+        hours_since = (datetime.now(UTC) - last_dt).total_seconds() / 3600
         return hours_since >= 24
     except Exception:
         return True
@@ -217,14 +217,14 @@ async def should_alert_admin() -> bool:
 async def mark_alert_sent() -> None:
     async with AsyncSessionFactory() as session:
         await set_config_value(session, KEY_LAST_ALERT_AT,
-                               datetime.now(timezone.utc).isoformat())
+                               datetime.now(UTC).isoformat())
         await session.commit()
 
 
 async def get_daily_stats() -> dict:
     """Для daily-отчёта. Считает расход за последние 24 часа и тренд."""
     from datetime import timedelta
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     today_start = now - timedelta(hours=24)
     yesterday_start = now - timedelta(hours=48)
 

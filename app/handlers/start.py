@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import re
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 import structlog
 from aiogram import Router
@@ -127,7 +127,7 @@ async def build_menu_text(session, bot, user) -> str:
                 exp = user.burn_expires_at
                 if exp.tzinfo is None:
                     exp = exp.replace(tzinfo=UTC)
-                days = max(1, (exp - datetime.now(timezone.utc)).days + 1)
+                days = max(1, (exp - datetime.now(UTC)).days + 1)
                 parts.append(
                     f'💳 <b>На счету: {bal:,} кр</b> · '
                     f'<i>{burn:,} сгорят через {days} дн. — успей потратить</i>'
@@ -355,12 +355,12 @@ async def cmd_start(
                     _AD_BURN_PREFIXES = ('LOVER', 'DEEPINS')
                     _burn_at = None
                     if promo_code_arg.upper().startswith(_AD_BURN_PREFIXES):
-                        _burn_at = datetime.now(timezone.utc) + _td(days=3)
+                        _burn_at = datetime.now(UTC) + _td(days=3)
                     await add_credits(session, user, promo.credits, burn_expires_at=_burn_at)
                     await redeem_promo(session, user.id, promo)
                     promo_activated = {'code': promo_code_arg, 'credits': promo.credits,
                                        'burn_days': 3 if _burn_at else None}
-                    user.promo_activated_at = datetime.now(timezone.utc)
+                    user.promo_activated_at = datetime.now(UTC)
                     user.time_bonus_granted = False
                     log_event_bg(user.id, 'promo_redeemed', credits_spent=-promo.credits,
                                  code=promo_code_arg, burn=bool(_burn_at))
@@ -388,7 +388,7 @@ async def cmd_start(
                     burn_days = max(0, int(burn_raw))
                 except ValueError:
                     burn_days = 7
-                burn_until = (datetime.now(timezone.utc) + timedelta(days=burn_days)
+                burn_until = (datetime.now(UTC) + timedelta(days=burn_days)
                               if burn_days > 0 else None)
                 await add_credits(session, user, welcome_bonus, burn_expires_at=burn_until)
 

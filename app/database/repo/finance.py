@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 
 from sqlalchemy import func, select, text
@@ -14,7 +14,7 @@ async def get_payment_funnel(session: AsyncSession, days: int = 30) -> dict:
 
     Bonus: recovery hit-rate (succeeded after recovery_sent_at).
     """
-    since = datetime.now(timezone.utc) - timedelta(days=days)
+    since = datetime.now(UTC) - timedelta(days=days)
 
     total = await session.scalar(
         select(func.count()).select_from(Payment).where(Payment.created_at >= since)
@@ -81,7 +81,7 @@ async def get_payment_funnel(session: AsyncSession, days: int = 30) -> dict:
 
 async def get_revenue_summary(session: AsyncSession) -> dict:
     """Aggregated revenue: today / 7d / 30d / all-time + paying users count."""
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     today = now.replace(hour=0, minute=0, second=0, microsecond=0)
     week_ago = today - timedelta(days=7)
     month_ago = today - timedelta(days=30)
@@ -126,7 +126,7 @@ async def get_revenue_summary(session: AsyncSession) -> dict:
 
 async def get_daily_revenue(session: AsyncSession, days: int = 30) -> list[dict]:
     """Daily revenue (RUB, succeeded only) for the last N days."""
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     today = now.replace(hour=0, minute=0, second=0, microsecond=0)
     since = today - timedelta(days=days - 1)
 
@@ -152,7 +152,7 @@ async def get_daily_revenue(session: AsyncSession, days: int = 30) -> list[dict]
 
 async def get_revenue_by_method(session: AsyncSession, days: int = 30) -> list[dict]:
     """Revenue split by payment_method over last N days."""
-    since = datetime.now(timezone.utc) - timedelta(days=days)
+    since = datetime.now(UTC) - timedelta(days=days)
     rows = await session.execute(
         select(
             Payment.payment_method,
@@ -211,7 +211,7 @@ async def get_top_spenders(session: AsyncSession, limit: int = 20) -> list[dict]
 
 async def get_payment_status_breakdown(session: AsyncSession, days: int = 30) -> dict:
     """Counts of payments by status over last N days."""
-    since = datetime.now(timezone.utc) - timedelta(days=days)
+    since = datetime.now(UTC) - timedelta(days=days)
     rows = await session.execute(
         select(Payment.status, func.count().label('cnt'))
         .where(Payment.created_at >= since)

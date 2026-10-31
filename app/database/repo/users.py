@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -112,7 +112,7 @@ async def update_last_active(session: AsyncSession, telegram_id: int) -> None:
     await session.execute(
         update(User)
         .where(User.telegram_id == telegram_id)
-        .values(last_active_at=datetime.now(timezone.utc))
+        .values(last_active_at=datetime.now(UTC))
     )
 
 

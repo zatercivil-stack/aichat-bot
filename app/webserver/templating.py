@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta, timezone
 from pathlib import Path
 
 from fastapi.responses import HTMLResponse
@@ -51,10 +51,7 @@ NAV_ITEMS = [
     ('users',        '👥', 'Пользователи',   '/admin/users'),
     ('support',      '🆘', 'Поддержка',       '/admin/support'),
 
-    ('_sec_aurelina', '',  '🔮 Aurelina', None),
     # отдельный дашборд вынесен на dashboard.example.com (см. astrobot/app/admin.py).
-    # Старые /admin/aurelina* роуты ещё живы как фолбэк, но из меню убраны.
-    ('aurelina_dash', '🚀', 'Дашборд ↗',      'https://dashboard.example.com'),
 
     ('_sec_money',   '',   'Деньги',         None),
     ('finance',      '💰', 'Финансы',         '/admin/finance'),
@@ -74,7 +71,6 @@ NAV_ITEMS = [
 
     ('_sec_analyt',  '',   'Трафик и аналитика', None),
     ('channel_traffic','📈','Трафик канала',  '/admin/channel-traffic'),
-    ('aurum_traffic','🛡', 'Aurum трафик',    '/admin/aurum-traffic'),
     ('cohorts',      '📊', 'Когорты (LTV)',   '/admin/cohorts'),
     ('heatmap',      '🔥', 'Heatmap часов',   '/admin/heatmap'),
 

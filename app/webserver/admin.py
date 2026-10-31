@@ -5,10 +5,8 @@ import csv
 import io
 import json
 import os
-import re
 import secrets as _secrets
-import sqlite3
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta, timezone
 
 import structlog
 from fastapi import APIRouter, Cookie, File, Form, Request, Response, UploadFile
@@ -119,14 +117,26 @@ _LOGIN_FAIL_LIMIT = 5
 _LOGIN_FAIL_WINDOW = 900  # 15 минут
 
 
+_TRUSTED_PROXIES = {'127.0.0.1', '::1', 'localhost'}
+
+
 def _client_ip(request: Request) -> str:
-    """Реальный IP за Caddy (reverse_proxy ставит X-Forwarded-For; request.client
-    был бы 127.0.0.1)."""
+    """Реальный IP клиента. X-Forwarded-For доверяем только если запрос
+    пришёл от доверенного proxy; иначе используем фактический peer IP.
+    Берём ПОСЛЕДНИЙ элемент XFF (добавленный ближайшим доверенным proxy),
+    а не первый, который контролируется клиентом."""
+    peer = request.client.host if request.client else 'unknown'
     xff = request.headers.get('x-forwarded-for')
-    if xff:
-        return xff.split(',')[0].strip()
-    return request.headers.get('x-real-ip') or (
-        request.client.host if request.client else 'unknown')
+    if peer in _TRUSTED_PROXIES and xff:
+        parts = [p.strip() for p in xff.split(',') if p.strip()]
+        if parts:
+            return parts[-1]
+    # x-real-ip тоже только от доверенного proxy
+    if peer in _TRUSTED_PROXIES:
+        xri = request.headers.get('x-real-ip')
+        if xri:
+            return xri.strip()
+    return peer
 
 
 async def _login_blocked(ip: str) -> bool:
@@ -203,7 +213,7 @@ async def _alert_new_login(ip: str) -> None:
                     aid,
                     '🔐 <b>Вход в админ-панель с НОВОГО IP</b>\n\n'
                     f'IP: <code>{ip}</code>\n'
-                    f'Время: {datetime.now(timezone.utc):%Y-%m-%d %H:%M} UTC\n\n'
+                    f'Время: {datetime.now(UTC):%Y-%m-%d %H:%M} UTC\n\n'
                     'Если это <b>не ты</b> — жми «сменить токен»: чужая сессия '
                     'сбросится, новый токен пришлю сюда же.',
                     reply_markup=kb,
@@ -297,7 +307,7 @@ async def _collect_alerts(fal_balance_usd: float | None, errors_24h: int) -> lis
             stuck = await session.scalar(
                 select(func.count()).select_from(ScheduledBroadcast)
                 .where(ScheduledBroadcast.status == 'pending',
-                       ScheduledBroadcast.send_at < datetime.now(timezone.utc) - timedelta(hours=1))
+                       ScheduledBroadcast.send_at < datetime.now(UTC) - timedelta(hours=1))
             )
             if stuck and stuck > 0:
                 alerts.append({
@@ -420,7 +430,7 @@ async def users_list(
         elif plan == 'banned':
             filters.append(User.is_banned)
 
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         if activity == '24h':
             filters.append(User.last_active_at >= now - timedelta(hours=24))
         elif activity == '7d':
@@ -766,7 +776,7 @@ async def create_promo(
 ):
     if not _check_auth(admin_session):
         return _redirect_login()
-    expires_at = datetime.now(timezone.utc) + timedelta(days=expires_days) if expires_days > 0 else None
+    expires_at = datetime.now(UTC) + timedelta(days=expires_days) if expires_days > 0 else None
     norm_code = code.upper().strip()
     async with AsyncSessionFactory() as session:
         promo = PromoCode(code=norm_code, credits=credits, max_uses=max_uses, expires_at=expires_at)
@@ -976,7 +986,7 @@ async def events_page(
 
     days = max(1, min(days, 365))
     limit = max(50, min(limit, 1000))
-    since = datetime.now(timezone.utc) - timedelta(days=days)
+    since = datetime.now(UTC) - timedelta(days=days)
 
     async with AsyncSessionFactory() as session:
         q = (
@@ -1290,7 +1300,7 @@ async def _do_photo_template_broadcast(tpl_id: int, audience: str) -> None:
             sent_count=sent,
             blocked_count=blocked,
             error_count=errors,
-            completed_at=datetime.now(timezone.utc),
+            completed_at=datetime.now(UTC),
             status='completed',
         )
         session.add(b)
@@ -1338,7 +1348,7 @@ async def photo_templates_delete(
 async def bulk_page(admin_session: str | None = Cookie(default=None), msg: str = ''):
     if not _check_auth(admin_session):
         return _redirect_login()
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     async with AsyncSessionFactory() as session:
         sub_active = select(Subscription.user_id).where(Subscription.is_active)
         counts = {
@@ -1366,7 +1376,7 @@ async def _do_bulk_credits(segment: str, amount: int, notify_text: str) -> None:
     """Начисляет credit-бонус всем юзерам сегмента + (опционально) шлёт TG-сообщение."""
     from app.bot import get_bot
     from app.database.repo.credits import add_credits
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     bot = get_bot()
     async with AsyncSessionFactory() as session:
         sub_active = select(Subscription.user_id).where(Subscription.is_active)
@@ -1443,7 +1453,7 @@ async def gallery_page(
         for k in page['items']:
             key_to_cat.setdefault(k, page['title'])
     categories = [p['title'] for p in PRESET_PAGES]
-    cutoff_30d = datetime.now(timezone.utc) - timedelta(days=30)
+    cutoff_30d = datetime.now(UTC) - timedelta(days=30)
 
     async with AsyncSessionFactory() as session:
         customs = await list_custom_presets(session)
@@ -1682,7 +1692,7 @@ async def gallery_mark_new(
     if key not in EDIT_PRESETS:
         return RedirectResponse('/admin/gallery?msg=Пресет+не+найден', status_code=302)
     async with AsyncSessionFactory() as session:
-        await set_launch(session, key, datetime.now(timezone.utc))
+        await set_launch(session, key, datetime.now(UTC))
     await reload_custom_presets()  # пересчитает _NEW_SECTION/_BADGE_KEYS
     log_action_bg('token', 'gallery.mark_new',
                   ip=request.client.host if request.client else None, key=key)
@@ -1824,7 +1834,6 @@ async def sandbox_page(admin_session: str | None = Cookie(default=None), msg: st
 
 
 async def _do_sandbox_run(prompt: str, gender: str) -> None:
-    import os
 
     from aiogram.types import BufferedInputFile
 
@@ -1893,7 +1902,7 @@ async def presets_list(admin_session: str | None = Cookie(default=None), msg: st
         return _redirect_login()
     from app.database.repo.custom_presets import list_custom_presets
     from app.database.repo.preset_previews import get_preview_file_id
-    cutoff_30d = datetime.now(timezone.utc) - timedelta(days=30)
+    cutoff_30d = datetime.now(UTC) - timedelta(days=30)
     async with AsyncSessionFactory() as session:
         presets = await list_custom_presets(session)
         from app.database.repo.events import get_excluded_user_ids
@@ -2163,7 +2172,6 @@ async def _do_generate_preview_by_key(
     """Генерит 2K-превью по ключу (работает и для хардкод, и для custom-пресетов).
     positions ограничивает, что генерить: {0} жен / {1} муж / None обе.
     ~$0.12 за каждое (fal 2K). Шлёт админу отчёт."""
-    import os
 
     from aiogram.types import BufferedInputFile
 
@@ -2388,7 +2396,7 @@ async def _do_broadcast_by_key(
             bc.blocked_count = blocked
             bc.error_count = errors
             bc.status = 'completed'
-            bc.completed_at = datetime.now(timezone.utc)
+            bc.completed_at = datetime.now(UTC)
             await session.commit()
     logger.info('preset broadcast done', key=key, audience=audience, bc_id=bc_id,
                 sent=sent, blocked=blocked, errors=errors)
@@ -2458,7 +2466,7 @@ async def presets_broadcast(
         except Exception:
             return RedirectResponse(
                 f'/admin/presets/{preset_id}/broadcast?msg=Некорректное+время', status_code=302)
-        if send_at_utc <= datetime.now(timezone.utc):
+        if send_at_utc <= datetime.now(UTC):
             return RedirectResponse(
                 f'/admin/presets/{preset_id}/broadcast?msg=Время+должно+быть+в+будущем', status_code=302)
         from app.database.models import ScheduledBroadcast
@@ -2673,7 +2681,7 @@ async def refund_payment(payment_id: int, request: Request, admin_session: str |
         if user and credits:
             user.credits = max(0, user.credits - credits)
         p.status = PaymentStatus.CANCELED
-        p.updated_at = datetime.now(timezone.utc)
+        p.updated_at = datetime.now(UTC)
         target_user_id = p.user_id
         amount = float(p.amount)
         await session.commit()
@@ -2692,7 +2700,7 @@ async def cancel_payment(payment_id: int, request: Request, admin_session: str |
         p = await session.scalar(select(Payment).where(Payment.id == payment_id))
         if p and p.status == PaymentStatus.PENDING:
             p.status = PaymentStatus.FAILED
-            p.updated_at = datetime.now(timezone.utc)
+            p.updated_at = datetime.now(UTC)
             target_user_id = p.user_id
             await session.commit()
             log_action_bg('token', 'payment.cancel',
@@ -2790,24 +2798,7 @@ async def channel_traffic_page(admin_session: str | None = Cookie(default=None))
     )
 
 
-@router.get('/aurum-traffic', response_class=HTMLResponse)
-async def aurum_traffic_page(admin_session: str | None = Cookie(default=None)):
-    if not _check_auth(admin_session):
-        return _redirect_login()
-    from app.services import aurum_traffic
-    summary = aurum_traffic.get_summary()
-    funnel = aurum_traffic.get_traffic_funnel()
-    landings = aurum_traffic.get_landings_log(limit=50)
-    return render(
-        'aurum_traffic.html',
-        title='Aurum трафик',
-        pretitle='Cross-bot аналитика (@conturD → @Shop_Aurum_Bot)',
-        active='aurum_traffic',
-        summary=summary, funnel=funnel, landings=landings,
-    )
 
-
-# ── ADMIN AUDIT LOG ─────────────────────────────────────────────────────────────
 
 @router.get('/audit', response_class=HTMLResponse)
 async def audit_page(
@@ -2866,7 +2857,7 @@ async def health_page(admin_session: str | None = Cookie(default=None)):
             health['db_ms'] = int((_time.time() - t0) * 1000)
             health['db_ok'] = True
             # Stats from DB
-            now = datetime.now(timezone.utc)
+            now = datetime.now(UTC)
             hour_ago = now - timedelta(hours=1)
             today = now.replace(hour=0, minute=0, second=0, microsecond=0)
             health['errors_hour'] = await session.scalar(
@@ -3162,7 +3153,7 @@ async def export_events_csv(
     if not _check_auth(admin_session):
         return _redirect_login()
     days = max(1, min(days, 365))
-    since = datetime.now(timezone.utc) - timedelta(days=days)
+    since = datetime.now(UTC) - timedelta(days=days)
 
     async with AsyncSessionFactory() as session:
         q = (
@@ -3331,578 +3322,3 @@ async def support_attachment(
 
 
 # ---------------------------------------------------------------------------
-# Aurelina (Таро+Астро бот) — read-only stats from its SQLite (mounted ro).
-# ---------------------------------------------------------------------------
-
-AURELINA_DB = os.getenv('AURELINA_DB', '/app/aurelina/astrobot.sqlite')
-
-# Seeding creatives: code -> human label. Always shown (even with zero traffic).
-AURELINA_CREATIVES = {
-    'src_mirror': 'Тайна / зеркало',
-    'src_love':   'Любовь',
-    'src_money':  'Деньги',
-    'src_fate':   'Решение / распутье',
-    'src_social': 'Соцдок / FOMO',
-    'src_shadow':    'Тень / скрытое в себе',
-    'src_lovecode':  'Любовный код',
-    'src_crossroad': 'Распутье / выбор',
-    'src_window':    'Окно возможностей',
-    'src_flow':      'Денежный поток',
-    'src_feel':      'Скажу о тебе',
-    'src_vkclips':   'ВКонтакте · видео',
-    'src_vkprofile': 'ВКонтакте · профиль',
-}
-
-# Тест-аккаунты владельца — исключаются из ВСЕЙ статистики дашборда (но не из
-# карточки конкретного юзера). По username (lower) + известные tg_id.
-AURELINA_EXCLUDE_USERNAMES = {'grelok', 'velumadm', 'aurum_spprt'}
-AURELINA_EXCLUDE_IDS = {299166029}  # @grelok (владелец) — фолбэк, если username пуст
-# Источники-«накрутка»: их юзеры полностью вне статистики дашборда (src_bots —
-# боты для соц-доказательства, в боте показывают высокий счётчик, но это не люди).
-AURELINA_EXCLUDE_SOURCES = {'src_bots'}
-
-
-def _aur_excluded_ids(con: sqlite3.Connection) -> list[int]:
-    ids = set(AURELINA_EXCLUDE_IDS)
-    if AURELINA_EXCLUDE_USERNAMES:
-        qs = ','.join('?' * len(AURELINA_EXCLUDE_USERNAMES))
-        for r in con.execute(
-                f"SELECT tg_id FROM users WHERE lower(username) IN ({qs})",
-                tuple(AURELINA_EXCLUDE_USERNAMES)):
-            ids.add(r['tg_id'])
-    if AURELINA_EXCLUDE_SOURCES:
-        qs = ','.join('?' * len(AURELINA_EXCLUDE_SOURCES))
-        for r in con.execute(
-                f"SELECT tg_id FROM users WHERE source IN ({qs})",
-                tuple(AURELINA_EXCLUDE_SOURCES)):
-            ids.add(r['tg_id'])
-    return [int(x) for x in ids]
-
-
-def _excl(ids: list[int], col: str) -> str:
-    """SQL-фрагмент исключения (ids — int из БД, инъекция исключена)."""
-    if not ids:
-        return ''
-    return f" AND {col} NOT IN ({','.join(str(int(x)) for x in ids)})"
-
-
-def _aurelina_connect() -> sqlite3.Connection:
-    """Read-only SQLite connection. Falls back to immutable mode if the live WAL
-    can't be opened (e.g. the writer is down with a pending -wal)."""
-    last_err: Exception | None = None
-    for uri in (f'file:{AURELINA_DB}?mode=ro',
-                f'file:{AURELINA_DB}?mode=ro&immutable=1'):
-        try:
-            con = sqlite3.connect(uri, uri=True, timeout=5)
-            con.row_factory = sqlite3.Row
-            con.execute('PRAGMA busy_timeout=3000')
-            con.execute('SELECT 1 FROM sqlite_master LIMIT 1')  # force-open DB file
-            return con
-        except sqlite3.Error as exc:
-            last_err = exc
-            try:
-                con.close()  # type: ignore[has-type]
-            except Exception:
-                pass
-    raise last_err if last_err else sqlite3.Error('cannot open aurelina db')
-
-
-def _aur_col(con: sqlite3.Connection, name: str, default: str = 'NULL') -> str:
-    """Безопасная ссылка на колонку users: вернёт `u.<name>`, если она есть в
-    схеме astrobot, иначе `NULL` — защита от рассинхрона схем двух проектов."""
-    try:
-        cols = {r[1] for r in con.execute('PRAGMA table_info(users)').fetchall()}
-        return f'u.{name}' if name in cols else default
-    except Exception:
-        return default
-
-
-def _load_aurelina_stats() -> dict:
-    if not os.path.exists(AURELINA_DB):
-        return {'available': False, 'error': 'БД не примонтирована'}
-    con = None
-    try:
-        con = _aurelina_connect()
-        excl = _aur_excluded_ids(con)
-        ex_e = _excl(excl, 'e.tg_id')   # events
-        ex_p = _excl(excl, 'p.tg_id')   # payments (alias p)
-        ex_t = _excl(excl, 'tg_id')     # plain tg_id column
-
-        def dcount(types: list[str], where: str = '', args: tuple = ()) -> int:
-            qs = ','.join('?' * len(types))
-            row = con.execute(
-                f"SELECT COUNT(DISTINCT e.tg_id) c FROM events e "
-                f"JOIN users u ON u.tg_id=e.tg_id "
-                f"WHERE e.type IN ({qs}) {where}{ex_e}", (*types, *args)).fetchone()
-            return row['c'] if row else 0
-
-        funnel = [
-            ('Заходы (/start)',     dcount(['start'])),
-            ('Онбординг завершён',  dcount(['onboarding_done'])),
-            ('Первый расклад',      dcount(['tarot_free', 'tarot_paid'])),
-            ('Пэйвол показан',      dcount(['paywall_view'])),
-            ('Клик оплаты',         dcount(['pay_click'])),
-            ('Оплата',              dcount(['pay_success'])),
-        ]
-
-        users = con.execute(f"SELECT COUNT(*) c FROM users WHERE 1=1{ex_t}").fetchone()['c']
-        rub_total = con.execute(f"SELECT COALESCE(SUM(amount),0) s FROM payments WHERE status='paid' AND currency='RUB'{ex_t}").fetchone()['s']
-        stars_total = con.execute(f"SELECT COALESCE(SUM(amount),0) s FROM payments WHERE status='paid' AND currency='XTR'{ex_t}").fetchone()['s']
-        payers_total = con.execute(f"SELECT COUNT(DISTINCT tg_id) c FROM payments WHERE status='paid'{ex_t}").fetchone()['c']
-
-        # ---- per-creative breakdown (known seeding codes + any extra src_*) ----
-        started = {r['source']: r['c'] for r in con.execute(
-            f"SELECT source, COUNT(*) c FROM users WHERE source IS NOT NULL{ex_t} GROUP BY source")}
-        pay_by_src = {r['src']: r for r in con.execute(
-            "SELECT u.source src, COUNT(DISTINCT p.tg_id) payers, "
-            "COALESCE(SUM(CASE WHEN p.currency='RUB' THEN p.amount END),0) rub, "
-            "COALESCE(SUM(CASE WHEN p.currency='XTR' THEN p.amount END),0) stars "
-            "FROM payments p JOIN users u ON u.tg_id=p.tg_id "
-            f"WHERE p.status='paid'{ex_p} GROUP BY u.source").fetchall()}
-
-        codes = list(AURELINA_CREATIVES.keys())
-        for src in started:
-            if src and src.startswith('src_') and src not in codes:
-                codes.append(src)
-
-        def sf(src: str, types: list[str]) -> int:
-            return dcount(types, "AND u.source=?", (src,))
-
-        creatives = []
-        for code in codes:
-            start = sf(code, ['start'])
-            p = pay_by_src.get(code)
-            payers = p['payers'] if p else 0
-            creatives.append({
-                'code': code,
-                'label': AURELINA_CREATIVES.get(code, code.replace('src_', '')),
-                'start': start,
-                'onb': sf(code, ['onboarding_done']),
-                'reading': sf(code, ['tarot_free', 'tarot_paid']),
-                'paywall': sf(code, ['paywall_view']),
-                'pay': payers,
-                'conv': round(payers / start * 100, 1) if start else 0.0,
-                'rub': int(p['rub']) if p else 0,
-                'stars': int(p['stars']) if p else 0,
-            })
-        creatives.sort(key=lambda c: -c['start'])
-
-        # unattributed / organic bucket (source IS NULL) — reconciles with funnel
-        def sfn(types: list[str]) -> int:
-            return dcount(types, 'AND u.source IS NULL', ())
-        ns = sfn(['start'])
-        if ns:
-            pn = pay_by_src.get(None)
-            npay = pn['payers'] if pn else 0
-            creatives.append({
-                'code': '—', 'label': 'Без источника / органика',
-                'start': ns, 'onb': sfn(['onboarding_done']),
-                'reading': sfn(['tarot_free', 'tarot_paid']),
-                'paywall': sfn(['paywall_view']), 'pay': npay,
-                'conv': round(npay / ns * 100, 1) if ns else 0.0,
-                'rub': int(pn['rub']) if pn else 0, 'stars': int(pn['stars']) if pn else 0,
-            })
-
-        recent = [dict(r) for r in con.execute(
-            f"SELECT tg_id, provider, product, amount, currency, ts "
-            f"FROM payments WHERE status='paid'{ex_t} ORDER BY id DESC LIMIT 15")]
-        return {
-            'available': True, 'users': users, 'payers_total': payers_total,
-            'rub_total': int(rub_total), 'stars_total': int(stars_total),
-            'funnel': funnel, 'creatives': creatives, 'recent': recent,
-        }
-    except Exception as exc:
-        logger.warning('aurelina stats load failed', error=str(exc)[:200])
-        return {'available': False, 'error': str(exc)[:200]}
-    finally:
-        if con is not None:
-            try:
-                con.close()
-            except Exception:
-                pass
-
-
-@router.get('/aurelina', response_class=HTMLResponse)
-async def aurelina(admin_session: str | None = Cookie(default=None)):
-    if not _check_auth(admin_session):
-        return _redirect_login()
-    data = await asyncio.to_thread(_load_aurelina_stats)
-    return render('aurelina.html', title='Aurelina', pretitle='Таро+Астро бот',
-                  active='aurelina', data=data)
-
-
-# ---------------------------------------------------------------------------
-# Aurelina support tickets — read/write the bot's SQLite + reply via its token.
-# ---------------------------------------------------------------------------
-
-AURELINA_BOT_TOKEN = os.getenv('AURELINA_BOT_TOKEN', '')
-
-
-def _aurelina_connect_rw() -> sqlite3.Connection:
-    con = sqlite3.connect(f'file:{AURELINA_DB}?mode=rw', uri=True, timeout=8)
-    con.row_factory = sqlite3.Row
-    con.execute('PRAGMA busy_timeout=5000')
-    return con
-
-
-def _aur_now() -> str:
-    return datetime.utcnow().isoformat(timespec='seconds')
-
-
-def _aur_list_tickets(status: str | None = None) -> list[dict]:
-    con = None
-    try:
-        con = _aurelina_connect()
-        where = ''
-        args: tuple = ()
-        if status:
-            where = 'WHERE t.status=?'
-            args = (status,)
-        rows = con.execute(
-            f"SELECT t.id, t.tg_id, t.status, t.created_at, t.updated_at, "
-            f"u.username, u.first_name FROM support_tickets t "
-            f"LEFT JOIN users u ON u.tg_id=t.tg_id {where} "
-            f"ORDER BY (t.status='closed') ASC, t.updated_at DESC LIMIT 100", args).fetchall()
-        last = {r['ticket_id']: r for r in con.execute(
-            "SELECT ticket_id, body, attachment_file_id FROM support_messages "
-            "WHERE id IN (SELECT MAX(id) FROM support_messages GROUP BY ticket_id)")}
-        out = []
-        for t in rows:
-            lm = last.get(t['id'])
-            out.append({
-                'id': t['id'], 'tg_id': t['tg_id'], 'status': t['status'],
-                'updated_at': t['updated_at'],
-                'username': t['username'], 'first_name': t['first_name'],
-                'last_body': (lm['body'] if lm else None),
-                'last_has_attachment': bool(lm and lm['attachment_file_id']),
-            })
-        return out
-    finally:
-        if con is not None:
-            con.close()
-
-
-def _aur_thread(ticket_id: int) -> dict | None:
-    con = None
-    try:
-        con = _aurelina_connect()
-        t = con.execute("SELECT * FROM support_tickets WHERE id=?", (ticket_id,)).fetchone()
-        if not t:
-            return None
-        u = con.execute("SELECT tg_id, username, first_name FROM users WHERE tg_id=?",
-                        (t['tg_id'],)).fetchone()
-        msgs = [dict(m) for m in con.execute(
-            "SELECT id, sender, body, attachment_file_id, created_at FROM support_messages "
-            "WHERE ticket_id=? ORDER BY id ASC", (ticket_id,))]
-        return {'ticket': dict(t), 'user': dict(u) if u else None, 'messages': msgs}
-    finally:
-        if con is not None:
-            con.close()
-
-
-def _aur_add_admin_reply(ticket_id: int, body: str, status: str = 'answered',
-                         change_status: bool = True) -> int | None:
-    """Write an admin message; return the ticket owner's tg_id (for delivery)."""
-    con = None
-    try:
-        con = _aurelina_connect_rw()
-        t = con.execute("SELECT tg_id FROM support_tickets WHERE id=?", (ticket_id,)).fetchone()
-        if not t:
-            return None
-        con.execute(
-            "INSERT INTO support_messages (ticket_id, sender, body, attachment_file_id, created_at)"
-            " VALUES (?, 'admin', ?, NULL, ?)", (ticket_id, body, _aur_now()))
-        if change_status:
-            con.execute("UPDATE support_tickets SET status=?, updated_at=? WHERE id=?",
-                        (status, _aur_now(), ticket_id))
-        con.commit()
-        return t['tg_id']
-    finally:
-        if con is not None:
-            con.close()
-
-
-def _aur_close(ticket_id: int) -> None:
-    con = None
-    try:
-        con = _aurelina_connect_rw()
-        con.execute("UPDATE support_tickets SET status='closed', updated_at=? WHERE id=?",
-                    (_aur_now(), ticket_id))
-        con.commit()
-    finally:
-        if con is not None:
-            con.close()
-
-
-def _aur_send_sync(chat_id: int, text: str, reply_markup: dict | None) -> dict:
-    import urllib.request
-    payload = {'chat_id': chat_id, 'text': text, 'parse_mode': 'HTML'}
-    if reply_markup:
-        payload['reply_markup'] = reply_markup
-    req = urllib.request.Request(
-        f'https://api.telegram.org/bot{AURELINA_BOT_TOKEN}/sendMessage',
-        data=json.dumps(payload).encode(), headers={'Content-Type': 'application/json'})
-    with urllib.request.urlopen(req, timeout=15) as r:
-        return json.load(r)
-
-
-@router.get('/aurelina/support', response_class=HTMLResponse)
-async def aurelina_support_list(admin_session: str | None = Cookie(default=None),
-                                status: str = ''):
-    if not _check_auth(admin_session):
-        return _redirect_login()
-    tickets = await asyncio.to_thread(_aur_list_tickets, status or None)
-    return render('aurelina_support.html', title='Aurelina · тикеты',
-                  pretitle='Поддержка', active='aurelina_support',
-                  tickets=tickets, status=status)
-
-
-@router.get('/aurelina/support/{ticket_id}', response_class=HTMLResponse)
-async def aurelina_support_thread(ticket_id: int,
-                                  admin_session: str | None = Cookie(default=None),
-                                  msg: str = ''):
-    if not _check_auth(admin_session):
-        return _redirect_login()
-    data = await asyncio.to_thread(_aur_thread, ticket_id)
-    if not data:
-        return HTMLResponse('Не найдено', status_code=404)
-    return render('aurelina_support_thread.html', title=f'Обращение №{ticket_id}',
-                  pretitle='Aurelina', active='aurelina_support', msg=msg, data=data)
-
-
-@router.post('/aurelina/support/{ticket_id}/reply')
-async def aurelina_support_reply(ticket_id: int, request: Request,
-                                 body: str = Form(...),
-                                 admin_session: str | None = Cookie(default=None)):
-    if not _check_auth(admin_session):
-        return _redirect_login()
-    import html as _html
-    body = (body or '').strip()
-    if not body:
-        return RedirectResponse(f'/admin/aurelina/support/{ticket_id}?msg=Пустой+ответ', status_code=302)
-
-    tg_id = await asyncio.to_thread(_aur_add_admin_reply, ticket_id, body)
-    if tg_id is None:
-        return HTMLResponse('Не найдено', status_code=404)
-
-    delivered = False
-    if AURELINA_BOT_TOKEN:
-        kb = {'inline_keyboard': [
-            [{'text': 'Дописать к обращению', 'callback_data': f'support_reply:{ticket_id}'}],
-            [{'text': 'Вопрос решён', 'callback_data': f'support_close:{ticket_id}'}],
-        ]}
-        text = (f"💬 <b>Ответ поддержки по обращению №{ticket_id}:</b>\n\n{_html.escape(body)}")
-        try:
-            res = await asyncio.to_thread(_aur_send_sync, tg_id, text, kb)
-            delivered = bool(res.get('ok'))
-        except Exception as exc:
-            logger.warning('aurelina reply delivery failed', ticket_id=ticket_id, error=str(exc)[:200])
-    if not delivered:
-        await asyncio.to_thread(_aur_add_admin_reply, ticket_id,
-                                '⚠️ Ответ не доставлен (юзер мог заблокировать бота).',
-                                'answered', False)
-    log_action_bg('token', 'aurelina.support.reply',
-                  ip=request.client.host if request.client else None, ticket_id=ticket_id)
-    suffix = 'Ответ+отправлен' if delivered else 'Сохранено+(не+доставлено)'
-    return RedirectResponse(f'/admin/aurelina/support/{ticket_id}?msg={suffix}', status_code=302)
-
-
-@router.post('/aurelina/support/{ticket_id}/close')
-async def aurelina_support_close(ticket_id: int, request: Request,
-                                 admin_session: str | None = Cookie(default=None)):
-    if not _check_auth(admin_session):
-        return _redirect_login()
-    await asyncio.to_thread(_aur_close, ticket_id)
-    log_action_bg('token', 'aurelina.support.close',
-                  ip=request.client.host if request.client else None, ticket_id=ticket_id)
-    return RedirectResponse(f'/admin/aurelina/support/{ticket_id}?msg=Закрыто', status_code=302)
-
-
-def _aur_get_attachment(ticket_id: int, message_id: int) -> str | None:
-    con = None
-    try:
-        con = _aurelina_connect()
-        r = con.execute(
-            "SELECT attachment_file_id FROM support_messages WHERE id=? AND ticket_id=?",
-            (message_id, ticket_id)).fetchone()
-        return r['attachment_file_id'] if r and r['attachment_file_id'] else None
-    finally:
-        if con is not None:
-            con.close()
-
-
-def _aur_fetch_file_sync(file_id: str) -> bytes:
-    import urllib.parse
-    import urllib.request
-    base = f'https://api.telegram.org/bot{AURELINA_BOT_TOKEN}'
-    with urllib.request.urlopen(
-            f'{base}/getFile?file_id=' + urllib.parse.quote(file_id), timeout=15) as r:
-        info = json.load(r)
-    if not info.get('ok'):
-        raise RuntimeError('getFile failed')
-    fp = info['result']['file_path']
-    url = f'https://api.telegram.org/file/bot{AURELINA_BOT_TOKEN}/{fp}'
-    with urllib.request.urlopen(url, timeout=30) as r:
-        return r.read()
-
-
-@router.get('/aurelina/support/{ticket_id}/attachment/{message_id}')
-async def aurelina_support_attachment(ticket_id: int, message_id: int,
-                                      admin_session: str | None = Cookie(default=None)):
-    """Proxy a ticket photo via the Aurelina bot token (getFile + download)."""
-    if not _check_auth(admin_session):
-        return Response(status_code=403)
-    if not AURELINA_BOT_TOKEN:
-        return Response(status_code=503)
-    fid = await asyncio.to_thread(_aur_get_attachment, ticket_id, message_id)
-    if not fid:
-        return Response(status_code=404)
-    try:
-        data = await asyncio.to_thread(_aur_fetch_file_sync, fid)
-        return Response(content=data, media_type='image/jpeg',
-                        headers={'Cache-Control': 'private, max-age=3600'})
-    except Exception as exc:
-        logger.warning('aurelina attachment proxy failed',
-                       message_id=message_id, error=str(exc)[:200])
-        return Response(status_code=500)
-
-
-def _aur_list_users(q: str | None = None, limit: int = 300) -> dict:
-    con = None
-    try:
-        con = _aurelina_connect()
-        excl = _aur_excluded_ids(con)
-        ex_u = _excl(excl, 'u.tg_id')
-        ex_t = _excl(excl, 'tg_id')
-        conds, args = [], []
-        if q:
-            q = q.strip().lstrip('@')
-            if q.isdigit():
-                conds.append('u.tg_id=?'); args.append(int(q))
-            else:
-                conds.append('(u.username LIKE ? OR u.first_name LIKE ?)')
-                args += [f'%{q}%', f'%{q}%']
-        where = ('WHERE ' + ' AND '.join(conds)) if conds else 'WHERE 1=1'
-        rows = con.execute(
-            f"""SELECT u.tg_id, u.username, u.first_name, u.gender, u.source,
-                       u.paid_balance, u.vip_until, u.free_tarot_used, u.created_at,
-                       {_aur_col(con, 'blocked_at')} AS blocked_at,
-                  (SELECT COUNT(*) FROM payments p WHERE p.tg_id=u.tg_id AND p.status='paid') pays,
-                  (SELECT COALESCE(SUM(amount),0) FROM payments p WHERE p.tg_id=u.tg_id AND p.status='paid' AND currency='RUB') rub,
-                  (SELECT COALESCE(SUM(amount),0) FROM payments p WHERE p.tg_id=u.tg_id AND p.status='paid' AND currency='XTR') stars
-               FROM users u {where}{ex_u} ORDER BY u.created_at DESC LIMIT ?""",
-            (*args, limit)).fetchall()
-        now = datetime.utcnow().isoformat(timespec='seconds')
-        users = []
-        for r in rows:
-            d = dict(r)
-            d['vip'] = bool(r['vip_until'] and r['vip_until'] > now)
-            d['blocked'] = bool(r['blocked_at'])
-            users.append(d)
-        total = con.execute(f"SELECT COUNT(*) c FROM users WHERE 1=1{ex_t}").fetchone()['c']
-        payers = con.execute(f"SELECT COUNT(DISTINCT tg_id) c FROM payments WHERE status='paid'{ex_t}").fetchone()['c']
-        vips = con.execute(f"SELECT COUNT(*) c FROM users WHERE vip_until IS NOT NULL AND vip_until>?{ex_t}",
-                           (now,)).fetchone()['c']
-        cols_present = {r[1] for r in con.execute('PRAGMA table_info(users)').fetchall()}
-        blocked = 0
-        if 'blocked_at' in cols_present:
-            blocked = con.execute(
-                f"SELECT COUNT(*) c FROM users WHERE blocked_at IS NOT NULL{ex_t}").fetchone()['c']
-        return {'available': True, 'users': users, 'total': total, 'payers': payers,
-                'vips': vips, 'blocked': blocked, 'q': q or '', 'shown': len(users)}
-    except Exception as exc:
-        logger.warning('aurelina users load failed', error=str(exc)[:200])
-        return {'available': False, 'error': str(exc)[:200]}
-    finally:
-        if con is not None:
-            con.close()
-
-
-@router.get('/aurelina/users', response_class=HTMLResponse)
-async def aurelina_users(admin_session: str | None = Cookie(default=None), q: str = ''):
-    if not _check_auth(admin_session):
-        return _redirect_login()
-    data = await asyncio.to_thread(_aur_list_users, q or None)
-    return render('aurelina_users.html', title='Aurelina · пользователи',
-                  pretitle='Aurelina', active='aurelina_users', data=data)
-
-
-AUR_EVENT_LABELS = {
-    'start': 'Заход (/start)', 'onboarding_start': 'Начал онбординг',
-    'onboarding_done': 'Онбординг завершён', 'natal_view': 'Натальная карта',
-    'tarot_free': 'Бесплатный расклад', 'tarot_paid': 'Платный расклад',
-    'daily_card': 'Карта дня', 'paywall_view': 'Пэйвол показан',
-    'pay_click': 'Клик оплаты', 'pay_success': 'ОПЛАТА',
-    'ref_invite': 'Открыл реферал', 'ref_join': 'Пришёл по рефералу',
-    'ref_reward': 'Реф-награда', 'horoscope': 'Гороскоп',
-    'horoscope_push': 'Утренний гороскоп', 'support_ticket_created': 'Создал тикет',
-    'support_user_reply': 'Дописал в тикет', 'dunning1': 'Дожим #1', 'dunning2': 'Дожим #2',
-    'daily_nudge': 'Утренний пуш (карта дня)', 'streak_reward': 'Награда за серию (+1 расклад)',
-    'pending_fulfilled': 'Закрыт отложенный вопрос', 'channel_post': 'Переход из канала',
-    'broadcast_sent': 'Рассылка отправлена', 'deep_cta_view': 'Показ CTA «разбор года»',
-    'natalx_view': 'Расширенный натал', 'wheel_spin': 'Звёздный дар (награда)',
-}
-
-AUR_PRODUCT_LABELS = {
-    'single': '1 расклад', 'pack5': '5 раскладов', 'vip': 'VIP-безлимит',
-    'deep': 'Разбор на год', 'natalx': 'Разбор личности', 'test10': 'Тест',
-}
-AUR_PROVIDER_LABELS = {
-    'rollypay': 'RollyPay (СБП/карта)', 'cryptobot': 'CryptoBot',
-    'stars': 'Telegram Stars', 'platega': 'Platega',
-}
-AUR_PAY_STATUS = {'paid': 'оплачен', 'expired': 'истёк', 'created': 'не завершён',
-                  'pending': 'в обработке', 'failed': 'ошибка'}
-
-
-def _aur_user_detail(tg_id: int) -> dict | None:
-    con = None
-    try:
-        con = _aurelina_connect()
-        u = con.execute("SELECT * FROM users WHERE tg_id=?", (tg_id,)).fetchone()
-        if not u:
-            return None
-        now = datetime.utcnow().isoformat(timespec='seconds')
-        user = dict(u)
-        user['vip'] = bool(u['vip_until'] and u['vip_until'] > now)
-        user['source_ru'] = AURELINA_CREATIVES.get(user.get('source') or '', user.get('source') or '')
-        payments = [dict(r) for r in con.execute(
-            "SELECT provider, product, amount, currency, status, ts FROM payments "
-            "WHERE tg_id=? ORDER BY id DESC", (tg_id,))]
-        for p in payments:
-            p['product_ru'] = AUR_PRODUCT_LABELS.get(p['product'], p['product'])
-            p['provider_ru'] = AUR_PROVIDER_LABELS.get(p['provider'], p['provider'])
-            p['status_ru'] = AUR_PAY_STATUS.get(p['status'], p['status'])
-        events = []
-        for r in con.execute(
-                "SELECT type, meta, source, ts FROM events WHERE tg_id=? ORDER BY id DESC LIMIT 80",
-                (tg_id,)):
-            # meta показываем как текст — снимаем HTML-теги (в призах wheel_spin есть <b>)
-            meta = re.sub(r'<[^>]+>', '', r['meta']) if r['meta'] else r['meta']
-            events.append({'label': AUR_EVENT_LABELS.get(r['type'], r['type']),
-                           'type': r['type'], 'meta': meta, 'ts': r['ts']})
-        tickets = [dict(r) for r in con.execute(
-            "SELECT id, status, updated_at FROM support_tickets WHERE tg_id=? ORDER BY id DESC",
-            (tg_id,))]
-        invited = con.execute("SELECT COUNT(*) c FROM referrals WHERE inviter=?", (tg_id,)).fetchone()['c']
-        rub = con.execute("SELECT COALESCE(SUM(amount),0) s FROM payments WHERE tg_id=? AND status='paid' AND currency='RUB'", (tg_id,)).fetchone()['s']
-        stars = con.execute("SELECT COALESCE(SUM(amount),0) s FROM payments WHERE tg_id=? AND status='paid' AND currency='XTR'", (tg_id,)).fetchone()['s']
-        return {'available': True, 'user': user, 'payments': payments, 'events': events,
-                'tickets': tickets, 'invited': invited, 'rub': int(rub), 'stars': int(stars)}
-    except Exception as exc:
-        logger.warning('aurelina user detail failed', tg_id=tg_id, error=str(exc)[:200])
-        return {'available': False, 'error': str(exc)[:200]}
-    finally:
-        if con is not None:
-            con.close()
-
-
-@router.get('/aurelina/users/{tg_id}', response_class=HTMLResponse)
-async def aurelina_user(tg_id: int, admin_session: str | None = Cookie(default=None)):
-    if not _check_auth(admin_session):
-        return _redirect_login()
-    data = await asyncio.to_thread(_aur_user_detail, tg_id)
-    if not data:
-        return HTMLResponse('Пользователь не найден', status_code=404)
-    return render('aurelina_user.html', title=f'Юзер {tg_id}',
-                  pretitle='Aurelina', active='aurelina_users', data=data)

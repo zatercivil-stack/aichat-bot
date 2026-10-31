@@ -23,7 +23,7 @@ recurring card). Если pm_payload не передан (источник = che
 """
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 import structlog
@@ -100,7 +100,7 @@ async def process_succeeded_payment(
         burn_until = None
         if expires_days:
             try:
-                burn_until = datetime.now(timezone.utc) + timedelta(days=int(expires_days))
+                burn_until = datetime.now(UTC) + timedelta(days=int(expires_days))
             except (ValueError, TypeError):
                 burn_until = None
         await add_credits(session, user, credits, burn_expires_at=burn_until)
@@ -133,7 +133,7 @@ async def process_succeeded_payment(
                     logger.info('process_payment: pm saved',
                                 user_id=user.id, pm_id=pm_id[:12])
 
-                expires_str = (datetime.now(timezone.utc) + timedelta(days=30)).strftime('%d.%m.%Y')
+                expires_str = (datetime.now(UTC) + timedelta(days=30)).strftime('%d.%m.%Y')
                 plan_dict = next(
                     (p for p in SUBSCRIPTION_PLANS if p['plan_enum'] == sub_plan), None,
                 )
@@ -183,7 +183,7 @@ async def process_succeeded_payment(
     notice = sub_notice
     if not notice and kind != 'subscription':
         if burn_until:
-            days = max(1, (burn_until - datetime.now(timezone.utc)).days)
+            days = max(1, (burn_until - datetime.now(UTC)).days)
             exp_str = burn_until.strftime('%d.%m.%Y')
             notice = (
                 f'🎉 <b>Оплачено! +{credits:,} срочных кредитов на счёт</b>\n\n'

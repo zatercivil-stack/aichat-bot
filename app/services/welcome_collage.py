@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import io
 import logging
+from datetime import UTC
 
 logger = logging.getLogger(__name__)
 
@@ -46,7 +47,7 @@ _PERIOD_CFG_KEY = 'welcome_collage_period'  # текущее 3-дневное о
 def _current_period() -> int:
     """Номер текущего 3-дневного окна (UTC). Меняется → коллаж пересобирается."""
     from datetime import datetime
-    return datetime.now(timezone.utc).date().toordinal() // _ROTATE_DAYS
+    return datetime.now(UTC).date().toordinal() // _ROTATE_DAYS
 
 
 def _select_presets(period: int) -> list[tuple[str, int]]:

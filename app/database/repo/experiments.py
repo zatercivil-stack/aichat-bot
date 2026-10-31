@@ -7,7 +7,7 @@ from __future__ import annotations
 
 import hashlib
 from collections.abc import Mapping
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import structlog
 from sqlalchemy import func, select
@@ -87,7 +87,7 @@ async def mark_conversion(user_id: int, event: str) -> None:
     from app.database.base import AsyncSessionFactory
     try:
         async with AsyncSessionFactory() as session:
-            now = datetime.now(timezone.utc)
+            now = datetime.now(UTC)
             rows = (await session.execute(
                 select(ExperimentAssignment).where(
                     ExperimentAssignment.user_id == user_id,

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import asyncio
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 import structlog
 from sqlalchemy import func, select, text
@@ -97,7 +97,7 @@ async def get_excluded_user_ids(session: AsyncSession) -> list[int]:
 
 async def get_dashboard_stats(session: AsyncSession) -> dict:
     """All stats needed for admin dashboard overview."""
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     today = now.replace(hour=0, minute=0, second=0, microsecond=0)
     week_ago = today - timedelta(days=7)
     month_ago = today - timedelta(days=30)

@@ -4,7 +4,7 @@ and haven't been active in the last 6h (to not interrupt active sessions).
 """
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 import structlog
 from sqlalchemy import and_, select
@@ -31,7 +31,7 @@ async def run_trial_end_push(bot_instance) -> None:
     """One-shot per user: send conversion push 24h after trial ran out."""
     from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     threshold = now - timedelta(hours=24)
     activity_cutoff = now - timedelta(hours=6)  # пропускаем активных
 

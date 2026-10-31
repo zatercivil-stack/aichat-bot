@@ -71,4 +71,4 @@ Requires external API keys (OpenRouter, fal.ai, YooKassa) for full functionality
 
 ## License
 
-License choice pending (owner decision).
+MIT (see LICENSE).

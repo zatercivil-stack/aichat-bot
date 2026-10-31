@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -40,7 +40,7 @@ async def add_user_message(
     ticket = await session.get(SupportTicket, ticket_id)
     if ticket is not None:
         ticket.status = 'open'
-        ticket.last_user_msg_at = datetime.now(timezone.utc)
+        ticket.last_user_msg_at = datetime.now(UTC)
     await session.flush()
     return msg
 

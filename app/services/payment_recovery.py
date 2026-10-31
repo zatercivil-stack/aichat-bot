@@ -9,7 +9,7 @@ Targets PENDING YooKassa/Platega payments aged 1h–24h. Анти-спам:
 """
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 import structlog
 from sqlalchemy import select
@@ -34,7 +34,7 @@ RECOVERY_COOLDOWN = timedelta(hours=24)
 
 
 async def run_payment_recovery(bot_instance) -> None:
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     # 31.05: было 1ч. Слишком поздно — VPN-абандонеры уходят за минуты, а
     # YooKassa отменяет pending примерно за час → нудж не успевал (платёж уже
     # canceled, из выборки выпал). 20 мин = ловим, пока ещё PENDING и юзер тёплый.

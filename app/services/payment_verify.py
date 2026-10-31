@@ -58,6 +58,33 @@ async def verify_yookassa_payment(yk_payment_id: str, payment_db_id: int) -> boo
                        yk_id=yk_payment_id, expected=payment_db_id, got=meta_db_id)
         return False
 
+    # Локальная запись платежа — сверяем сумму и валюту.
+    from decimal import Decimal
+
+    from app.database.base import AsyncSessionFactory
+    from app.database.repo.payments import get_payment
+    async with AsyncSessionFactory() as session:
+        local = await get_payment(session, payment_db_id)
+    if local is None:
+        logger.warning('verify_yookassa: local payment not found', payment_db_id=payment_db_id)
+        return False
+
+    yk_amount = getattr(payment, 'amount', None)
+    yk_value = getattr(yk_amount, 'value', None)
+    yk_currency = getattr(yk_amount, 'currency', None)
+    try:
+        if yk_value is None or Decimal(str(yk_value)) != Decimal(str(local.amount)):
+            logger.warning('verify_yookassa: amount mismatch',
+                           yk_id=yk_payment_id, expected=str(local.amount), got=str(yk_value))
+            return False
+    except Exception:
+        logger.warning('verify_yookassa: invalid amount', yk_id=yk_payment_id, got=str(yk_value))
+        return False
+    if yk_currency and str(yk_currency).upper() != str(local.currency).upper():
+        logger.warning('verify_yookassa: currency mismatch',
+                       yk_id=yk_payment_id, expected=local.currency, got=yk_currency)
+        return False
+
     logger.info('verify_yookassa: confirmed', yk_id=yk_payment_id,
                 payment_db_id=payment_db_id)
     return True

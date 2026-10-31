@@ -13,7 +13,7 @@
 """
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 import structlog
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
@@ -31,7 +31,7 @@ MIN_BURN_FOR_REMINDER = 100  # если осталось <100 кр — не шл
 
 
 async def run_burn_expiry(bot_instance) -> None:
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     expired_cutoff = now
     pre_burn_cutoff = now + timedelta(days=PRE_BURN_DAYS)
     reminder_cooldown = now - timedelta(days=5)

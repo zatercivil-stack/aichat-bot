@@ -10,6 +10,8 @@ from io import BytesIO
 PHOTO_AUTO_EDIT_TTL_S = 300  # 5 минут
 
 
+from datetime import UTC
+
 import structlog
 from aiogram import F, Router
 from aiogram.filters import Command
@@ -1844,7 +1846,7 @@ async def _get_top_preset_keys(limit: int = 7) -> list[str]:
 
     from app.database.models import BotEvent
     from app.database.repo.events import get_excluded_user_ids
-    cutoff = datetime.now(timezone.utc) - timedelta(days=7)
+    cutoff = datetime.now(UTC) - timedelta(days=7)
     try:
         async with AsyncSessionFactory() as session:
             exclude = await get_excluded_user_ids(session)
@@ -1925,7 +1927,7 @@ def _early_access_days_left(preset_key: str) -> int:
     rel = _EARLY_ACCESS_UNTIL.get(preset_key)
     if not rel:
         return 0
-    secs = (rel - datetime.now(timezone.utc)).total_seconds()
+    secs = (rel - datetime.now(UTC)).total_seconds()
     return max(1, math.ceil(secs / 86400)) if secs > 0 else 1
 
 
@@ -1948,7 +1950,7 @@ async def _user_has_early_access(session, user_db_id: int) -> bool:
             return True
         if exp.tzinfo is None:
             exp = exp.replace(tzinfo=UTC)
-        return exp > datetime.now(timezone.utc)
+        return exp > datetime.now(UTC)
     return await is_paid_user(session, user_db_id)
 
 
@@ -2013,7 +2015,7 @@ async def refresh_fresh_presets(force: bool = False) -> None:
         min_n = await _read_int_config('new_section_min', _NEW_DEFAULT_MIN)
         max_n = await _read_int_config('new_section_max', _NEW_DEFAULT_MAX)
         cap = max(1, max_n or _NEW_DEFAULT_MAX)
-        cutoff = datetime.now(timezone.utc) - timedelta(days=window_days)
+        cutoff = datetime.now(UTC) - timedelta(days=window_days)
         async with AsyncSessionFactory() as session:
             launch_map = await get_launch_map(session)
             preview_keys = set(await list_presets_with_previews(session))
@@ -2035,7 +2037,7 @@ async def refresh_fresh_presets(force: bool = False) -> None:
         ea_enabled = await _read_int_config('early_access_enabled', 1)
         ea_days = await _read_int_config('early_access_days', _EARLY_DEFAULT_DAYS)
         if ea_enabled and ea_days > 0:
-            ea_cutoff = datetime.now(timezone.utc) - timedelta(days=ea_days)
+            ea_cutoff = datetime.now(UTC) - timedelta(days=ea_days)
             ea_until = {}
             for k, ts in launch_map.items():
                 # Только СЦЕНЫ (есть промпт). Утилиты (change_bg/remove_bg,

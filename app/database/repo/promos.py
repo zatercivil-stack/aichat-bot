@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -9,7 +9,7 @@ from app.database.models import PromoCode, PromoRedemption
 
 
 async def get_promo(session: AsyncSession, code: str) -> PromoCode | None:
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     result = await session.execute(
         select(PromoCode).where(
             PromoCode.code == code.upper(),

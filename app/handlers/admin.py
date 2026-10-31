@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import random
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta, timezone
 
 import structlog
 from aiogram import F, Router
@@ -84,7 +84,7 @@ async def ensure_default_promos() -> None:
         # код, кредиты, максимум использований (0 = безлимит), дней до истечения (0 = бессрочно)
         ('СТАРТ149', 500, 0, 30),
     ]
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     async with AsyncSessionFactory() as session:
         for code, credits, max_uses, expire_days in defaults:
             expires_at = (now + timedelta(days=expire_days)) if expire_days > 0 else None
@@ -126,7 +126,7 @@ async def check_yookassa_payments(bot=None) -> None:
         Configuration.account_id = settings.YOOKASSA_SHOP_ID
         Configuration.secret_key = settings.YOOKASSA_SECRET_KEY
 
-        now_utc = datetime.now(timezone.utc)
+        now_utc = datetime.now(UTC)
 
         async with AsyncSessionFactory() as session:
             pending = await get_pending_payments(session)
@@ -520,7 +520,7 @@ async def dispatch_scheduled_broadcasts() -> None:
     from app.database.models import ScheduledBroadcast
     from app.webserver.admin import _do_preset_broadcast
 
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     async with AsyncSessionFactory() as session:
         due = (await session.execute(
             _sel(ScheduledBroadcast).where(
@@ -601,7 +601,7 @@ async def send_daily_push(bot_instance) -> None:
     from app.database.models import BotEvent, User
     from app.database.repo.credits import total_balance
 
-    now = datetime.now(timezone.utc).replace(tzinfo=None)
+    now = datetime.now(UTC).replace(tzinfo=None)
     cutoff_recent = now - timedelta(hours=6)
     cutoff_warm = now - timedelta(hours=48)
     cutoff_cold = now - timedelta(days=7)
@@ -827,7 +827,7 @@ async def dispatch_admin_reminder(bot_instance) -> None:
         due = datetime.fromisoformat(data['send_at_iso'])
         if due.tzinfo is None:
             due = due.replace(tzinfo=UTC)
-        if datetime.now(timezone.utc) < due:
+        if datetime.now(UTC) < due:
             return
     except Exception:
         async with AsyncSessionFactory() as session:
@@ -871,7 +871,7 @@ async def send_mystery_push(bot_instance) -> None:
     if not mystery:
         return
 
-    now = datetime.now(timezone.utc).replace(tzinfo=None)
+    now = datetime.now(UTC).replace(tzinfo=None)
     cutoff = now - timedelta(days=14)
 
     async with AsyncSessionFactory() as session:
@@ -950,7 +950,7 @@ async def send_subscription_expiring_notifications(bot_instance) -> None:
     # 24.05: было utcnow() (naive) — при сравнении с aware Subscription.expires_at
     # PostgreSQL мог отдавать криво или Python кидать TypeError. Все остальные
     # cron-задачи здесь используют aware datetime, выравниваем.
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     in_3_days = now + timedelta(days=3)
 
     async with AsyncSessionFactory() as session:
@@ -1053,7 +1053,7 @@ async def grant_time_bonuses(bot_instance) -> None:
     from app.database.models import BotEvent, User
 
     TIME_BONUS = 200
-    now = datetime.now(timezone.utc).replace(tzinfo=None)
+    now = datetime.now(UTC).replace(tzinfo=None)
     cutoff = now - timedelta(hours=24)
 
     async with AsyncSessionFactory() as session:
@@ -1117,7 +1117,7 @@ async def check_error_spike() -> None:
 
     window_min = 15
     threshold = 5
-    since = datetime.now(timezone.utc) - timedelta(minutes=window_min)
+    since = datetime.now(UTC) - timedelta(minutes=window_min)
     try:
         async with AsyncSessionFactory() as session:
             count = await session.scalar(
@@ -1130,7 +1130,7 @@ async def check_error_spike() -> None:
             async with AsyncSessionFactory() as session:
                 last_str = await get_config_value(session, 'last_error_alert_at') or '0'
                 last_ts = int(last_str) if last_str.isdigit() else 0
-                now_ts = int(datetime.now(timezone.utc).timestamp())
+                now_ts = int(datetime.now(UTC).timestamp())
                 if now_ts - last_ts >= 3600:  # 1h between alerts
                     await alert_error_spike('error', int(count), window_min)
                     await set_config_value(session, 'last_error_alert_at', str(now_ts))
@@ -1724,7 +1724,7 @@ async def grant_daily_to_subscribers(bot_instance=None) -> None:
     from app.database.models import Plan, Subscription, User
     from app.database.repo.credits import grant_daily_if_needed
 
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     granted_users = 0
     granted_credits = 0
     async with AsyncSessionFactory() as session:
@@ -2029,7 +2029,7 @@ async def cmd_addpromo(message: Message) -> None:
         await message.answer('❌ Количество кредитов должно быть больше 0.')
         return
 
-    expires_at = datetime.now(timezone.utc) + timedelta(days=expire_days) if expire_days > 0 else None
+    expires_at = datetime.now(UTC) + timedelta(days=expire_days) if expire_days > 0 else None
 
     from app.database.repo.promos import create_promo
     async with AsyncSessionFactory() as session:

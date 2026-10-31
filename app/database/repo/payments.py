@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from decimal import Decimal
 
 from sqlalchemy import select
@@ -53,7 +53,7 @@ async def update_payment(
     if not payment:
         return None
     payment.status = status
-    payment.updated_at = datetime.now(timezone.utc)
+    payment.updated_at = datetime.now(UTC)
     if external_id:
         payment.external_id = external_id
     await session.flush()

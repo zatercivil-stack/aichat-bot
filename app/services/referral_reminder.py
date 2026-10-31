@@ -4,7 +4,7 @@
 реферал до выплаты (= рост базы бесплатно)."""
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta, timezone
 from urllib.parse import quote
 
 import structlog
@@ -38,7 +38,7 @@ async def _current_reward() -> tuple[int, datetime | None]:
                 bu = datetime.fromisoformat(bu_raw)
                 if bu.tzinfo is None:
                     bu = bu.replace(tzinfo=UTC)
-                if datetime.now(timezone.utc) <= bu:
+                if datetime.now(UTC) <= bu:
                     amt = (await get_config_value(s, 'referral_boost_amount') or '500').strip()
                     amount = max(REFERRAL_BONUS, int(amt))
                     until = bu
@@ -82,7 +82,7 @@ def _text(amount: int, until: datetime | None = None) -> str:
 
 
 async def send_referral_stall_reminders(bot) -> None:
-    msk_hour = (datetime.now(timezone.utc) + timedelta(hours=3)).hour
+    msk_hour = (datetime.now(UTC) + timedelta(hours=3)).hour
     if msk_hour < 9 or msk_hour >= 23:
         return
     try:

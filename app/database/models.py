@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import enum
-from datetime import date, datetime, timezone
+from datetime import UTC, date, datetime
 from decimal import Decimal
 
 from sqlalchemy import (
@@ -93,7 +93,7 @@ class User(Base):
             exp = self.burn_expires_at
             if exp.tzinfo is None:
                 exp = exp.replace(tzinfo=UTC)
-            if exp <= datetime.now(timezone.utc):
+            if exp <= datetime.now(UTC):
                 return 0
         return burn
 

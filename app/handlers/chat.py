@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import UTC
 
 import structlog
 from aiogram import F, Router
@@ -230,7 +231,7 @@ async def _maybe_grant_referral_bonus(redis, user_tg_id: int, bot) -> None:
         return
     await redis.delete(key)
     referrer_id = int(referrer_id_bytes)
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     burn_until = now + timedelta(days=REFERRAL_BURN_DAYS)
     new_count = 0
     from app.database.repo.bot_config import get_config_value

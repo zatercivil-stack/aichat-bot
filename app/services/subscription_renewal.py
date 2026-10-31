@@ -13,7 +13,7 @@
 from __future__ import annotations
 
 import uuid
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 
 import structlog
@@ -62,7 +62,7 @@ async def _send_pre_charge_notice(bot, user_tg_id: int, plan_name: str,
             icon_custom_emoji_id=PE_CALENDAR,
         )],
     ])
-    days = max(1, (expires_at - datetime.now(timezone.utc)).days)
+    days = max(1, (expires_at - datetime.now(UTC)).days)
     await bot.send_message(
         user_tg_id,
         f'🔁 <b>Подписка {plan_name} автоматически продлится через {days} дн.</b>\n\n'
@@ -146,7 +146,7 @@ async def _attempt_recurring_charge(
 
 async def run_subscription_renewals(bot) -> None:
     """Главная точка входа шедулера. Запускается раз в день."""
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     remind_cutoff = now + timedelta(days=REMIND_DAYS_BEFORE)
 
     notified = renewed = failed = disabled = 0

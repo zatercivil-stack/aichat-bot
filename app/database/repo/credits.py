@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -214,7 +214,7 @@ def _clean_expired_burn(user: User) -> None:
         exp = user.burn_expires_at
         if exp.tzinfo is None:
             exp = exp.replace(tzinfo=UTC)
-        if exp < datetime.now(timezone.utc):
+        if exp < datetime.now(UTC):
             user.burn_credits = 0
             user.burn_expires_at = None
             user.burn_reminded_at = None
@@ -311,7 +311,7 @@ async def grant_welcome(session: AsyncSession, user: User) -> int:
         burn_days = max(0, int(burn_raw))
     except ValueError:
         burn_days = 7
-    burn_until = (datetime.now(timezone.utc) + timedelta(days=burn_days)
+    burn_until = (datetime.now(UTC) + timedelta(days=burn_days)
                   if burn_days > 0 else None)
     await add_credits(session, user, amount, burn_expires_at=burn_until)
     return amount

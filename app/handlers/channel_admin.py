@@ -4,7 +4,7 @@ import json
 import random
 import re
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import structlog
 from aiogram import F, Router
@@ -221,8 +221,8 @@ async def _publish_post(bot, data: dict) -> int:
         await s.execute(sql_insert(ChannelPost).values(
             topic=data.get('topic', 'manual'), body=caption,
             cta_type=data.get('cta_type', 'neira_plain'),
-            scheduled_at=datetime.now(timezone.utc),
-            published_at=datetime.now(timezone.utc),
+            scheduled_at=datetime.now(UTC),
+            published_at=datetime.now(UTC),
             message_id=sent.message_id, status='published',
         ))
         await s.commit()

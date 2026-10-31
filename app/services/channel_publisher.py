@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import random
 import re
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import structlog
 from aiogram import Bot
@@ -487,21 +487,11 @@ NEYRA_CHANNEL_FEATURE_PROMO = 'CHAN_FEAT'       # фишечные посты С
 def _neyra_link(promo_code: str) -> str:
     return f'https://t.me/NeyraChatBot?start=promo_{promo_code}'
 
-def _aurum_link(source: str) -> str:
-    """Прямая deep-link на Aurum-бот. Aurum-сторона ловит source в /start args,
-    записывает в users.traffic_source + логирует event 'traffic_landed' в events.
-    Видно в БД Aurum: SELECT traffic_source, COUNT(*) FROM users GROUP BY traffic_source."""
-    return f'https://t.me/Shop_Aurum_Bot?start={source}'
-
-
 # CTA footer options for DAILY posts (evening): random rotation, mild promo.
 # 24.05: усилены — активный глагол («забрать», «получить»), конкретный
 # результат-обещание, бонус как награда. Раньше был мягкий «попробовать»,
 # что плохо конвертит. Сильнее цеплять = больше кликов = больше выручки.
 _CTA_OPTIONS_DAILY: list[tuple[str, str | None]] = [
-    ("aurum_daily",
-     "—\n🛡 <a href=\"" + _aurum_link('chan_daily') +
-     "\">VPN, который не палится — Aurum</a>"),
     ("neira_daily",
      "—\n🎁 <a href=\"" + _neyra_link(NEYRA_CHANNEL_DAILY_PROMO) +
      "\"><b>Забрать +50 кр и сделать это фото со своим лицом → в Нейре</b></a>"),
@@ -559,7 +549,7 @@ def _cta_for_topic(topic: str) -> tuple[str, str | None]:
     """
     category = _topic_category(topic)
     if category in ('vpn', 'privacy'):
-        return _CTA_OPTIONS_DAILY[0]  # aurum_daily
+        return _CTA_OPTIONS_DAILY[0]  # neira_daily
     # Все остальные категории (neyra/ai/other) → Нейра. CTA `none` больше не
     # выпадает автоматически — рекламный слот всегда занят своей воронкой.
     return _CTA_OPTIONS_DAILY[1]  # neira_daily
@@ -649,7 +639,7 @@ async def _maybe_inject_secret_promo(post_text: str) -> str:
 
         from app.database.models import PromoCode
         code = f'SECRET{random.randint(1000, 9999)}'
-        expires = datetime.now(timezone.utc) + timedelta(hours=SECRET_PROMO_TTL_HOURS)
+        expires = datetime.now(UTC) + timedelta(hours=SECRET_PROMO_TTL_HOURS)
         async with AsyncSessionFactory() as session:
             session.add(PromoCode(
                 code=code, credits=SECRET_PROMO_CREDITS,
@@ -831,7 +821,7 @@ async def _pick_topic(mode: str = 'daily') -> str:
     else:
         # МСК = UTC+3. Используем naive datetime + offset чтобы не тянуть pytz.
         from datetime import timedelta as _td
-        weekday = (datetime.now(timezone.utc) + _td(hours=3)).weekday()
+        weekday = (datetime.now(UTC) + _td(hours=3)).weekday()
         pillar = _WEEKDAY_PILLARS.get(weekday, 'vpn')
         pool = TOPICS_BY_PILLAR.get(pillar) or CHANNEL_TOPICS
         recent_key = 'channel_recent_topics'
@@ -905,7 +895,7 @@ async def publish_pending_channel_post(bot) -> None:
         pub_at = datetime.fromisoformat(data["publish_at_iso"])
         if pub_at.tzinfo is None:
             pub_at = pub_at.replace(tzinfo=UTC)
-        if datetime.now(timezone.utc) < pub_at:
+        if datetime.now(UTC) < pub_at:
             return  # ещё не время
     except Exception as exc:
         logger.error("pending_channel_post: bad config, clearing", error=str(exc)[:200])
@@ -934,7 +924,7 @@ async def publish_pending_channel_post(bot) -> None:
             await session.execute(sql_insert(ChannelPost).values(
                 topic=data.get("topic", "Showcase новинок"), body=caption,
                 cta_type="neyra", scheduled_at=pub_at,
-                published_at=datetime.now(timezone.utc),
+                published_at=datetime.now(UTC),
                 message_id=sent.message_id, status="published",
             ))
             await set_config_value(session, "pending_channel_post", "")
@@ -978,7 +968,7 @@ async def _create_post_promo(
             session.add(PromoCode(
                 code=code, credits=credits, max_uses=0, used_count=0,
                 is_active=True,
-                expires_at=datetime.now(timezone.utc) + _td(days=ttl_days),
+                expires_at=datetime.now(UTC) + _td(days=ttl_days),
             ))
             await session.commit()
         return code
@@ -1318,7 +1308,7 @@ async def generate_and_publish(
 
     from app.database.models import ChannelPost
 
-    scheduled_at = datetime.now(timezone.utc)
+    scheduled_at = datetime.now(UTC)
     chosen_topic = topic or await _pick_topic(mode=mode)
 
     # Insert pending record (cta_type заполним после _build_post)
@@ -1359,7 +1349,7 @@ async def generate_and_publish(
                 reply_markup=reply_markup, disable_notification=True,
             )
         message_id = sent.message_id
-        published_at = datetime.now(timezone.utc)
+        published_at = datetime.now(UTC)
 
         # Update record to published
         async with AsyncSessionFactory() as session:
@@ -1442,7 +1432,7 @@ async def run_scheduled_post(bot: Bot) -> None:
                     topic="[skipped by admin]",
                     body="",
                     cta_type="none",
-                    scheduled_at=datetime.now(timezone.utc),
+                    scheduled_at=datetime.now(UTC),
                     status="skipped",
                 )
             )

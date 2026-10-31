@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -17,7 +17,7 @@ async def get_user_plan(session: AsyncSession, user_id: int) -> Plan:
     sub = await get_subscription(session, user_id)
     if not sub:
         return Plan.FREE
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     if sub.plan == Plan.FREE:
         return Plan.FREE
     if sub.expires_at and sub.expires_at < now:
@@ -40,7 +40,7 @@ async def activate_subscription(
         sub.plan = plan
         sub.expires_at = expires_at
         sub.is_active = True
-        sub.updated_at = datetime.now(timezone.utc)
+        sub.updated_at = datetime.now(UTC)
     else:
         sub = Subscription(user_id=user_id, plan=plan, expires_at=expires_at, is_active=True)
         session.add(sub)
@@ -97,7 +97,7 @@ async def extend_subscription(
 
 async def count_by_plan(session: AsyncSession) -> dict[str, int]:
     from sqlalchemy import func
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     result = await session.execute(
         select(Subscription.plan, func.count())
         .where(Subscription.is_active)
