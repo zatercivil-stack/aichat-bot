@@ -1,25 +1,8 @@
-"""Общая логика «успешного платежа» для всех источников активации.
+"""Единая транзакция активации платежа для webhook, поллинга и админ-команды.
 
-Источники активации одного и того же платежа:
-  1. webhook от YooKassa (моментальный путь, requires публичный URL)
-  2. periodic payment checker (`check_yookassa_payments`) — поллинг каждую
-     минуту, fallback на случай когда webhook потерян
-  3. админ-команда `/complete_pending` для ручной активации
-
-До рефакторинга 2026-05-17 эти 3 пути имели разные имплементации:
-- webhook делал ВСЁ правильно (кредиты + sub + payment_method + уведомление)
-- checker зачислял ТОЛЬКО кредиты и пропускал subscription-платежи целиком
-  (фильтр `payment_method != 'yookassa'` исключал `yookassa_sub`)
-- ручная команда — только credits
-
-В итоге если webhook не приходил (а такое бывает: нет публичного URL, RKN
-блочит YooKassa, временная сеть) — подписки **не активировались никогда**.
-Юзер платил и не получал услугу. Инцидент с user_id=67, payment_id=20.
-
-Эта функция — единая точка правды. Принимает payment_id + опциональный
-`pm_payload` (объект с payment_method из webhook-payload — нужен для сохранения
-recurring card). Если pm_payload не передан (источник = checker) — sub
-активируется, но без auto_renew.
+Платёж блокируется для защиты от повторной обработки, пользователь — для
+сериализации разных покупок и изменений баланса. Уведомления отправляются
+после commit. Без сохранённого payment_method подписка работает без автопродления.
 """
 
 from __future__ import annotations
@@ -31,11 +14,10 @@ import structlog
 from sqlalchemy import update as sa_update
 
 from app.database.base import AsyncSessionFactory
-from app.database.models import Payment, PaymentStatus, Subscription
+from app.database.models import Payment, PaymentStatus, Subscription, User
 from app.database.repo.credits import SUBSCRIPTION_PLANS, add_credits
 from app.database.repo.payments import update_payment
 from app.database.repo.subscriptions import extend_subscription
-from app.database.repo.users import get_user
 
 logger = structlog.get_logger(__name__)
 
@@ -96,7 +78,12 @@ async def process_succeeded_payment(
             )
             return False
 
-        user = await get_user(session, int(user_tg_id))
+        user = await session.scalar(
+            _sel(User)
+            .where(User.id == payment.user_id, User.telegram_id == int(user_tg_id))
+            .with_for_update()
+            .execution_options(populate_existing=True)
+        )
         if not user:
             logger.error(
                 "process_payment: user not found",
@@ -121,7 +108,7 @@ async def process_succeeded_payment(
             sub_plan = payment.extra.get("sub_plan")
             plan_name = payment.extra.get("plan_name", sub_plan or "PRO")
             try:
-                await extend_subscription(session, user.id, sub_plan, days=30)
+                subscription = await extend_subscription(session, user.id, sub_plan, days=30)
                 # Recurring card — только если webhook передал pm_payload с saved=True
                 pm_id = None
                 pm_saved = False
@@ -142,7 +129,7 @@ async def process_succeeded_payment(
                     )
                     logger.info("process_payment: pm saved", user_id=user.id, pm_id=pm_id[:12])
 
-                expires_str = (datetime.now(UTC) + timedelta(days=30)).strftime("%d.%m.%Y")
+                expires_str = subscription.expires_at.strftime("%d.%m.%Y")
                 plan_dict = next(
                     (p for p in SUBSCRIPTION_PLANS if p["plan_enum"] == sub_plan),
                     None,

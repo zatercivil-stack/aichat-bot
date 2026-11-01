@@ -290,7 +290,7 @@ async def get_dashboard_stats(session: AsyncSession) -> dict:
         await session.scalar(
             select(func.count())
             .select_from(User)
-            .where(User.id.notin_(exclude_uids), not User.is_banned)
+            .where(User.id.notin_(exclude_uids), User.is_banned.is_(False))
         )
         or 0
     )

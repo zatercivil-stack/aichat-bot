@@ -1,4 +1,4 @@
-FROM python:3.12-slim
+FROM python:3.12-slim AS base
 WORKDIR /app
 RUN apt-get update && apt-get install -y --no-install-recommends \
     ffmpeg \
@@ -8,7 +8,16 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
  && groupadd -r app && useradd -r -g app app
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
-COPY . .
+FROM base AS test
+ENV PYTEST_ADDOPTS="-o cache_dir=/tmp/pytest-cache"
+COPY requirements-dev.txt .
+RUN pip install --no-cache-dir -r requirements-dev.txt
+COPY --chown=app:app . .
+USER app
+CMD ["pytest"]
+
+FROM base AS runtime
+COPY --chown=app:app . .
 RUN chown -R app:app /app
 USER app
 HEALTHCHECK --interval=30s --timeout=5s --start-period=30s --retries=3 \

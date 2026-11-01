@@ -52,7 +52,7 @@ async def run_payment_recovery(bot_instance) -> None:
                 .where(
                     Payment.status == PaymentStatus.PENDING,
                     Payment.created_at < too_recent,
-                    not User.is_banned,
+                    User.is_banned.is_(False),
                 )
                 .order_by(Payment.user_id, Payment.created_at.desc())
                 .limit(500)

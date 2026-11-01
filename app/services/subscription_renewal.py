@@ -174,7 +174,7 @@ async def run_subscription_renewals(bot) -> None:
                 Subscription.is_active,
                 Subscription.expires_at.isnot(None),
                 Subscription.expires_at <= remind_cutoff,
-                not User.is_banned,
+                User.is_banned.is_(False),
             )
         )
         rows = result.all()

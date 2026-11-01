@@ -1,13 +1,4 @@
-"""Тесты безопасности админ-панели: парсинг реального IP, проверка токена,
-рейт-лимит входа, ротация токена.
-
-Запуск в контейнере:
-    docker compose exec bot sh -c "pip install -q pytest pytest-asyncio && \\
-        python -m pytest tests/test_admin_security.py -v"
-
-Часть тестов — интеграционные (реальные Redis/БД); они используют изолированные
-тестовые ключи/значения и ЗА СОБОЙ УБИРАЮТ (не трогают прод-состояние).
-"""
+"""Admin security checks against disposable test services only."""
 
 import pytest
 
@@ -30,7 +21,9 @@ class _FakeReq:
     "headers, client_host, expected",
     [
         ({"x-forwarded-for": "5.6.7.8"}, "127.0.0.1", "5.6.7.8"),
-        ({"x-forwarded-for": "5.6.7.8, 9.9.9.9"}, "127.0.0.1", "5.6.7.8"),
+        ({"x-forwarded-for": "5.6.7.8, 9.9.9.9"}, "127.0.0.1", "9.9.9.9"),
+        ({"x-forwarded-for": "127.0.0.1"}, "203.0.113.5", "203.0.113.5"),
+        ({"x-real-ip": "127.0.0.1"}, "203.0.113.5", "203.0.113.5"),
         ({"x-real-ip": "1.2.3.4"}, "127.0.0.1", "1.2.3.4"),
         ({}, "203.0.113.5", "203.0.113.5"),
         ({}, None, "unknown"),

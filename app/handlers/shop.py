@@ -11,7 +11,7 @@ from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMar
 from app.config import settings
 from app.database.base import AsyncSessionFactory
 from app.database.models import PaymentStatus, Plan
-from app.database.repo.credits import add_credits, get_pack_by_id
+from app.database.repo.credits import get_pack_by_id
 from app.database.repo.payments import create_payment, get_pending_payments, update_payment
 from app.database.repo.users import get_user
 from app.keyboards.main import PE_CARD
@@ -251,27 +251,19 @@ async def cb_complete_pending(callback: CallbackQuery) -> None:
         await callback.answer("❌ Нет доступа", show_alert=True)
         return
 
+    from app.services.payment_processing import process_succeeded_payment
+
     async with AsyncSessionFactory() as session:
         pending = await get_pending_payments(session)
-        if not pending:
-            await callback.answer("Нет висящих платежей", show_alert=True)
-            return
+    if not pending:
+        await callback.answer("Нет висящих платежей", show_alert=True)
+        return
 
-        completed = 0
-        for p in pending:
-            credits = p.extra.get("credits", 0)
-            user_tg_id = p.extra.get("user_tg_id")
-            if credits and user_tg_id:
-                user = await get_user(session, int(user_tg_id))
-                if user:
-                    await add_credits(session, user, credits)
-                    await update_payment(
-                        session, p.id, PaymentStatus.SUCCEEDED, external_id="manual"
-                    )
-                    completed += 1
-        await session.commit()
-
-    await callback.message.answer(f"✅ Завершено {completed} платежей, кредиты зачислены.")
+    completed = 0
+    for payment in pending:
+        if await process_succeeded_payment(payment.id, bot=callback.bot):
+            completed += 1
+    await callback.message.answer(f"✅ Активировано {completed} платежей.")
     await callback.answer()
 
 

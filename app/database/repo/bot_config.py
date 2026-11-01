@@ -75,7 +75,7 @@ DEFAULT_CONFIG: dict[str, tuple[str, str]] = {
     # Social proof — короткая строка для повышения доверия в welcome.
     # Редактируется в /admin/texts. Пустая строка отключает её.
     "text_social_proof": (
-        "🌟 <b>Уже пользуются 13 000+ человек</b> — присоединяйся",
+        "🪄 Выбери сцену и создай фото со своим лицом",
         "Social proof line shown above welcome (HTML, empty to hide)",
     ),
 }

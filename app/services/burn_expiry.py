@@ -48,7 +48,7 @@ async def run_burn_expiry(bot_instance) -> None:
                         User.burn_expires_at.isnot(None),
                         User.burn_expires_at < expired_cutoff,
                         User.burn_credits > 0,
-                        not User.is_banned,
+                        User.is_banned.is_(False),
                     )
                 )
             )
@@ -106,7 +106,7 @@ async def run_burn_expiry(bot_instance) -> None:
                         User.burn_expires_at > expired_cutoff,
                         User.burn_expires_at < pre_burn_cutoff,
                         User.burn_credits >= MIN_BURN_FOR_REMINDER,
-                        not User.is_banned,
+                        User.is_banned.is_(False),
                     )
                 )
             )

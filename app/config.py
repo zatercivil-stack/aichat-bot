@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from zoneinfo import ZoneInfo
 
-from pydantic_settings import BaseSettings
+from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
@@ -73,9 +73,7 @@ class Settings(BaseSettings):
     # Misc
     TIMEZONE: str = "Europe/Moscow"
 
-    class Config:
-        env_file = ".env"
-        extra = "ignore"
+    model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
     @property
     def admin_ids_list(self) -> list[int]:

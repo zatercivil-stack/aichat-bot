@@ -91,7 +91,7 @@ async def verify_yookassa_payment(yk_payment_id: str, payment_db_id: int) -> boo
     except Exception:
         logger.warning("verify_yookassa: invalid amount", yk_id=yk_payment_id, got=str(yk_value))
         return False
-    if yk_currency and str(yk_currency).upper() != str(local.currency).upper():
+    if not yk_currency or str(yk_currency).upper() != str(local.currency).upper():
         logger.warning(
             "verify_yookassa: currency mismatch",
             yk_id=yk_payment_id,

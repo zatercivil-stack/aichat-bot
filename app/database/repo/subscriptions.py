@@ -57,18 +57,15 @@ async def extend_subscription(
 ) -> Subscription:
     """Активирует/продлевает подписку. Если уже активна — добавляет days к expires_at."""
     sub = await get_subscription(session, user_id)
-    now = datetime.utcnow()
+    now = datetime.now(UTC)
     plan_enum = Plan(plan_str)
 
     if sub and sub.is_active and sub.expires_at:
-        # Нормализация tz: получаем naive datetime для сравнения
         sub_expires = sub.expires_at
-        if sub_expires.tzinfo is not None:
-            sub_expires_cmp = sub_expires.replace(tzinfo=None)
-        else:
-            sub_expires_cmp = sub_expires
+        if sub_expires.tzinfo is None:
+            sub_expires = sub_expires.replace(tzinfo=UTC)
 
-        if sub_expires_cmp > now:
+        if sub_expires > now:
             # Активна — продлеваем от текущего expires_at
             sub.expires_at = sub_expires + timedelta(days=days)
             sub.plan = plan_enum
@@ -102,7 +99,7 @@ async def count_by_plan(session: AsyncSession) -> dict[str, int]:
     result = await session.execute(
         select(Subscription.plan, func.count())
         .where(Subscription.is_active)
-        .where((Subscription.expires_at is None) | (Subscription.expires_at > now))
+        .where((Subscription.expires_at.is_(None)) | (Subscription.expires_at > now))
         .group_by(Subscription.plan)
     )
     return {row[0].value: row[1] for row in result}

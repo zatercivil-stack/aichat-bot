@@ -1,73 +1,95 @@
-# Neyra — AI-фото бот
+# Neyra — автоматизация AI-сервиса в Telegram
 
-Асинхронное Telegram-приложение: пользователь отправляет селфи, выбирает сцену/пресет и получает фото с сохранённым лицом в новой сцене. Включает систему кредитов, подписки, платежи через YooKassa, реферальную программу и собственную административную панель на FastAPI.
+[![CI](https://github.com/zatercivil-stack/aichat-bot/actions/workflows/ci.yml/badge.svg)](https://github.com/zatercivil-stack/aichat-bot/actions/workflows/ci.yml)
 
-## Возможности
+Telegram-сервис для генерации и редактирования изображений. Пользователь отправляет селфи, выбирает сцену и получает результат; приложение управляет AI-запросами, кредитами, оплатой и подписками. Оператор работает через административную панель на FastAPI.
 
-- Мультипровайдерная генерация и редактирование изображений (fal.ai, OpenRouter)
-- Система кредитов: сгораемые (burn) и вечные пулы
-- Подписки с автопродлением через сохранённый платёжный метод
-- Платежи YooKassa (webhook + поллинг) с серверной верификацией суммы и валюты
-- Платежи через Telegram Stars и CryptoBot
-- Админ-панель (FastAPI + Jinja): авторизация, CSRF, rate limit
-- Аналитика: когорты, тепловые карты, эксперименты, финансы
-- Планировщик публикаций в канал @conturD
-- Реферальная система с кэшбэком
+**[Открыть бота](https://t.me/NeyraChatBot) · [Кейс автоматизации](docs/CASE_STUDY.md) · [Демонстрация](docs/DEMO.md) · [Архитектура](docs/ARCHITECTURE.md)**
 
-## Технологический стек
+## Зачем этот проект
 
-Backend: Python 3.12, aiogram 3, FastAPI, SQLAlchemy 2 (async), Alembic, PostgreSQL 16, Redis 7.
-AI: fal.ai, OpenRouter, OpenAI.
-Платежи: YooKassa, Telegram Stars, CryptoBot.
-Инфраструктура: Docker Compose, GitHub Actions CI.
+Проект показывает реализацию полного процесса оказания цифровой услуги: от пользовательского запроса и обращения к внешним API до оплаты, выдачи результата и операционной аналитики. Основные задачи автоматизации:
 
-## Архитектура
+| Процесс | Что делает система | Где реализовано |
+| --- | --- | --- |
+| Оказание AI-услуги | Принимает фото и настройки, вызывает AI-провайдера, учитывает кредиты и обрабатывает ошибки | [Обработка изображений](app/handlers/image_edit.py), [AI-интеграции](app/services/image_edit_service.py) |
+| Автоматическая выдача покупки | Проверяет платёж через API, начисляет кредиты и активирует подписку; повтор одного платежа не повторяет начисление | [Верификация](app/services/payment_verify.py), [транзакция активации](app/services/payment_processing.py) |
+| Повторные коммуникации | Выбирает пользователей для напоминаний об оплате, окончании пробного периода и сроке кредитов | [Оплаты](app/services/payment_recovery.py), [пробный период](app/services/trial_conversion.py), [срок кредитов](app/services/burn_expiry.py) |
+| Подписки | Предупреждает об автопродлении, обрабатывает продление и неудачные попытки | [Подписки](app/services/subscription_renewal.py) |
+| Работа оператора | Управление пользователями, ценами, пресетами, рассылками; финансовые отчёты и аудит действий | [Админ-панель](app/webserver/admin.py) |
 
-См. `docs/ARCHITECTURE.md`. Упрощённая схема:
+Это демонстрация прикладных компетенций для автоматизации бизнес-процессов и внедрения ИИ: API-интеграции, правила обработки событий, фоновые задачи, надёжность финансовых операций и интерфейс оператора. Измеренный рост выручки или экономия времени в репозитории не заявляются.
+
+## Посмотреть за несколько минут
+
+- Пользовательский сценарий: [@NeyraChatBot](https://t.me/NeyraChatBot), команды `/start`, `/edit`, `/status`, `/sub`. Это внешний сервис, для взаимодействия нужен Telegram; доступность и тарифы могут меняться.
+- Панель оператора: [скриншот финансовой панели](docs/assets/finance-demo.png) на синтетических данных; это пример интерфейса, а не показатели работающего сервиса.
+- Повторяемая техническая проверка без Telegram и платёжных ключей:
+
+```bash
+docker compose -f compose.test.yml run --build --rm test
+docker compose -f compose.test.yml down
+```
+
+Тестовый контур использует Python 3.12, отдельные PostgreSQL и Redis без опубликованных портов и рабочих данных. Команда применяет все миграции и запускает тесты. Нужны Docker Compose v2+ и интернет для первой сборки.
+
+![Финансовая панель Neyra — синтетические демонстрационные данные](docs/assets/finance-demo.png)
+
+## Технологии и устройство
+
+Python 3.12 · aiogram 3 · FastAPI/Jinja · SQLAlchemy 2 async · Alembic · PostgreSQL 16 · Redis 7 · Docker Compose · GitHub Actions.
+
+AI-провайдеры: fal.ai, OpenRouter, OpenAI. Платёжные интеграции: YooKassa, Telegram Stars, CryptoBot. Доступность конкретных внешних моделей зависит от провайдеров.
 
 ```mermaid
 flowchart LR
-  TG[Telegram] --> Bot[aiogram Dispatcher]
-  Bot --> Svc[Services]
-  Svc --> DB[(PostgreSQL)]
-  Svc --> Redis[(Redis)]
-  Svc --> AI[AI Providers]
-  YK[YooKassa] --> WH[FastAPI webhook]
-  WH --> Svc
-  Admin[Браузер админа] --> AD[FastAPI admin]
-  AD --> DB
+    User[Пользователь Telegram] --> Bot[aiogram: команды и состояния]
+    Bot --> Services[Бизнес-логика]
+    Services --> AI[AI-провайдеры]
+    Services --> DB[(PostgreSQL)]
+    Services --> Redis[(Redis)]
+    YooKassa[YooKassa] --> Webhook[FastAPI webhook]
+    Webhook --> Verify[Проверка через API]
+    Verify --> Services
+    Scheduler[Планировщик] --> Services
+    Operator[Оператор] --> Admin[FastAPI: административная панель]
+    Admin --> DB
 ```
 
-## Структура проекта
+Бот, планировщик и веб-сервер работают в одном процессе. Это упрощает развёртывание; горизонтальное масштабирование потребует отдельного управления фоновыми задачами. Подробнее — [архитектура и ограничения](docs/ARCHITECTURE.md).
 
-- `app/` — код приложения
-- `migrations/` — миграции Alembic
-- `tests/` — тесты pytest
-- `docs/` — техническая документация
+## Запуск приложения
 
-## Локальный запуск
+```bash
+git clone https://github.com/zatercivil-stack/aichat-bot.git
+cd aichat-bot
+cp .env.example .env
+```
 
-1. Клонировать репозиторий.
-2. `cp .env.example .env`, заполнить значения; для локального запуска `ENV=development`.
-3. `docker compose up -d postgres redis`
-4. `pip install -r requirements.txt -r requirements-dev.txt`
-5. `python main.py` (миграции применяются автоматически)
-6. `pytest`
+Заполните `.env`: реальный `BOT_TOKEN`, ключи нужных AI-провайдеров, пароль БД, `ADMIN_TOKEN` и `ADMIN_SECRET_KEY`. Секреты админки можно создать командой `python -c "import secrets; print(secrets.token_urlsafe(32))"`. Затем:
 
-## Конфигурация
+```bash
+docker compose up --build -d
+docker compose logs -f bot
+```
 
-См. `.env.example`. Ключевые переменные: `BOT_TOKEN`, `OPENROUTER_API_KEY`, `POSTGRES_*`, `REDIS_URL`, `ADMIN_TOKEN`, `ADMIN_SECRET_KEY`, `ADMIN_BASE_URL`, `YOOKASSA_*`.
+В контейнерах оставьте `POSTGRES_HOST=postgres` и `REDIS_URL=redis://redis:6379/0`. Миграции применяются при старте. Для production установите `ENV=production` и настройте HTTPS reverse proxy; HTTP-порт приложения опубликован только на `127.0.0.1:8181`. Админка использует Secure-cookie и предназначена для HTTPS. Платёжные webhook и автопродление требуют настройки YooKassa; без ключей соответствующие интеграции недоступны.
 
-`ADMIN_TOKEN` и `ADMIN_SECRET_KEY` должны быть стойкими (>=16 символов) в production; слабые/пустые значения отклоняются.
+Запуск Python на хосте, настройки тестов и генерация демонстрации описаны в [руководстве разработчика](docs/DEVELOPMENT.md).
 
-## Тестирование
+## Проверки качества
 
-`pytest` запускает unit-тесты. Интеграционные тесты требуют PostgreSQL и Redis (см. CI).
+CI проверяет Ruff, форматирование, применение миграций и pytest; отдельно собирает рабочий Docker-образ. Регрессионные тесты покрывают отбор получателей автоматических коммуникаций, начисление и списание кредитов при конкуренции, повторную обработку платежей, откат неудачной активации подписки и безопасность админки.
 
-## Ограничения
+Внешние AI- и платёжные API в тестах не вызываются: успешная сборка и тесты подтверждают проверяемые сценарии приложения, но не доступность внешних сервисов и качество генераций. См. [безопасность](docs/SECURITY.md).
 
-Для полной функциональности нужны внешние API-ключи (OpenRouter, fal.ai, YooKassa). Без них ядро бота запускается в режиме разработки.
+## Структура
 
-## Лицензия
+- `app/handlers/` — команды Telegram и пользовательские состояния.
+- `app/services/` — автоматизация и внешние API.
+- `app/database/` — модели и запросы к данным.
+- `app/webserver/` — административная панель и webhook.
+- `migrations/` — история схемы БД.
+- `tests/` — регрессионные проверки; `docs/` — кейс, демонстрация и техническая документация.
 
-MIT (см. LICENSE).
+Лицензия: [MIT](LICENSE).

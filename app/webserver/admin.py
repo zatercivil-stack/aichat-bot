@@ -866,7 +866,9 @@ async def users_bulk(request: Request, admin_session: str | None = Cookie(defaul
             tg_ids = (
                 (
                     await session.execute(
-                        select(User.telegram_id).where(User.id.in_(user_ids), not User.is_banned)
+                        select(User.telegram_id).where(
+                            User.id.in_(user_ids), User.is_banned.is_(False)
+                        )
                     )
                 )
                 .scalars()
@@ -1073,7 +1075,7 @@ async def texts_page(admin_session: str | None = Cookie(default=None), msg: str 
             "text_social_proof",
             "🌟 Социальное доказательство (над welcome)",
             "Короткая строка над приветствием. Пусто = скрыть.",
-            "🌟 <b>Уже пользуются 13 000+ человек</b> — присоединяйся",
+            "🪄 Выбери сцену и создай фото со своим лицом",
         ),
         (
             "text_welcome",
@@ -1130,7 +1132,7 @@ async def broadcast_page(admin_session: str | None = Cookie(default=None), msg: 
 
     async with AsyncSessionFactory() as session:
         total = await session.scalar(
-            select(func.count()).select_from(User).where(not User.is_banned)
+            select(func.count()).select_from(User).where(User.is_banned.is_(False))
         )
         test_user = (await get_config_value(session, "test_broadcast_username") or "grelok").lstrip(
             "@"
@@ -1179,7 +1181,7 @@ async def do_broadcast(
         elif audience == "admin_only":
             user_ids = list(settings.admin_ids_list or [])
         else:
-            q = select(User.telegram_id).where(not User.is_banned)
+            q = select(User.telegram_id).where(User.is_banned.is_(False))
             if audience == "free":
                 subq = select(Subscription.user_id).where(Subscription.is_active)
                 q = q.where(~User.id.in_(subq))
@@ -1450,7 +1452,9 @@ async def photo_templates_detail(
         if not tpl:
             return HTMLResponse("Не найдено", status_code=404)
         total_all = (
-            await session.scalar(select(func.count()).select_from(User).where(not User.is_banned))
+            await session.scalar(
+                select(func.count()).select_from(User).where(User.is_banned.is_(False))
+            )
             or 0
         )
         test_user = (await get_config_value(session, "test_broadcast_username") or "grelok").lstrip(
@@ -1530,7 +1534,7 @@ async def _do_photo_template_broadcast(tpl_id: int, audience: str) -> None:
         elif audience == "test_user":
             tg_ids = await _resolve_test_user_tg_id(session)
         else:
-            q = select(User.telegram_id).where(not User.is_banned)
+            q = select(User.telegram_id).where(User.is_banned.is_(False))
             if audience == "free":
                 subq = select(Subscription.user_id).where(Subscription.is_active)
                 q = q.where(~User.id.in_(subq))
@@ -1655,29 +1659,29 @@ async def bulk_page(admin_session: str | None = Cookie(default=None), msg: str =
             "active_7d": await session.scalar(
                 select(func.count())
                 .select_from(User)
-                .where(not User.is_banned, User.last_active_at >= now - timedelta(days=7))
+                .where(User.is_banned.is_(False), User.last_active_at >= now - timedelta(days=7))
             )
             or 0,
             "active_14d": await session.scalar(
                 select(func.count())
                 .select_from(User)
-                .where(not User.is_banned, User.last_active_at >= now - timedelta(days=14))
+                .where(User.is_banned.is_(False), User.last_active_at >= now - timedelta(days=14))
             )
             or 0,
             "free": await session.scalar(
                 select(func.count())
                 .select_from(User)
-                .where(not User.is_banned, ~User.id.in_(sub_active))
+                .where(User.is_banned.is_(False), ~User.id.in_(sub_active))
             )
             or 0,
             "paid": await session.scalar(
                 select(func.count())
                 .select_from(User)
-                .where(not User.is_banned, User.id.in_(sub_active))
+                .where(User.is_banned.is_(False), User.id.in_(sub_active))
             )
             or 0,
             "all": await session.scalar(
-                select(func.count()).select_from(User).where(not User.is_banned)
+                select(func.count()).select_from(User).where(User.is_banned.is_(False))
             )
             or 0,
         }
@@ -1693,7 +1697,7 @@ async def _do_bulk_credits(segment: str, amount: int, notify_text: str) -> None:
     bot = get_bot()
     async with AsyncSessionFactory() as session:
         sub_active = select(Subscription.user_id).where(Subscription.is_active)
-        q = select(User).where(not User.is_banned)
+        q = select(User).where(User.is_banned.is_(False))
         if segment == "active_7d":
             q = q.where(User.last_active_at >= now - timedelta(days=7))
         elif segment == "active_14d":
@@ -2003,7 +2007,9 @@ async def gallery_broadcast_form(
         has_male = bool(await get_preview_file_id(session, key, position=1))
         has_female = bool(await get_preview_file_id(session, key, position=0))
         total_all = (
-            await session.scalar(select(func.count()).select_from(User).where(not User.is_banned))
+            await session.scalar(
+                select(func.count()).select_from(User).where(User.is_banned.is_(False))
+            )
             or 0
         )
     label = EDIT_PRESETS[key][0]
@@ -2399,7 +2405,9 @@ async def presets_list(admin_session: str | None = Cookie(default=None), msg: st
                 }
             )
         total_users = (
-            await session.scalar(select(func.count()).select_from(User).where(not User.is_banned))
+            await session.scalar(
+                select(func.count()).select_from(User).where(User.is_banned.is_(False))
+            )
             or 0
         )
     return render(
@@ -2946,7 +2954,7 @@ async def _do_broadcast_by_key(
         elif audience == "test_user":
             tg_ids = await _resolve_test_user_tg_id(session)
         else:
-            q = select(User.telegram_id).where(not User.is_banned)
+            q = select(User.telegram_id).where(User.is_banned.is_(False))
             if audience == "free":
                 subq = select(Subscription.user_id).where(Subscription.is_active)
                 q = q.where(~User.id.in_(subq))
@@ -3040,7 +3048,9 @@ async def presets_broadcast_form(
         has_male = bool(await get_preview_file_id(session, preset.key, position=1))
         has_female = bool(await get_preview_file_id(session, preset.key, position=0))
         total_all = (
-            await session.scalar(select(func.count()).select_from(User).where(not User.is_banned))
+            await session.scalar(
+                select(func.count()).select_from(User).where(User.is_banned.is_(False))
+            )
             or 0
         )
     # Дефолтный caption — тот же, что отдаёт _do_preset_broadcast при пустом.

@@ -12,9 +12,7 @@ from aiogram.types import (
 
 from app.config import settings
 from app.database.base import AsyncSessionFactory
-from app.database.repo.credits import add_credits
 from app.database.repo.users import get_user
-from app.keyboards.main import PE_FRAME, PE_HANDSHAKE, PE_PAINT
 
 logger = structlog.get_logger(__name__)
 router = Router()
@@ -124,53 +122,41 @@ async def cb_pay_crypto(callback: CallbackQuery) -> None:
 async def _handle_credits_payment(
     message: Message, credits_amount: int, stars: int, charge_id: str
 ) -> None:
-    user_tg_id = message.from_user.id
+    # Legacy invoices predate the local payment ID in invoice_payload. Persist a
+    # ledger record under the user lock, then reuse the normal activation path.
+    from decimal import Decimal
 
+    from sqlalchemy import select
+
+    from app.database.models import Plan, User
+    from app.database.repo.payments import create_payment, get_payment_by_external_id
+    from app.services.payment_processing import process_succeeded_payment
+
+    if credits_amount <= 0 or stars <= 0 or not charge_id:
+        logger.error("Invalid legacy Stars payment")
+        return
     async with AsyncSessionFactory() as session:
-        user = await get_user(session, user_tg_id)
+        user = await session.scalar(
+            select(User).where(User.telegram_id == message.from_user.id).with_for_update()
+        )
         if not user:
             await message.answer("❌ Пользователь не найден. Нажми /start")
             return
-
-        await add_credits(session, user, credits_amount)
+        payment = await get_payment_by_external_id(session, charge_id)
+        if payment and payment.user_id != user.id:
+            logger.error("Stars charge belongs to a different user")
+            return
+        if payment is None:
+            payment = await create_payment(
+                session,
+                user.id,
+                Decimal(stars),
+                "XTR",
+                "stars",
+                Plan.FREE,
+                extra={"credits": credits_amount, "user_tg_id": user.telegram_id},
+            )
+            payment.external_id = charge_id
+        payment_id = payment.id
         await session.commit()
-        # Refresh user to get updated credits
-        await session.refresh(user)
-        new_balance = user.credits
-
-    logger.info("Credits purchased", user_id=user_tg_id, credits=credits_amount, stars=stars)
-
-    success_text = (
-        f"🎉 <b>Готово!</b> <b>{credits_amount:,} кредитов</b> на счету.\n\n"
-        f"💳 Твой баланс: <b>{new_balance:,} кредитов</b>\n\n"
-        f"<b>Что хочешь сделать прямо сейчас?</b>"
-    )
-    # visual-only pivot: "Задать вопрос" заменён на каталог настроений (наша
-    # money-maker воронка), вторая кнопка — рисование с нуля.
-    success_kb = InlineKeyboardMarkup(
-        inline_keyboard=[
-            [
-                InlineKeyboardButton.model_construct(
-                    text="Каталог настроений",
-                    callback_data="gallery_open",
-                    icon_custom_emoji_id=PE_FRAME,
-                    style="success",
-                )
-            ],
-            [
-                InlineKeyboardButton.model_construct(
-                    text="Создать картинку с нуля",
-                    callback_data="img_start",
-                    icon_custom_emoji_id=PE_PAINT,
-                )
-            ],
-            [
-                InlineKeyboardButton.model_construct(
-                    text="Пригласить друга +150 кр",
-                    callback_data="ref_menu",
-                    icon_custom_emoji_id=PE_HANDSHAKE,
-                )
-            ],
-        ]
-    )
-    await message.answer(success_text, reply_markup=success_kb)
+    await process_succeeded_payment(payment_id, external_id=charge_id, bot=message.bot)

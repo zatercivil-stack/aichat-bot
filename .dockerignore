@@ -24,3 +24,7 @@ backups/
 .vscode/
 .idea/
 .DS_Store
+
+# Local check caches
+.pytest_cache/
+.ruff_cache/

@@ -280,6 +280,8 @@ async def deduct_credits(session: AsyncSession, user: User, amount: int) -> bool
     (быстрый дабл-тап, album из 2 фото) могли пройти оба, и юзер уходил
     в минус. populate_existing=True заставляет SQLAlchemy реально сходить
     в БД, иначе identity-cache отдаёт старый объект и lock игнорируется."""
+    if amount < 0:
+        raise ValueError("Credit amount must not be negative")
     from sqlalchemy import select as _sel
 
     # Перечитываем юзера под row-lock; параллельный deduct ждёт commit.
@@ -327,6 +329,19 @@ async def add_credits(
     Если у юзера уже есть активный burn-pool и приходит новый burn — суммируем
     кредиты и продлеваем срок до МАКСИМУМА из старого и нового (юзер не должен
     потерять кредиты из-за того что купил ещё пак)."""
+    if amount < 0:
+        raise ValueError("Credit amount must not be negative")
+    # Different payments/refunds can credit the same user concurrently. Reload
+    # the balance under a user-row lock; a payment-row lock alone is insufficient.
+    locked = await session.scalar(
+        select(User)
+        .where(User.id == user.id)
+        .with_for_update()
+        .execution_options(populate_existing=True)
+    )
+    if locked is None:
+        raise ValueError("Cannot credit a missing user")
+    user = locked
     _clean_expired_burn(user)
     if burn_expires_at is not None:
         user.burn_credits = (user.burn_credits or 0) + amount

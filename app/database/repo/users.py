@@ -42,7 +42,7 @@ async def is_paid_user(session: AsyncSession, user_db_id: int) -> bool:
 
 
 async def get_all_telegram_ids(session: AsyncSession) -> list[int]:
-    result = await session.execute(select(User.telegram_id).where(not User.is_banned))
+    result = await session.execute(select(User.telegram_id).where(User.is_banned.is_(False)))
     return list(result.scalars().all())
 
 

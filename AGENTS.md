@@ -18,11 +18,10 @@ Layers:
 
 ## Local run
 
-1. Copy `.env.example` to `.env`, fill required values (`ENV=development` for local).
-2. Start PostgreSQL + Redis: `docker compose up -d postgres redis`.
-3. Install deps: `pip install -r requirements.txt -r requirements-dev.txt`.
-4. Run: `python main.py` (migrations apply automatically).
-5. Tests: `pytest` (see pytest.ini).
+1. Copy `.env.example` to `.env` and fill real service credentials.
+2. Full app: `docker compose up --build -d` (migrations apply automatically).
+3. Host Python 3.12: use `compose.dev.yml` and loopback connection settings; see `docs/DEVELOPMENT.md`.
+4. Tests: `docker compose -f compose.test.yml run --build --rm test`.
 
 ## Development rules
 
@@ -35,5 +34,6 @@ Layers:
 
 ## Testing
 
-- `pytest` runs unit tests; integration tests need PostgreSQL + Redis.
+- Tests require explicit `ENV=test` and `POSTGRES_DB` ending in `_test`.
+- Use the standalone `compose.test.yml`; never run tests in the production bot container.
 - Never use production data or real API keys in tests.

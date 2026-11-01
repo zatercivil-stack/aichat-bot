@@ -36,3 +36,7 @@ id_ed25519*
 *secret*.json
 service-account*.json
 *.kdbx
+
+# Local check caches
+.pytest_cache/
+.ruff_cache/

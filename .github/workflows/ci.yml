@@ -10,11 +10,11 @@ jobs:
       postgres:
         image: postgres:16-alpine
         env:
-          POSTGRES_DB: aichat_bot
+          POSTGRES_DB: aichat_bot_test
           POSTGRES_USER: aichat_user
           POSTGRES_PASSWORD: testpass
         ports: ["5432:5432"]
-        options: --health-cmd="pg_isready -U aichat_user -d aichat_bot" --health-interval=5s --health-timeout=5s --health-retries=5
+        options: --health-cmd="pg_isready -U aichat_user -d aichat_bot_test" --health-interval=5s --health-timeout=5s --health-retries=5
       redis:
         image: redis:7-alpine
         ports: ["6379:6379"]
@@ -25,10 +25,10 @@ jobs:
       ADMIN_IDS: "1"
       POSTGRES_HOST: localhost
       POSTGRES_PORT: 5432
-      POSTGRES_DB: aichat_bot
+      POSTGRES_DB: aichat_bot_test
       POSTGRES_USER: aichat_user
       POSTGRES_PASSWORD: testpass
-      REDIS_URL: redis://localhost:6379/0
+      REDIS_URL: redis://localhost:6379/15
       OPENROUTER_API_KEY: sk-or-v1-xxxxxxxxxxxxxxxxxxxxxxxxxxxx
       ADMIN_TOKEN: test_admin_token_1234567890abcdef
       ADMIN_SECRET_KEY: test_admin_secret_1234567890abcdef
@@ -40,6 +40,7 @@ jobs:
       - run: pip install -r requirements.txt -r requirements-dev.txt
       - run: ruff check .
       - run: ruff format --check .
+      - run: alembic upgrade head
       - run: pytest
   docker:
     runs-on: ubuntu-latest

@@ -45,8 +45,8 @@ async def run_trial_end_push(bot_instance) -> None:
                     and_(
                         User.trial_ended_at.is_not(None),
                         User.trial_ended_at <= threshold,
-                        not User.trial_end_push_sent,
-                        not User.is_banned,
+                        User.trial_end_push_sent.is_(False),
+                        User.is_banned.is_(False),
                         User.last_active_at < activity_cutoff,  # давайте активным дочитать
                     )
                 )

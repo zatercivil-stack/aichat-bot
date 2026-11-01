@@ -1,0 +1,655 @@
+<!DOCTYPE html>
+<html lang="ru" data-bs-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Финансы · ДЕМО — Нейра Admin</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E🤖%3C/text%3E%3C/svg%3E">
+<link href="https://cdn.jsdelivr.net/npm/@tabler/core@1.0.0-beta20/dist/css/tabler.min.css" rel="stylesheet">
+<link href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@3.5.0/dist/tabler-icons.min.css" rel="stylesheet">
+<style>
+:root{
+  --tblr-bg-surface:#15182b;
+  --tblr-bg-surface-secondary:#1a1d33;
+  --tblr-border-color:#262a44;
+  --neyra-grad:linear-gradient(135deg,#6366f1 0%,#a855f7 50%,#ec4899 100%);
+}
+body{font-feature-settings:"cv11","ss01";background:#0f1226;color:#dde2f4;font-size:.875rem}
+.page-wrapper{background:transparent}
+.navbar{background:linear-gradient(180deg,#1a1d33 0%,#15182b 100%);backdrop-filter:blur(20px);border-bottom:1px solid #262a44}
+.navbar-vertical{background:linear-gradient(180deg,#15182b 0%,#0f1226 100%);border-right:1px solid #262a44}
+.navbar-toggler{border-color:#3a3f5e;padding:.4rem .65rem}
+.navbar-toggler:focus{box-shadow:0 0 0 .15rem rgba(99,102,241,.4)}
+.navbar-toggler-icon{background-image:url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 30 30'%3e%3cpath stroke='rgba%28221,226,244,1%29' stroke-linecap='round' stroke-miterlimit='10' stroke-width='2' d='M4 7h22M4 15h22M4 23h22'/%3e%3c/svg%3e")}
+@media (max-width: 991.98px){
+  .navbar-vertical{position:sticky;top:0;z-index:1030;height:auto;min-height:auto}
+  .navbar-vertical .navbar-brand-image-text{font-size:1rem}
+  .h1{font-size:1.25rem}
+  .stat-card .h1{font-size:1.5rem}
+  .page-title{font-size:1.15rem}
+  .card-header{padding:.65rem 1rem}
+  .page-body{padding-top:.5rem}
+  .page-header{padding:.5rem 0}
+  .container-xl{padding-left:.75rem;padding-right:.75rem}
+  .table>:not(caption)>*>*{padding:.5rem .6rem;font-size:.82rem}
+  .btn{font-size:.82rem;padding:.4rem .7rem}
+  .form-control,.form-select{font-size:.85rem;padding:.45rem .65rem}
+  .log-feed{max-height:55vh;font-size:.7rem}
+  .log-event{font-size:.65rem}
+}
+@media (max-width: 575.98px){
+  .stat-card .h1{font-size:1.25rem}
+  .stat-card .stat-label{font-size:.7rem}
+}
+/* Responsive tables fallback */
+.table-responsive{overflow-x:auto;-webkit-overflow-scrolling:touch}
+.navbar-brand{font-weight:700}
+.navbar-brand-image-text{background:var(--neyra-grad);-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent;font-size:1.15rem;letter-spacing:-.02em}
+.navbar-vertical .nav-link{color:#a0a8c0;border-radius:.5rem;margin:.15rem .5rem;padding:.55rem .85rem;font-weight:500;transition:all .15s}
+.navbar-vertical .nav-link:hover{background:rgba(99,102,241,.08);color:#fff}
+.navbar-vertical .nav-link.active{background:rgba(99,102,241,.18);color:#fff}
+.navbar-vertical .nav-link.active::before{content:"";position:absolute;left:0;top:6px;bottom:6px;width:3px;background:var(--neyra-grad);border-radius:0 3px 3px 0}
+.nav-link-icon{font-size:1.05rem;margin-right:.5rem}
+.card{background:#1a1d33;border:1px solid #262a44;border-radius:.75rem;box-shadow:0 1px 3px rgba(0,0,0,.2)}
+.card-header{background:transparent;border-bottom:1px solid #262a44;padding:.85rem 1.25rem}
+.card-title{font-weight:600;font-size:.95rem;margin-bottom:0}
+.card .card-actions .btn{padding:.25rem .65rem}
+.btn-primary{background:var(--neyra-grad);border:0;font-weight:500}
+.btn-primary:hover{filter:brightness(1.15)}
+.btn-ghost-primary{color:#a78bfa;background:transparent;border:0}
+.btn-ghost-primary:hover{background:rgba(167,139,250,.1);color:#c4b5fd}
+.btn{font-weight:500;border-radius:.5rem}
+.table{color:#dde2f4;--tblr-table-bg:transparent;--tblr-table-color-state:#fff;--tblr-table-bg-state:rgba(99,102,241,.08)}
+.table>:not(caption)>*>*{padding:.65rem .85rem;border-bottom-color:#262a44}
+.table thead th{font-weight:600;font-size:.7rem;letter-spacing:.05em;text-transform:uppercase;color:#888fa3;border-bottom:2px solid #262a44}
+.table tbody tr:hover{background:rgba(99,102,241,.05)}
+.form-control,.form-select{background:#0f1226;border-color:#262a44;color:#dde2f4}
+.form-control:focus,.form-select:focus{background:#0f1226;border-color:#6366f1;box-shadow:0 0 0 .2rem rgba(99,102,241,.2);color:#fff}
+.form-label{color:#a0a8c0;font-size:.8rem;font-weight:500;margin-bottom:.4rem}
+.badge{font-weight:500;letter-spacing:.02em;padding:.3em .65em;border-radius:.4rem}
+/* В тёмной теме у .bg-secondary текст совпадал с фоном → серые бейджи были пустыми.
+   Принудительно делаем читаемыми (план Free, метод оплаты, статус «—», organic и т.п.). */
+.badge.bg-secondary{background-color:#3a3f5e!important;color:#fff!important}
+.bg-purple{background:#a855f7!important}
+.bg-pink{background:#ec4899!important}
+.bg-indigo{background:#6366f1!important}
+.text-muted{color:#888fa3!important}
+.subheader{color:#888fa3;font-size:.7rem;letter-spacing:.06em;text-transform:uppercase;font-weight:600}
+.h1{font-size:1.5rem;font-weight:700;letter-spacing:-.01em}
+.page-title{font-weight:700;letter-spacing:-.01em}
+.page-pretitle{color:#888fa3;font-size:.7rem;letter-spacing:.08em;text-transform:uppercase}
+/* Stat cards with gradient accents */
+.stat-card{position:relative;overflow:hidden}
+.stat-card::after{content:"";position:absolute;top:0;right:0;width:80px;height:80px;background:var(--accent,var(--neyra-grad));opacity:.08;filter:blur(40px);border-radius:50%}
+.stat-card .h1{font-size:1.75rem;font-weight:700}
+.stat-card .stat-label{color:#888fa3;font-size:.75rem;font-weight:500;text-transform:uppercase;letter-spacing:.05em}
+.stat-card .stat-trend{font-size:.78rem;font-weight:500}
+.trend-up{color:#22c55e}
+.trend-down{color:#ef4444}
+.alert{border-radius:.65rem;border-width:0;border-left:3px solid currentColor}
+.alert-success{background:rgba(34,197,94,.1);color:#86efac}
+.alert-danger{background:rgba(239,68,68,.1);color:#fca5a5}
+.alert-warning{background:rgba(245,158,11,.1);color:#fcd34d}
+.alert-info{background:rgba(56,189,248,.1);color:#7dd3fc}
+.dropdown-menu{background:#1a1d33;border:1px solid #262a44;box-shadow:0 8px 24px rgba(0,0,0,.4)}
+.dropdown-item{color:#dde2f4}
+.dropdown-item:hover{background:rgba(99,102,241,.1);color:#fff}
+.modal-content{background:#1a1d33;border:1px solid #262a44}
+.modal-header{border-bottom-color:#262a44}
+.modal-footer{border-top-color:#262a44}
+.pagination .page-link{background:#1a1d33;border-color:#262a44;color:#a0a8c0}
+.pagination .page-link:hover{background:#262a44;color:#fff}
+.pagination .active .page-link{background:#6366f1;border-color:#6366f1;color:#fff}
+code,pre{color:#a78bfa;background:rgba(167,139,250,.08);padding:.1em .35em;border-radius:.25em;font-size:.875em}
+.divider{height:1px;background:#262a44;margin:1rem 0}
+/* Sparkline + glow effects */
+.gradient-text{background:var(--neyra-grad);-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent}
+.btn-icon{width:2.25rem;height:2.25rem;padding:0;display:inline-flex;align-items:center;justify-content:center}
+.btn-outline-secondary{border-color:#3a3f5e;color:#a0a8c0}
+.btn-outline-secondary:hover{background:#262a44;border-color:#3a3f5e;color:#fff}
+.empty-state{padding:2rem;text-align:center;color:#666c85}
+.empty-state .empty-icon{font-size:3rem;opacity:.4;margin-bottom:1rem}
+/* Avatar */
+.avatar{background:#262a44;color:#dde2f4;font-weight:600;font-size:.85rem}
+.avatar-grad{background:var(--neyra-grad);color:#fff}
+/* Scrollbar */
+::-webkit-scrollbar{width:10px;height:10px}
+::-webkit-scrollbar-track{background:#0f1226}
+::-webkit-scrollbar-thumb{background:#262a44;border-radius:5px}
+::-webkit-scrollbar-thumb:hover{background:#3a3f5e}
+/* Live log feed styling */
+.log-feed{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:.75rem;line-height:1.5;background:#0a0c1c;border:1px solid #262a44;border-radius:.5rem;padding:.75rem;max-height:600px;overflow-y:auto}
+.log-line{padding:.15rem .25rem;border-radius:.25rem}
+.log-line:hover{background:rgba(99,102,241,.05)}
+.log-time{color:#666c85;margin-right:.5rem}
+.log-event{display:inline-block;padding:.05em .45em;border-radius:.25em;font-size:.7rem;font-weight:600;margin-right:.5rem}
+.evt-message{background:rgba(99,102,241,.15);color:#a78bfa}
+.evt-promo_redeemed{background:rgba(34,197,94,.15);color:#86efac}
+.evt-payment_succeeded{background:rgba(34,197,94,.2);color:#22c55e}
+.evt-user_registered{background:rgba(56,189,248,.15);color:#7dd3fc}
+.evt-image_generated{background:rgba(245,158,11,.15);color:#fcd34d}
+.evt-default{background:rgba(160,168,192,.1);color:#a0a8c0}
+
+/* ============ Liquid glass ============ */
+body{background:#0b0e1f;position:relative}
+/* мягкая «аврора» позади контента — чтобы матовое стекло читалось */
+body::before{
+  content:"";position:fixed;inset:-20%;z-index:-2;pointer-events:none;
+  background:
+    radial-gradient(40% 45% at 16% 18%, rgba(99,102,241,.30), transparent 60%),
+    radial-gradient(38% 42% at 84% 16%, rgba(168,85,247,.26), transparent 60%),
+    radial-gradient(46% 48% at 78% 84%, rgba(236,72,153,.20), transparent 62%),
+    radial-gradient(42% 44% at 20% 86%, rgba(56,189,248,.16), transparent 60%);
+  filter:blur(34px);
+  animation:glassFloat 24s ease-in-out infinite alternate;
+}
+body::after{
+  content:"";position:fixed;inset:0;z-index:-1;pointer-events:none;
+  background:radial-gradient(120% 120% at 50% 0%, transparent 42%, rgba(6,8,18,.55) 100%);
+}
+@keyframes glassFloat{0%{transform:translate3d(0,0,0) scale(1)}100%{transform:translate3d(0,-3%,0) scale(1.06)}}
+
+.card{
+  background:rgba(26,29,51,.55)!important;
+  border:1px solid rgba(255,255,255,.08)!important;
+  border-radius:1rem!important;
+  backdrop-filter:blur(16px) saturate(160%);
+  -webkit-backdrop-filter:blur(16px) saturate(160%);
+  box-shadow:0 8px 32px rgba(0,0,0,.35), inset 0 1px 0 rgba(255,255,255,.07);
+  transition:transform .18s ease, box-shadow .18s ease, border-color .18s ease;
+}
+.card:hover{
+  transform:translateY(-2px);
+  border-color:rgba(167,139,250,.35)!important;
+  box-shadow:0 16px 44px rgba(0,0,0,.45), inset 0 1px 0 rgba(255,255,255,.10);
+}
+.card-header{border-bottom:1px solid rgba(255,255,255,.07)!important}
+.stat-card{background:rgba(26,29,51,.5)!important}
+.stat-card::before{
+  content:"";position:absolute;inset:0;border-radius:inherit;pointer-events:none;
+  background:linear-gradient(135deg, rgba(255,255,255,.10), transparent 42%);
+}
+.navbar-vertical{
+  background:rgba(18,21,40,.55)!important;border-right:1px solid rgba(255,255,255,.07)!important;
+  backdrop-filter:blur(20px) saturate(160%);-webkit-backdrop-filter:blur(20px) saturate(160%);
+}
+.navbar{
+  background:rgba(26,29,51,.5)!important;border-bottom:1px solid rgba(255,255,255,.07)!important;
+  backdrop-filter:blur(20px) saturate(160%);-webkit-backdrop-filter:blur(20px) saturate(160%);
+}
+.navbar-vertical .nav-link.active{background:rgba(99,102,241,.22)!important;box-shadow:inset 0 1px 0 rgba(255,255,255,.08)}
+.dropdown-menu,.modal-content{
+  background:rgba(26,29,51,.72)!important;border:1px solid rgba(255,255,255,.09)!important;
+  backdrop-filter:blur(18px) saturate(160%);-webkit-backdrop-filter:blur(18px) saturate(160%);
+}
+.list-group-item{background:transparent!important;border-color:rgba(255,255,255,.06)!important}
+.list-group-item:hover{background:rgba(99,102,241,.08)!important}
+.btn-primary{box-shadow:0 4px 16px rgba(99,102,241,.35)}
+.form-control,.form-select{background:rgba(15,18,38,.55)!important;backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px)}
+@media (prefers-reduced-motion:reduce){body::before{animation:none}}
+@media (max-width:991.98px){.card{backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px)}}
+
+</style>
+</head>
+<body>
+<div class="page">
+  <aside class="navbar navbar-vertical navbar-expand-lg" data-bs-theme="dark">
+    <div class="container-fluid">
+      <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbar-menu">
+        <span class="navbar-toggler-icon"></span>
+      </button>
+      <h1 class="navbar-brand navbar-brand-autodark">
+        <a href="/admin/" class="d-flex align-items-center text-decoration-none">
+          <span style="font-size:1.4rem;margin-right:.5rem">🤖</span>
+          <span class="navbar-brand-image-text">Нейра</span>
+        </a>
+      </h1>
+      <div class="collapse navbar-collapse" id="navbar-menu">
+        <ul class="navbar-nav pt-lg-3">
+          <li class="nav-item mt-2 mb-1 px-3">
+            <span class="text-uppercase small fw-bold" style="letter-spacing:.06em;color:#5b6280;opacity:.85">🟣 Нейра</span>
+          </li>
+          <li class="nav-item">
+            <a class="nav-link" href="/admin/">
+              <span class="nav-link-icon">📊</span>
+              <span class="nav-link-title">Дашборд</span>
+            </a>
+          </li>
+          <li class="nav-item">
+            <a class="nav-link" href="/admin/users">
+              <span class="nav-link-icon">👥</span>
+              <span class="nav-link-title">Пользователи</span>
+            </a>
+          </li>
+          <li class="nav-item">
+            <a class="nav-link" href="/admin/support">
+              <span class="nav-link-icon">🆘</span>
+              <span class="nav-link-title">Поддержка</span>
+            </a>
+          </li>
+          <li class="nav-item mt-2 mb-1 px-3">
+            <span class="text-uppercase small fw-bold" style="letter-spacing:.06em;color:#5b6280;opacity:.85">Деньги</span>
+          </li>
+          <li class="nav-item">
+            <a class="nav-link active" href="/admin/finance">
+              <span class="nav-link-icon">💰</span>
+              <span class="nav-link-title">Финансы</span>
+            </a>
+          </li>
+          <li class="nav-item">
+            <a class="nav-link" href="/admin/payments">
+              <span class="nav-link-icon">💳</span>
+              <span class="nav-link-title">Платежи</span>
+            </a>
+          </li>
+          <li class="nav-item">
+            <a class="nav-link" href="/admin/promos">
+              <span class="nav-link-icon">🎟</span>
+              <span class="nav-link-title">Промокоды</span>
+            </a>
+          </li>
+          <li class="nav-item mt-2 mb-1 px-3">
+            <span class="text-uppercase small fw-bold" style="letter-spacing:.06em;color:#5b6280;opacity:.85">Контент</span>
+          </li>
+          <li class="nav-item">
+            <a class="nav-link" href="/admin/presets">
+              <span class="nav-link-icon">🎨</span>
+              <span class="nav-link-title">Пресеты</span>
+            </a>
+          </li>
+          <li class="nav-item">
+            <a class="nav-link" href="/admin/gallery">
+              <span class="nav-link-icon">🖼</span>
+              <span class="nav-link-title">Галерея превью</span>
+            </a>
+          </li>
+          <li class="nav-item">
+            <a class="nav-link" href="/admin/sandbox">
+              <span class="nav-link-icon">🧪</span>
+              <span class="nav-link-title">Песочница</span>
+            </a>
+          </li>
+          <li class="nav-item mt-2 mb-1 px-3">
+            <span class="text-uppercase small fw-bold" style="letter-spacing:.06em;color:#5b6280;opacity:.85">Рассылки</span>
+          </li>
+          <li class="nav-item">
+            <a class="nav-link" href="/admin/broadcasts">
+              <span class="nav-link-icon">📢</span>
+              <span class="nav-link-title">Рассылки</span>
+            </a>
+          </li>
+          <li class="nav-item">
+            <a class="nav-link" href="/admin/broadcasts/photo">
+              <span class="nav-link-icon">🎭</span>
+              <span class="nav-link-title">Фото-шаблоны</span>
+            </a>
+          </li>
+          <li class="nav-item">
+            <a class="nav-link" href="/admin/scheduled">
+              <span class="nav-link-icon">⏰</span>
+              <span class="nav-link-title">Отложенные</span>
+            </a>
+          </li>
+          <li class="nav-item">
+            <a class="nav-link" href="/admin/bulk">
+              <span class="nav-link-icon">🎁</span>
+              <span class="nav-link-title">Bulk-операции</span>
+            </a>
+          </li>
+          <li class="nav-item mt-2 mb-1 px-3">
+            <span class="text-uppercase small fw-bold" style="letter-spacing:.06em;color:#5b6280;opacity:.85">Трафик и аналитика</span>
+          </li>
+          <li class="nav-item">
+            <a class="nav-link" href="/admin/channel-traffic">
+              <span class="nav-link-icon">📈</span>
+              <span class="nav-link-title">Трафик канала</span>
+            </a>
+          </li>
+          <li class="nav-item">
+            <a class="nav-link" href="/admin/cohorts">
+              <span class="nav-link-icon">📊</span>
+              <span class="nav-link-title">Когорты (LTV)</span>
+            </a>
+          </li>
+          <li class="nav-item">
+            <a class="nav-link" href="/admin/heatmap">
+              <span class="nav-link-icon">🔥</span>
+              <span class="nav-link-title">Heatmap часов</span>
+            </a>
+          </li>
+          <li class="nav-item mt-2 mb-1 px-3">
+            <span class="text-uppercase small fw-bold" style="letter-spacing:.06em;color:#5b6280;opacity:.85">Операционка</span>
+          </li>
+          <li class="nav-item">
+            <a class="nav-link" href="/admin/events">
+              <span class="nav-link-icon">📋</span>
+              <span class="nav-link-title">События</span>
+            </a>
+          </li>
+          <li class="nav-item">
+            <a class="nav-link" href="/admin/audit">
+              <span class="nav-link-icon">📜</span>
+              <span class="nav-link-title">Журнал админов</span>
+            </a>
+          </li>
+          <li class="nav-item">
+            <a class="nav-link" href="/admin/health">
+              <span class="nav-link-icon">🩺</span>
+              <span class="nav-link-title">Здоровье</span>
+            </a>
+          </li>
+          <li class="nav-item mt-2 mb-1 px-3">
+            <span class="text-uppercase small fw-bold" style="letter-spacing:.06em;color:#5b6280;opacity:.85">Конфигурация</span>
+          </li>
+          <li class="nav-item">
+            <a class="nav-link" href="/admin/pricing">
+              <span class="nav-link-icon">🏷</span>
+              <span class="nav-link-title">Цены</span>
+            </a>
+          </li>
+          <li class="nav-item">
+            <a class="nav-link" href="/admin/texts">
+              <span class="nav-link-icon">📝</span>
+              <span class="nav-link-title">Тексты бота</span>
+            </a>
+          </li>
+        </ul>
+        <div class="mt-auto p-3 border-top d-none d-lg-block" style="border-color:#262a44!important">
+          <a href="/admin/logout" class="btn btn-outline-secondary w-100 btn-sm">
+            <i class="ti ti-logout me-1"></i> Выйти
+          </a>
+        </div>
+        <div class="d-lg-none p-3">
+          <a href="/admin/logout" class="btn btn-outline-secondary w-100 btn-sm">
+            <i class="ti ti-logout me-1"></i> Выйти
+          </a>
+        </div>
+      </div>
+    </div>
+  </aside>
+
+  <div class="page-wrapper">
+    <div class="page-header d-print-none">
+      <div class="container-xl">
+        <div class="row g-2 align-items-center">
+          <div class="col">
+<div class="page-pretitle">Синтетические данные · пример интерфейса</div>            <h2 class="page-title">Финансы · ДЕМО</h2>
+          </div>
+          <div class="col-auto">
+            <form action="/admin/users" method="get" class="d-flex" role="search">
+              <input type="search" name="search" class="form-control form-control-sm"
+                     placeholder="🔍 Найти юзера (id / @username / имя)"
+                     style="min-width:280px" autocomplete="off">
+            </form>
+          </div>
+<div class="col-auto">
+  <div class="btn-group">
+    <a href="?days=7" class="btn btn-sm btn-outline-secondary active">7д</a>
+    <a href="?days=14" class="btn btn-sm btn-outline-secondary">14д</a>
+    <a href="?days=30" class="btn btn-sm btn-outline-secondary">30д</a>
+    <a href="?days=90" class="btn btn-sm btn-outline-secondary">90д</a>
+    <a href="?days=180" class="btn btn-sm btn-outline-secondary">180д</a>
+  </div>
+</div>
+<div class="col-auto">
+  <a href="/admin/api/export/payments.csv" class="btn btn-outline-secondary"><i class="ti ti-file-export me-1"></i>CSV</a>
+</div>
+        </div>
+      </div>
+    </div>
+    <div class="page-body">
+      <div class="container-xl">
+<div class="alert alert-success">ДЕМО: все числа вымышлены и не являются результатами проекта. Действия отключены.</div><div class="row row-cards">
+  <div class="col-sm-6 col-lg-3">
+    <div class="card stat-card" style="--accent:linear-gradient(135deg,#22c55e,#16a34a)">
+      <div class="card-body">
+        <div class="stat-label mb-2">Сегодня</div>
+        <div class="h1 mb-0 text-success">₽990</div>
+      </div>
+    </div>
+  </div>
+  <div class="col-sm-6 col-lg-3">
+    <div class="card stat-card">
+      <div class="card-body">
+        <div class="stat-label mb-2">7 дней</div>
+        <div class="h1 mb-0">₽6,990</div>
+      </div>
+    </div>
+  </div>
+  <div class="col-sm-6 col-lg-3">
+    <div class="card stat-card">
+      <div class="card-body">
+        <div class="stat-label mb-2">30 дней</div>
+        <div class="h1 mb-0">₽6,990</div>
+      </div>
+    </div>
+  </div>
+  <div class="col-sm-6 col-lg-3">
+    <div class="card stat-card" style="--accent:linear-gradient(135deg,#a855f7,#ec4899)">
+      <div class="card-body">
+        <div class="stat-label mb-2">Всё время</div>
+        <div class="h1 mb-0 gradient-text">₽6,990</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="row row-cards mt-3">
+  <div class="col-sm-6 col-lg-3"><div class="card"><div class="card-body"><div class="stat-label mb-1">Платящих юзеров</div><div class="h2 mb-0">12</div></div></div></div>
+  <div class="col-sm-6 col-lg-3"><div class="card"><div class="card-body"><div class="stat-label mb-1">Транзакций</div><div class="h2 mb-0">18</div></div></div></div>
+  <div class="col-sm-6 col-lg-3"><div class="card"><div class="card-body"><div class="stat-label mb-1">ARPU (LTV)</div><div class="h2 mb-0">₽140</div></div></div></div>
+  <div class="col-sm-6 col-lg-3"><div class="card"><div class="card-body"><div class="stat-label mb-1">Средний чек</div><div class="h2 mb-0">₽388</div></div></div></div>
+</div>
+
+<div class="row row-cards mt-3">
+  <div class="col-md-8">
+    <div class="card">
+      <div class="card-header"><h3 class="card-title">Выручка по дням (7 д)</h3></div>
+      <div class="card-body"><canvas id="revChart" height="80"></canvas></div>
+    </div>
+  </div>
+  <div class="col-md-4">
+    <div class="card h-100">
+      <div class="card-header"><h3 class="card-title">По способу оплаты</h3></div>
+      <div class="card-body p-0">
+        <table class="table table-sm mb-0">
+          <thead><tr><th>Метод</th><th class="text-end">Сумма</th><th class="text-end">Кол</th><th class="text-end">%</th></tr></thead>
+          <tbody>
+            <tr><td>YooKassa</td><td class="text-end text-success">₽6,990</td><td class="text-end">18</td><td class="text-end">100.0%</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="row row-cards mt-3">
+  <div class="col-md-4">
+    <div class="card">
+      <div class="card-header"><h3 class="card-title"><i class="ti ti-funnel me-1"></i>Воронка</h3></div>
+      <div class="card-body">
+        <table class="table table-borderless mb-0">
+          <tr><td class="text-muted">Регистраций</td><td class="fw-bold text-end">50</td></tr>
+          <tr><td class="text-muted">Активаций</td><td class="text-end">30 <span class="text-muted small">(60%)</span></td></tr>
+          <tr><td class="text-muted">Платящих</td><td class="text-end text-success">12 <span class="text-muted small">(24%)</span></td></tr>
+          <tr><td class="text-muted">Из активных</td><td class="text-end text-info">40%</td></tr>
+        </table>
+      </div>
+    </div>
+    <div class="card mt-3">
+      <div class="card-header"><h3 class="card-title">Статусы платежей (7д)</h3></div>
+      <div class="card-body p-0">
+        <table class="table table-sm mb-0">
+          <tbody>
+            <tr><td>
+<span class="badge bg-success">succeeded</span>
+            </td><td class="text-end">18</td></tr>
+            <tr><td>
+<span class="badge bg-warning">pending</span>
+            </td><td class="text-end">4</td></tr>
+            <tr><td>
+<span class="badge bg-danger">failed</span>
+            </td><td class="text-end">2</td></tr>
+            <tr><td>
+<span class="badge bg-secondary">canceled</span>            </td><td class="text-end">1</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+    <div class="card mt-3">
+      <div class="card-header"><h3 class="card-title"><i class="ti ti-funnel me-1"></i>Воронка платежей (7д)</h3></div>
+      <div class="card-body">
+        <table class="table table-borderless mb-2">
+          <tr><td class="text-muted">Создано</td><td class="text-end fw-bold">25</td></tr>
+          <tr><td class="text-muted">Оплачено</td><td class="text-end text-success fw-bold">18 <span class="text-muted small">(72%)</span></td></tr>
+          <tr><td class="text-muted">В ожидании</td><td class="text-end text-warning">4</td></tr>
+          <tr><td class="text-muted">Брошено / неудача</td><td class="text-end text-danger">3 <span class="text-muted small">(28%)</span></td></tr>
+        </table>
+        <div class="divider"></div>
+        <div class="small">
+          <div class="text-muted mb-1"><i class="ti ti-mail me-1"></i>Восстановления:</div>
+          Отправлено: <strong>10</strong> ·
+          Конверсия: <strong class="text-success">2 (20%)</strong>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="col-md-8">
+    <div class="card">
+      <div class="card-header"><h3 class="card-title"><i class="ti ti-trophy me-1"></i>Топ-20 плательщиков</h3></div>
+      <div class="table-responsive">
+        <table class="table table-sm table-vcenter mb-0">
+          <thead><tr><th>Юзер</th><th>TG</th><th class="text-end">Сумма</th><th class="text-end">Платежей</th><th class="text-end">Кред.</th><th>Последний</th></tr></thead>
+          <tbody>
+            <tr>
+              <td><a href="/admin/users/1">@demo_user_01</a></td>
+              <td><code class="small">9000000001</code></td>
+              <td class="text-end text-success fw-bold">₽1,790</td>
+              <td class="text-end">2</td>
+              <td class="text-end">0</td>
+              <td class="text-muted">—</td>
+            </tr>
+            <tr>
+              <td><a href="/admin/users/2">@demo_user_02</a></td>
+              <td><code class="small">9000000002</code></td>
+              <td class="text-end text-success fw-bold">₽690</td>
+              <td class="text-end">2</td>
+              <td class="text-end">0</td>
+              <td class="text-muted">—</td>
+            </tr>
+            <tr>
+              <td><a href="/admin/users/3">@demo_user_03</a></td>
+              <td><code class="small">9000000003</code></td>
+              <td class="text-end text-success fw-bold">₽690</td>
+              <td class="text-end">2</td>
+              <td class="text-end">0</td>
+              <td class="text-muted">—</td>
+            </tr>
+            <tr>
+              <td><a href="/admin/users/4">@demo_user_04</a></td>
+              <td><code class="small">9000000004</code></td>
+              <td class="text-end text-success fw-bold">₽690</td>
+              <td class="text-end">2</td>
+              <td class="text-end">0</td>
+              <td class="text-muted">—</td>
+            </tr>
+            <tr>
+              <td><a href="/admin/users/5">@demo_user_05</a></td>
+              <td><code class="small">9000000005</code></td>
+              <td class="text-end text-success fw-bold">₽590</td>
+              <td class="text-end">2</td>
+              <td class="text-end">0</td>
+              <td class="text-muted">—</td>
+            </tr>
+            <tr>
+              <td><a href="/admin/users/6">@demo_user_06</a></td>
+              <td><code class="small">9000000006</code></td>
+              <td class="text-end text-success fw-bold">₽490</td>
+              <td class="text-end">2</td>
+              <td class="text-end">0</td>
+              <td class="text-muted">—</td>
+            </tr>
+            <tr>
+              <td><a href="/admin/users/7">@demo_user_07</a></td>
+              <td><code class="small">9000000007</code></td>
+              <td class="text-end text-success fw-bold">₽490</td>
+              <td class="text-end">1</td>
+              <td class="text-end">0</td>
+              <td class="text-muted">—</td>
+            </tr>
+            <tr>
+              <td><a href="/admin/users/8">@demo_user_08</a></td>
+              <td><code class="small">9000000008</code></td>
+              <td class="text-end text-success fw-bold">₽390</td>
+              <td class="text-end">1</td>
+              <td class="text-end">0</td>
+              <td class="text-muted">—</td>
+            </tr>
+            <tr>
+              <td><a href="/admin/users/9">@demo_user_09</a></td>
+              <td><code class="small">9000000009</code></td>
+              <td class="text-end text-success fw-bold">₽300</td>
+              <td class="text-end">1</td>
+              <td class="text-end">0</td>
+              <td class="text-muted">—</td>
+            </tr>
+            <tr>
+              <td><a href="/admin/users/10">@demo_user_10</a></td>
+              <td><code class="small">9000000010</code></td>
+              <td class="text-end text-success fw-bold">₽290</td>
+              <td class="text-end">1</td>
+              <td class="text-end">0</td>
+              <td class="text-muted">—</td>
+            </tr>
+            <tr>
+              <td><a href="/admin/users/11">@demo_user_11</a></td>
+              <td><code class="small">9000000011</code></td>
+              <td class="text-end text-success fw-bold">₽290</td>
+              <td class="text-end">1</td>
+              <td class="text-end">0</td>
+              <td class="text-muted">—</td>
+            </tr>
+            <tr>
+              <td><a href="/admin/users/12">@demo_user_12</a></td>
+              <td><code class="small">9000000012</code></td>
+              <td class="text-end text-success fw-bold">₽290</td>
+              <td class="text-end">1</td>
+              <td class="text-end">0</td>
+              <td class="text-muted">—</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/@tabler/core@1.0.0-beta20/dist/js/tabler.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<script>
+Chart.defaults.color = '#888fa3';
+Chart.defaults.borderColor = '#262a44';
+Chart.defaults.font.family = 'inherit';
+</script>
+<script>
+const grad = document.getElementById('revChart').getContext('2d').createLinearGradient(0, 0, 0, 200);
+grad.addColorStop(0, 'rgba(34,197,94,.3)');
+grad.addColorStop(1, 'rgba(34,197,94,0)');
+new Chart(document.getElementById('revChart'), {
+  type: 'bar',
+  data: {labels: ["01.10", "02.10", "03.10", "04.10", "05.10", "06.10", "07.10"], datasets: [{label:'₽', data: [290, 690, 990, 1790, 1490, 750, 990], backgroundColor: grad, borderColor: '#22c55e', borderWidth: 0, borderRadius: 6}]},
+  options: {plugins:{legend:{display:false}}, scales:{x:{grid:{color:'#262a44'}}, y:{grid:{color:'#262a44'}, beginAtZero:true}}}
+});
+</script>
+<script>
+    document.addEventListener('click', event => {
+      if (event.target.closest('a, button')) event.preventDefault();
+    });
+    document.addEventListener('submit', event => event.preventDefault());
+    document.querySelectorAll('input,button').forEach(el => el.disabled = true);
+    </script></body>
+</html>

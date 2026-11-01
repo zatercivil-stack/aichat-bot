@@ -14,7 +14,7 @@ from app.database.base import AsyncSessionFactory
 from app.database.models import PaymentStatus
 from app.database.repo.credits import add_credits
 from app.database.repo.payments import get_pending_payments, update_payment
-from app.database.repo.users import get_all_telegram_ids, get_total_users_count, get_user
+from app.database.repo.users import get_all_telegram_ids, get_total_users_count
 from app.keyboards.main import (
     PE_AU_GOLD,
     PE_CARD,
@@ -677,7 +677,7 @@ async def send_daily_push(bot_instance) -> None:
                 and_(
                     User.last_active_at >= cutoff_max,
                     User.last_active_at <= cutoff_recent,
-                    not User.is_banned,
+                    User.is_banned.is_(False),
                 )
             )
             .limit(5000)
@@ -1004,7 +1004,7 @@ async def send_mystery_push(bot_instance) -> None:
             .where(
                 and_(
                     User.last_active_at >= cutoff,
-                    not User.is_banned,
+                    User.is_banned.is_(False),
                     User.id.in_(edited_uids) if edited_uids else False,
                 )
             )
@@ -1208,7 +1208,7 @@ async def grant_time_bonuses(bot_instance) -> None:
         stmt = select(User).where(
             and_(
                 User.promo_activated_at.is_not(None),
-                not User.time_bonus_granted,
+                User.time_bonus_granted.is_(False),
                 User.promo_activated_at <= cutoff,
             )
         )
@@ -2204,50 +2204,20 @@ async def cmd_fix_payments(message: Message) -> None:
     if not is_admin(message):
         return
 
+    from app.services.payment_processing import process_succeeded_payment
+
     async with AsyncSessionFactory() as session:
         pending = await get_pending_payments(session)
-        yookassa_pending = [p for p in pending if p.payment_method == "yookassa"]
+    yookassa_pending = [p for p in pending if p.payment_method in ("yookassa", "yookassa_sub")]
+    if not yookassa_pending:
+        await message.answer("✅ Нет висящих платежей YooKassa.")
+        return
 
-        if not yookassa_pending:
-            await message.answer("✅ Нет висящих платежей YooKassa.")
-            return
-
-        completed = 0
-        for p in yookassa_pending:
-            credits = p.extra.get("credits", 0)
-            user_tg_id = p.extra.get("user_tg_id")
-            if credits and user_tg_id:
-                user = await get_user(session, int(user_tg_id))
-                if user:
-                    await add_credits(session, user, credits)
-                    await update_payment(
-                        session, p.id, PaymentStatus.SUCCEEDED, external_id="admin_fix"
-                    )
-                    completed += 1
-
-                    # Отправить уведомление пользователю
-                    try:
-                        from app.database.repo.credits import total_balance as _tb
-
-                        await message.bot.send_message(
-                            chat_id=int(user_tg_id),
-                            text=(
-                                f"✅ <b>{credits:,} кредитов зачислено!</b>\n\n"
-                                f"💳 Твой баланс: <b>{_tb(user):,} кредитов</b>\n\n"
-                                f"Просто напиши мне — я готов помочь 🚀"
-                            ),
-                            parse_mode="HTML",
-                        )
-                    except Exception as e:
-                        logger.error(
-                            "Failed to send payment notification", user_id=user_tg_id, error=e
-                        )
-
-        await session.commit()
-
-    await message.answer(
-        f"✅ Завершено {completed} платежей YooKassa, кредиты зачислены и уведомления отправлены."
-    )
+    completed = 0
+    for payment in yookassa_pending:
+        if await process_succeeded_payment(payment.id, bot=message.bot):
+            completed += 1
+    await message.answer(f"✅ Активировано {completed} платежей YooKassa.")
 
 
 @router.message(Command("checkpayments"))
@@ -2541,7 +2511,7 @@ async def cmd_showcase(message: Message) -> None:
                 await session.execute(
                     select(User.telegram_id).where(
                         and_(
-                            not User.is_banned,
+                            User.is_banned.is_(False),
                             User.last_active_at >= cutoff,
                         )
                     )
