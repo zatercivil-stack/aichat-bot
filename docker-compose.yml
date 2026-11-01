@@ -1,6 +1,10 @@
 services:
   bot:
-    build: .
+    build:
+      context: .
+      args:
+        APP_UID: ${APP_UID:-10001}
+        APP_GID: ${APP_GID:-10001}
     container_name: aichat_bot
     restart: unless-stopped
     depends_on:

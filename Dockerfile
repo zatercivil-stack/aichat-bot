@@ -1,11 +1,15 @@
 FROM python:3.12-slim AS base
 WORKDIR /app
+ARG APP_UID=10001
+ARG APP_GID=10001
 RUN apt-get update && apt-get install -y --no-install-recommends \
     ffmpeg \
     fonts-dejavu-core \
     fonts-noto-color-emoji \
  && rm -rf /var/lib/apt/lists/* \
- && groupadd -r app && useradd -r -g app app
+ && test "$APP_UID" -gt 0 && test "$APP_GID" -gt 0 \
+ && groupadd --gid "$APP_GID" app \
+ && useradd --uid "$APP_UID" --gid app --create-home app
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 FROM base AS test

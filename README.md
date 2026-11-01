@@ -66,6 +66,8 @@ cd aichat-bot
 cp .env.example .env
 ```
 
+Для нового каталога данных на Linux: `sudo install -d -m 750 -o 10001 -g 10001 data`. Если `data` уже существует, задайте в `.env` `APP_UID` и `APP_GID`, совпадающие с его владельцем: контейнер работает без root.
+
 Заполните `.env`: реальный `BOT_TOKEN`, ключи нужных AI-провайдеров, пароль БД, `ADMIN_TOKEN` и `ADMIN_SECRET_KEY`. Секреты админки можно создать командой `python -c "import secrets; print(secrets.token_urlsafe(32))"`. Затем:
 
 ```bash
