@@ -26,7 +26,7 @@ logger = structlog.get_logger(__name__)
 router = Router()
 
 ADMIN_ID = 0
-_DRAFT_KEY = 'pending_review_post'  # JSON {caption, image_fid, topic, cta_type}
+_DRAFT_KEY = "pending_review_post"  # JSON {caption, image_fid, topic, cta_type}
 
 
 def _is_admin(message: Message) -> bool:
@@ -41,20 +41,41 @@ def _draft_kb() -> InlineKeyboardMarkup:
     """Кнопки под черновиком: публикация / правка текста / правка фото / отмена.
     Цвета: зелёный = публикация (главное), синие = правки, красный = отмена."""
     from app.keyboards.main import PE_BUBBLE, PE_CHECK, PE_CROSS, PE_FRAME
-    return InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton.model_construct(
-            text='Опубликовать в канал', callback_data='chp:pub',
-            icon_custom_emoji_id=PE_CHECK, style='success')],
-        [InlineKeyboardButton.model_construct(
-            text='Изменить текст', callback_data='chp:txt',
-            icon_custom_emoji_id=PE_BUBBLE, style='primary'),
-         InlineKeyboardButton.model_construct(
-            text='Изменить фото', callback_data='chp:photo',
-            icon_custom_emoji_id=PE_FRAME, style='primary')],
-        [InlineKeyboardButton.model_construct(
-            text='Отмена', callback_data='chp:cancel',
-            icon_custom_emoji_id=PE_CROSS, style='danger')],
-    ])
+
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton.model_construct(
+                    text="Опубликовать в канал",
+                    callback_data="chp:pub",
+                    icon_custom_emoji_id=PE_CHECK,
+                    style="success",
+                )
+            ],
+            [
+                InlineKeyboardButton.model_construct(
+                    text="Изменить текст",
+                    callback_data="chp:txt",
+                    icon_custom_emoji_id=PE_BUBBLE,
+                    style="primary",
+                ),
+                InlineKeyboardButton.model_construct(
+                    text="Изменить фото",
+                    callback_data="chp:photo",
+                    icon_custom_emoji_id=PE_FRAME,
+                    style="primary",
+                ),
+            ],
+            [
+                InlineKeyboardButton.model_construct(
+                    text="Отмена",
+                    callback_data="chp:cancel",
+                    icon_custom_emoji_id=PE_CROSS,
+                    style="danger",
+                )
+            ],
+        ]
+    )
 
 
 async def _load_draft() -> dict | None:
@@ -76,7 +97,7 @@ async def _save_draft(data: dict) -> None:
 
 async def _clear_draft() -> None:
     async with AsyncSessionFactory() as s:
-        await set_config_value(s, _DRAFT_KEY, '')
+        await set_config_value(s, _DRAFT_KEY, "")
         await s.commit()
 
 
@@ -84,17 +105,19 @@ async def _send_preview(bot, chat_id: int, data: dict) -> str | None:
     """Шлёт превью черновика (фото+подпись) с кнопками. Возвращает актуальный
     image_fid (стабильный file_id из отправленного сообщения)."""
     from app.services.channel_publisher import _to_photo_payload
-    caption = data.get('caption', '')
-    image = data.get('image_fid')
+
+    caption = data.get("caption", "")
+    image = data.get("image_fid")
     kb = _draft_kb()
     payload = _to_photo_payload(image)
     if payload is not None:
-        sent = await bot.send_photo(chat_id, payload, caption=caption,
-                                    parse_mode='HTML', reply_markup=kb)
-        return image if isinstance(image, str) else (
-            sent.photo[-1].file_id if sent.photo else None)
-    await bot.send_message(chat_id, caption, parse_mode='HTML',
-                           reply_markup=kb, disable_web_page_preview=True)
+        sent = await bot.send_photo(
+            chat_id, payload, caption=caption, parse_mode="HTML", reply_markup=kb
+        )
+        return image if isinstance(image, str) else (sent.photo[-1].file_id if sent.photo else None)
+    await bot.send_message(
+        chat_id, caption, parse_mode="HTML", reply_markup=kb, disable_web_page_preview=True
+    )
     return None
 
 
@@ -109,8 +132,7 @@ async def cmd_channel_skip(message: Message) -> None:
         await session.commit()
 
     await message.answer(
-        "⏭ <b>Следующий пост будет пропущен.</b>\n"
-        "Автопубликация возобновится на следующий день.",
+        "⏭ <b>Следующий пост будет пропущен.</b>\nАвтопубликация возобновится на следующий день.",
         parse_mode="HTML",
     )
 
@@ -126,8 +148,7 @@ async def cmd_channel_pause(message: Message) -> None:
         await session.commit()
 
     await message.answer(
-        "⏸ <b>Автопубликация на @conturD приостановлена.</b>\n"
-        "Возобнови командой /channel_resume.",
+        "⏸ <b>Автопубликация на @conturD приостановлена.</b>\nВозобнови командой /channel_resume.",
         parse_mode="HTML",
     )
 
@@ -164,14 +185,15 @@ async def cmd_channel_post(message: Message) -> None:
     )
     try:
         from app.services.channel_publisher import _build_post, _pick_topic
+
         if not topic:
-            topic = await _pick_topic(mode='daily')
-        full_text, image_source, cta_type, _rm = await _build_post(topic, 'daily')
-        data = {'caption': full_text, 'image_fid': None,
-                'topic': topic, 'cta_type': cta_type}
-        fid = await _send_preview(message.bot, message.from_user.id,
-                                  {**data, 'image_fid': image_source})
-        data['image_fid'] = fid
+            topic = await _pick_topic(mode="daily")
+        full_text, image_source, cta_type, _rm = await _build_post(topic, "daily")
+        data = {"caption": full_text, "image_fid": None, "topic": topic, "cta_type": cta_type}
+        fid = await _send_preview(
+            message.bot, message.from_user.id, {**data, "image_fid": image_source}
+        )
+        data["image_fid"] = fid
         await _save_draft(data)
         await status_msg.edit_text(
             "👆 <b>Черновик готов.</b> Проверь, при нужде измени текст/фото — "
@@ -190,13 +212,14 @@ async def cmd_channel_post(message: Message) -> None:
 
 def _btn_markup(btn: dict | None) -> InlineKeyboardMarkup | None:
     """Строит инлайн-кнопку-CTA из btn={text,url,icon} (или None)."""
-    if not (btn and btn.get('url')):
+    if not (btn and btn.get("url")):
         return None
-    bkw = {'text': btn['text'], 'url': btn['url'], 'style': 'success'}
-    if btn.get('icon'):
-        bkw['icon_custom_emoji_id'] = btn['icon']
+    bkw = {"text": btn["text"], "url": btn["url"], "style": "success"}
+    if btn.get("icon"):
+        bkw["icon_custom_emoji_id"] = btn["icon"]
     return InlineKeyboardMarkup.model_construct(
-        inline_keyboard=[[InlineKeyboardButton.model_construct(**bkw)]])
+        inline_keyboard=[[InlineKeyboardButton.model_construct(**bkw)]]
+    )
 
 
 async def _publish_post(bot, data: dict) -> int:
@@ -206,25 +229,40 @@ async def _publish_post(bot, data: dict) -> int:
 
     from app.database.models import ChannelPost
     from app.services.channel_publisher import CHANNEL_ID
-    caption = data.get('caption', '')
-    fid = data.get('image_fid')
-    reply_markup = _btn_markup(data.get('btn'))
+
+    caption = data.get("caption", "")
+    fid = data.get("image_fid")
+    reply_markup = _btn_markup(data.get("btn"))
     if fid:
-        sent = await bot.send_photo(chat_id=CHANNEL_ID, photo=fid, caption=caption,
-                                    parse_mode='HTML', disable_notification=True,
-                                    reply_markup=reply_markup)
+        sent = await bot.send_photo(
+            chat_id=CHANNEL_ID,
+            photo=fid,
+            caption=caption,
+            parse_mode="HTML",
+            disable_notification=True,
+            reply_markup=reply_markup,
+        )
     else:
-        sent = await bot.send_message(chat_id=CHANNEL_ID, text=caption,
-                                      parse_mode='HTML', disable_web_page_preview=True,
-                                      disable_notification=True, reply_markup=reply_markup)
+        sent = await bot.send_message(
+            chat_id=CHANNEL_ID,
+            text=caption,
+            parse_mode="HTML",
+            disable_web_page_preview=True,
+            disable_notification=True,
+            reply_markup=reply_markup,
+        )
     async with AsyncSessionFactory() as s:
-        await s.execute(sql_insert(ChannelPost).values(
-            topic=data.get('topic', 'manual'), body=caption,
-            cta_type=data.get('cta_type', 'neira_plain'),
-            scheduled_at=datetime.now(UTC),
-            published_at=datetime.now(UTC),
-            message_id=sent.message_id, status='published',
-        ))
+        await s.execute(
+            sql_insert(ChannelPost).values(
+                topic=data.get("topic", "manual"),
+                body=caption,
+                cta_type=data.get("cta_type", "neira_plain"),
+                scheduled_at=datetime.now(UTC),
+                published_at=datetime.now(UTC),
+                message_id=sent.message_id,
+                status="published",
+            )
+        )
         await s.commit()
     return sent.message_id
 
@@ -236,15 +274,15 @@ async def _publish_draft(bot, data: dict) -> int:
     return mid
 
 
-@router.callback_query(F.data == 'chp:pub')
+@router.callback_query(F.data == "chp:pub")
 async def cb_chp_publish(callback: CallbackQuery, state: FSMContext) -> None:
     if not _is_admin_uid(callback.from_user.id):
         return
     data = await _load_draft()
     if not data:
-        await callback.answer('Черновик не найден (уже опубликован или отменён)', show_alert=True)
+        await callback.answer("Черновик не найден (уже опубликован или отменён)", show_alert=True)
         return
-    await callback.answer('Публикую…')
+    await callback.answer("Публикую…")
     try:
         mid = await _publish_draft(callback.bot, data)
         await state.clear()
@@ -253,49 +291,55 @@ async def cb_chp_publish(callback: CallbackQuery, state: FSMContext) -> None:
         except Exception:
             pass
         await callback.message.answer(
-            f"✅ <b>Опубликовано в @conturD</b> (msg {mid}).", parse_mode='HTML')
+            f"✅ <b>Опубликовано в @conturD</b> (msg {mid}).", parse_mode="HTML"
+        )
     except Exception as exc:
-        logger.error('chp publish failed', error=str(exc)[:300])
+        logger.error("chp publish failed", error=str(exc)[:300])
         await callback.message.answer(
-            f"❌ Ошибка публикации: <code>{str(exc)[:300]}</code>", parse_mode='HTML')
+            f"❌ Ошибка публикации: <code>{str(exc)[:300]}</code>", parse_mode="HTML"
+        )
 
 
-@router.callback_query(F.data == 'chp:txt')
+@router.callback_query(F.data == "chp:txt")
 async def cb_chp_edit_text(callback: CallbackQuery, state: FSMContext) -> None:
     if not _is_admin_uid(callback.from_user.id):
         return
     if not await _load_draft():
-        await callback.answer('Черновик не найден', show_alert=True)
+        await callback.answer("Черновик не найден", show_alert=True)
         return
     await state.set_state(ChannelDraftState.waiting_caption)
     await callback.answer()
     await callback.message.answer(
         "✏️ Пришли <b>новый текст</b> поста (HTML-разметку <code>&lt;b&gt;</code> "
         "и т.п. можно прямо в тексте). Я заменю подпись и покажу обновлённый "
-        "черновик.", parse_mode='HTML')
+        "черновик.",
+        parse_mode="HTML",
+    )
 
 
-@router.callback_query(F.data == 'chp:photo')
+@router.callback_query(F.data == "chp:photo")
 async def cb_chp_edit_photo(callback: CallbackQuery, state: FSMContext) -> None:
     if not _is_admin_uid(callback.from_user.id):
         return
     if not await _load_draft():
-        await callback.answer('Черновик не найден', show_alert=True)
+        await callback.answer("Черновик не найден", show_alert=True)
         return
     await state.set_state(ChannelDraftState.waiting_photo)
     await callback.answer()
     await callback.message.answer(
         "🖼 Пришли <b>новое фото</b> (как изображение или файл). "
-        "Заменю картинку и покажу обновлённый черновик.", parse_mode='HTML')
+        "Заменю картинку и покажу обновлённый черновик.",
+        parse_mode="HTML",
+    )
 
 
-@router.callback_query(F.data == 'chp:cancel')
+@router.callback_query(F.data == "chp:cancel")
 async def cb_chp_cancel(callback: CallbackQuery, state: FSMContext) -> None:
     if not _is_admin_uid(callback.from_user.id):
         return
     await _clear_draft()
     await state.clear()
-    await callback.answer('Отменено')
+    await callback.answer("Отменено")
     try:
         await callback.message.edit_reply_markup(reply_markup=None)
     except Exception:
@@ -307,25 +351,27 @@ async def cb_chp_cancel(callback: CallbackQuery, state: FSMContext) -> None:
 async def on_new_caption(message: Message, state: FSMContext) -> None:
     if not _is_admin(message):
         return
-    raw = (message.text or '').strip()
-    if raw.startswith('/'):
+    raw = (message.text or "").strip()
+    if raw.startswith("/"):
         await state.clear()
-        await message.answer('Редактирование отменено (черновик без изменений). '
-                             'Открой его снова через /channel_post при нужде.')
+        await message.answer(
+            "Редактирование отменено (черновик без изменений). "
+            "Открой его снова через /channel_post при нужде."
+        )
         return
-    new_text = (message.html_text or message.text or '').strip()
+    new_text = (message.html_text or message.text or "").strip()
     if not new_text:
-        await message.answer('Пустой текст — пришли текст поста.')
+        await message.answer("Пустой текст — пришли текст поста.")
         return
     data = await _load_draft()
     if not data:
         await state.clear()
-        await message.answer('Черновик не найден.')
+        await message.answer("Черновик не найден.")
         return
-    data['caption'] = new_text
+    data["caption"] = new_text
     await _save_draft(data)
     await state.clear()
-    await message.answer('✅ Текст обновлён. Вот черновик:')
+    await message.answer("✅ Текст обновлён. Вот черновик:")
     await _send_preview(message.bot, message.from_user.id, data)
 
 
@@ -335,20 +381,20 @@ async def on_new_photo(message: Message, state: FSMContext) -> None:
         return
     if message.photo:
         fid = message.photo[-1].file_id
-    elif message.document and (message.document.mime_type or '').startswith('image/'):
+    elif message.document and (message.document.mime_type or "").startswith("image/"):
         fid = message.document.file_id
     else:
-        await message.answer('Это не картинка. Пришли фото или картинку-файл.')
+        await message.answer("Это не картинка. Пришли фото или картинку-файл.")
         return
     data = await _load_draft()
     if not data:
         await state.clear()
-        await message.answer('Черновик не найден.')
+        await message.answer("Черновик не найден.")
         return
-    data['image_fid'] = fid
+    data["image_fid"] = fid
     await _save_draft(data)
     await state.clear()
-    await message.answer('✅ Фото обновлено. Вот черновик:')
+    await message.answer("✅ Фото обновлено. Вот черновик:")
     await _send_preview(message.bot, message.from_user.id, data)
 
 
@@ -399,7 +445,7 @@ async def cmd_channel_status(message: Message) -> None:
                 topic_short += "…"
             msg_link = ""
             if post.message_id:
-                msg_link = f" <a href=\"https://t.me/conturD/{post.message_id}\">🔗</a>"
+                msg_link = f' <a href="https://t.me/conturD/{post.message_id}">🔗</a>'
             lines.append(f"• {date_str} — {topic_short}{msg_link}")
     else:
         lines.append("Постов ещё нет.")
@@ -419,8 +465,8 @@ async def cmd_channel_status(message: Message) -> None:
 # отдельно — в отличие от одиночного ручного слота _DRAFT_KEY.
 # ──────────────────────────────────────────────────────────────────────────
 
-_AUTO_KEY = 'auto_post_drafts'          # JSON {draft_id: data}
-_PE_SPARKLES = '5325547803936572038'    # ✨ — иконка кнопки-CTA
+_AUTO_KEY = "auto_post_drafts"  # JSON {draft_id: data}
+_PE_SPARKLES = "5325547803936572038"  # ✨ — иконка кнопки-CTA
 
 
 async def _load_auto() -> dict:
@@ -440,22 +486,34 @@ async def _save_auto(d: dict) -> None:
 
 def _auto_kb(draft_id: str) -> InlineKeyboardMarkup:
     from app.keyboards.main import PE_CHECK, PE_CROSS
-    return InlineKeyboardMarkup(inline_keyboard=[[
-        InlineKeyboardButton.model_construct(
-            text='Опубликовать', callback_data=f'apc:pub:{draft_id}',
-            icon_custom_emoji_id=PE_CHECK, style='success'),
-        InlineKeyboardButton.model_construct(
-            text='Удалить', callback_data=f'apc:del:{draft_id}',
-            icon_custom_emoji_id=PE_CROSS, style='danger'),
-    ]])
+
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton.model_construct(
+                    text="Опубликовать",
+                    callback_data=f"apc:pub:{draft_id}",
+                    icon_custom_emoji_id=PE_CHECK,
+                    style="success",
+                ),
+                InlineKeyboardButton.model_construct(
+                    text="Удалить",
+                    callback_data=f"apc:del:{draft_id}",
+                    icon_custom_emoji_id=PE_CROSS,
+                    style="danger",
+                ),
+            ]
+        ]
+    )
 
 
 async def run_auto_post_drafts(bot, n_variants: int = 2) -> None:
     """Генерит N вариантов поста через GPT и шлёт владельцу на одобрение.
     Чередует credits-режим (чётный индекс) и button-режим (нечётный)."""
     from app.services.gpt_post import generate_post, is_enabled
+
     if not is_enabled():
-        logger.info('auto_post skipped: OPENAI_API_KEY пуст')
+        logger.info("auto_post skipped: OPENAI_API_KEY пуст")
         return
     from sqlalchemy import text as _sqltext
 
@@ -472,11 +530,10 @@ async def run_auto_post_drafts(bot, n_variants: int = 2) -> None:
 
     # пресеты с готовым превью (есть file_id) — из них выбираем образ
     async with AsyncSessionFactory() as s:
-        rows = await s.execute(_sqltext(
-            "SELECT DISTINCT preset_key FROM preset_previews"))
+        rows = await s.execute(_sqltext("SELECT DISTINCT preset_key FROM preset_previews"))
         preview_keys = [r[0] for r in rows.fetchall() if r[0] in EDIT_PRESETS]
     if not preview_keys:
-        logger.warning('auto_post: нет пресетов с превью')
+        logger.warning("auto_post: нет пресетов с превью")
         return
     random.shuffle(preview_keys)
 
@@ -484,49 +541,61 @@ async def run_auto_post_drafts(bot, n_variants: int = 2) -> None:
     sent = 0
     for i in range(n_variants):
         preset = preview_keys[i % len(preview_keys)]
-        label = re.sub(r'^\W+', '', EDIT_PRESETS[preset][0]).strip()
+        label = re.sub(r"^\W+", "", EDIT_PRESETS[preset][0]).strip()
         body = await generate_post(label)
         if not body:
             continue
         async with AsyncSessionFactory() as s:
             fid = await get_preview_file_id(s, preset)
-        credits_mode = (i % 2 == 0)
+        credits_mode = i % 2 == 0
         if credits_mode:
             # «бесплатные кредиты»: assemble добавит футер с +кр (премиум в теле)
             caption, fid2, cta_type, _promo = await assemble_manual_post(
-                body, preset, mode='feature')
+                body, preset, mode="feature"
+            )
             fid = fid2 or fid
             btn = None
-            mode_label = 'бесплатные кредиты'
+            mode_label = "бесплатные кредиты"
         else:
             # «инлайн-кнопка»: credits=0, кнопка-CTA под постом, без футера-бонуса
             promo = await _create_post_promo(preset_key=preset, credits=0)
             # тот же порядок пост-обработки, что в assemble_manual_post:
             # markdown→HTML → премиум-эмодзи → подпись-ссылка
             caption = _link_signature(premium_text(_fix_markdown_bold(body)))
-            cta_type = 'neira_feature'
-            btn = {'text': 'Хочу такой кадр со своим лицом',
-                   'url': _neyra_link(promo), 'icon': _PE_SPARKLES}
-            mode_label = 'инлайн-кнопка'
+            cta_type = "neira_feature"
+            btn = {
+                "text": "Хочу такой кадр со своим лицом",
+                "url": _neyra_link(promo),
+                "icon": _PE_SPARKLES,
+            }
+            mode_label = "инлайн-кнопка"
 
         did = uuid.uuid4().hex[:8]
-        data = {'caption': caption, 'image_fid': fid, 'topic': f'auto:{preset}',
-                'cta_type': cta_type, 'btn': btn}
+        data = {
+            "caption": caption,
+            "image_fid": fid,
+            "topic": f"auto:{preset}",
+            "cta_type": cta_type,
+            "btn": btn,
+        }
         drafts[did] = data
         # превью владельцу: реальный вид + отдельное сообщение с управлением
         try:
-            await bot.send_photo(ADMIN_ID, fid, caption=caption, parse_mode='HTML',
-                                 reply_markup=_btn_markup(btn))
+            await bot.send_photo(
+                ADMIN_ID, fid, caption=caption, parse_mode="HTML", reply_markup=_btn_markup(btn)
+            )
             await bot.send_message(
                 ADMIN_ID,
                 f"🤖 Авто-черновик «{label}» · режим: <b>{mode_label}</b>. Публикуем?",
-                parse_mode='HTML', reply_markup=_auto_kb(did))
+                parse_mode="HTML",
+                reply_markup=_auto_kb(did),
+            )
             sent += 1
         except Exception as exc:  # noqa: BLE001
-            logger.error('auto_post send failed', error=str(exc)[:200])
+            logger.error("auto_post send failed", error=str(exc)[:200])
             drafts.pop(did, None)
     await _save_auto(drafts)
-    logger.info('auto_post done', sent=sent)
+    logger.info("auto_post done", sent=sent)
 
 
 @router.message(Command("autopost"))
@@ -546,36 +615,37 @@ async def cmd_autopost(message: Message) -> None:
 # _build_post, где тема и картинка выбирались независимо.
 # ──────────────────────────────────────────────────────────────────────────
 
-_LAST_PRESET_KEY = 'auto_publish_last_preset'  # чтобы не повторять пресет подряд
+_LAST_PRESET_KEY = "auto_publish_last_preset"  # чтобы не повторять пресет подряд
 # Доля постов с бонусом «+кр» в футере. Остальные (~75%) — БЕЗ бонуса, с
 # зелёной инлайн-кнопкой-CTA в бота (credits=0, только трекинг): владелец 28.06 —
 # бонус в каждом посте обесценивает кредиты, дарить лишь иногда.
 _BONUS_CHANCE = 0.25
 
 
-async def run_auto_post_publish(bot, mode: str = 'feature') -> None:
+async def run_auto_post_publish(bot, mode: str = "feature") -> None:
     """Генерит один пост (gpt-5.4-mini на OPENAI_API_KEY) и сразу публикует его
     в @conturD. Уважает паузу/skip (общие флаги с /channel_pause /channel_skip).
     ~25% постов — бонусный футер (+кр по mode: feature=100/daily=50), остальные —
     инлайн-кнопка в бота без бонуса. mode влияет только на размер бонуса."""
     from app.services.gpt_post import generate_post, is_enabled
+
     if not is_enabled():
-        logger.info('auto_publish skipped: OPENAI_API_KEY пуст')
+        logger.info("auto_publish skipped: OPENAI_API_KEY пуст")
         return
 
     # пауза / разовый пропуск — те же конфиг-флаги, что у ручных команд
     async with AsyncSessionFactory() as s:
-        paused = await get_config_value(s, 'channel_publisher_paused')
-        skip = await get_config_value(s, 'channel_publisher_skip_next')
+        paused = await get_config_value(s, "channel_publisher_paused")
+        skip = await get_config_value(s, "channel_publisher_skip_next")
         last = await get_config_value(s, _LAST_PRESET_KEY)
-    if paused == '1':
-        logger.info('auto_publish: paused')
+    if paused == "1":
+        logger.info("auto_publish: paused")
         return
-    if skip == '1':
+    if skip == "1":
         async with AsyncSessionFactory() as s:
-            await set_config_value(s, 'channel_publisher_skip_next', '0')
+            await set_config_value(s, "channel_publisher_skip_next", "0")
             await s.commit()
-        logger.info('auto_publish: skip_next (one-shot)')
+        logger.info("auto_publish: skip_next (one-shot)")
         return
 
     from sqlalchemy import text as _sqltext
@@ -593,53 +663,58 @@ async def run_auto_post_publish(bot, mode: str = 'feature') -> None:
 
     # пресеты с готовым превью (file_id уже есть → fal.ai не тратится)
     async with AsyncSessionFactory() as s:
-        rows = await s.execute(_sqltext(
-            "SELECT DISTINCT preset_key FROM preset_previews"))
+        rows = await s.execute(_sqltext("SELECT DISTINCT preset_key FROM preset_previews"))
         preview_keys = [r[0] for r in rows.fetchall() if r[0] in EDIT_PRESETS]
     if not preview_keys:
-        logger.warning('auto_publish: нет пресетов с превью')
+        logger.warning("auto_publish: нет пресетов с превью")
         return
     # не повторяем тот же образ два поста подряд (если есть выбор)
     pool = [k for k in preview_keys if k != last] or preview_keys
     preset = random.choice(pool)
 
-    label = re.sub(r'^\W+', '', EDIT_PRESETS[preset][0]).strip()
+    label = re.sub(r"^\W+", "", EDIT_PRESETS[preset][0]).strip()
     body = await generate_post(label)
     if not body:
-        logger.warning('auto_publish: пустой текст от gpt', preset=preset)
+        logger.warning("auto_publish: пустой текст от gpt", preset=preset)
         return
 
     bonus_mode = random.random() < _BONUS_CHANCE
     if bonus_mode:
         # редкий бонусный пост: футер «+кр в подарок», без инлайн-кнопки
-        caption, image_fid, cta_type, _promo = await assemble_manual_post(
-            body, preset, mode=mode)
+        caption, image_fid, cta_type, _promo = await assemble_manual_post(body, preset, mode=mode)
         btn = None
     else:
         # основной режим: без бонуса, зелёная инлайн-кнопка-CTA в бота
         # (credits=0 — промо только трекает источник и открывает пресет)
         promo = await _create_post_promo(preset_key=preset, credits=0)
         caption = _link_signature(premium_text(_fix_markdown_bold(body)))
-        cta_type = 'neira_feature'
-        btn = {'text': 'Хочу такой кадр со своим лицом',
-               'url': _neyra_link(promo), 'icon': _PE_SPARKLES}
+        cta_type = "neira_feature"
+        btn = {
+            "text": "Хочу такой кадр со своим лицом",
+            "url": _neyra_link(promo),
+            "icon": _PE_SPARKLES,
+        }
         async with AsyncSessionFactory() as s:
             image_fid = await get_preview_file_id(s, preset)
     if not image_fid:
-        logger.warning('auto_publish: нет превью у пресета', preset=preset)
+        logger.warning("auto_publish: нет превью у пресета", preset=preset)
         return
 
-    data = {'caption': caption, 'image_fid': image_fid,
-            'topic': f'auto:{preset}', 'cta_type': cta_type, 'btn': btn}
+    data = {
+        "caption": caption,
+        "image_fid": image_fid,
+        "topic": f"auto:{preset}",
+        "cta_type": cta_type,
+        "btn": btn,
+    }
     try:
         mid = await _publish_post(bot, data)
         async with AsyncSessionFactory() as s:
             await set_config_value(s, _LAST_PRESET_KEY, preset)
             await s.commit()
-        logger.info('auto_publish done', preset=preset, mid=mid, mode=mode,
-                    bonus=bonus_mode)
+        logger.info("auto_publish done", preset=preset, mid=mid, mode=mode, bonus=bonus_mode)
     except Exception as exc:  # noqa: BLE001
-        logger.error('auto_publish failed', preset=preset, error=str(exc)[:300])
+        logger.error("auto_publish failed", preset=preset, error=str(exc)[:300])
 
 
 @router.message(Command("autopublish"))
@@ -649,21 +724,21 @@ async def cmd_autopublish(message: Message) -> None:
     if not _is_admin(message):
         return
     await message.answer("⏳ Генерирую и публикую один пост в @conturD…")
-    await run_auto_post_publish(message.bot, mode='feature')
+    await run_auto_post_publish(message.bot, mode="feature")
     await message.answer("✅ Готово (проверь @conturD).")
 
 
-@router.callback_query(F.data.startswith('apc:pub:'))
+@router.callback_query(F.data.startswith("apc:pub:"))
 async def cb_apc_publish(callback: CallbackQuery) -> None:
     if not _is_admin_uid(callback.from_user.id):
         return
-    did = callback.data.split(':', 2)[2]
+    did = callback.data.split(":", 2)[2]
     drafts = await _load_auto()
     data = drafts.get(did)
     if not data:
-        await callback.answer('Черновик уже использован или удалён', show_alert=True)
+        await callback.answer("Черновик уже использован или удалён", show_alert=True)
         return
-    await callback.answer('Публикую…')
+    await callback.answer("Публикую…")
     try:
         mid = await _publish_post(callback.bot, data)
         drafts.pop(did, None)
@@ -673,18 +748,20 @@ async def cb_apc_publish(callback: CallbackQuery) -> None:
         except Exception:  # noqa: BLE001
             pass
         await callback.message.answer(
-            f"✅ <b>Опубликовано в @conturD</b> (msg {mid}).", parse_mode='HTML')
+            f"✅ <b>Опубликовано в @conturD</b> (msg {mid}).", parse_mode="HTML"
+        )
     except Exception as exc:  # noqa: BLE001
-        logger.error('apc publish failed', error=str(exc)[:300])
+        logger.error("apc publish failed", error=str(exc)[:300])
         await callback.message.answer(
-            f"❌ Ошибка публикации: <code>{str(exc)[:300]}</code>", parse_mode='HTML')
+            f"❌ Ошибка публикации: <code>{str(exc)[:300]}</code>", parse_mode="HTML"
+        )
 
 
-@router.callback_query(F.data.startswith('apc:del:'))
+@router.callback_query(F.data.startswith("apc:del:"))
 async def cb_apc_delete(callback: CallbackQuery) -> None:
     if not _is_admin_uid(callback.from_user.id):
         return
-    did = callback.data.split(':', 2)[2]
+    did = callback.data.split(":", 2)[2]
     drafts = await _load_auto()
     if drafts.pop(did, None) is not None:
         await _save_auto(drafts)
@@ -692,4 +769,4 @@ async def cb_apc_delete(callback: CallbackQuery) -> None:
         await callback.message.edit_reply_markup(reply_markup=None)
     except Exception:  # noqa: BLE001
         pass
-    await callback.answer('Удалено')
+    await callback.answer("Удалено")

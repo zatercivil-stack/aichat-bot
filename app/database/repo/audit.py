@@ -1,4 +1,5 @@
 """Admin audit log — append-only, never raises."""
+
 from __future__ import annotations
 
 import asyncio
@@ -13,7 +14,8 @@ logger = structlog.get_logger(__name__)
 
 
 async def log_action(
-    admin_id: str, action: str,
+    admin_id: str,
+    action: str,
     target_user_id: int | None = None,
     ip: str | None = None,
     **payload: Any,
@@ -37,11 +39,12 @@ async def log_action(
             session.add(entry)
             await session.commit()
     except Exception as exc:
-        logger.warning('audit log_action failed', action=action, error=str(exc)[:200])
+        logger.warning("audit log_action failed", action=action, error=str(exc)[:200])
 
 
 def log_action_bg(
-    admin_id: str, action: str,
+    admin_id: str,
+    action: str,
     target_user_id: int | None = None,
     ip: str | None = None,
     **payload: Any,

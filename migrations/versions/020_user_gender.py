@@ -11,20 +11,21 @@ Create Date: 2026-05-21 18:30:00.000000
 
 Значения: 'male' / 'female' / 'any' (не важно). NULL = ещё не спросили.
 """
+
 from __future__ import annotations
 
 import sqlalchemy as sa
 from alembic import op
 
-revision = '020'
-down_revision = '019'
+revision = "020"
+down_revision = "019"
 branch_labels = None
 depends_on = None
 
 
 def upgrade() -> None:
-    op.add_column('users', sa.Column('gender', sa.String(length=8), nullable=True))
+    op.add_column("users", sa.Column("gender", sa.String(length=8), nullable=True))
 
 
 def downgrade() -> None:
-    op.drop_column('users', 'gender')
+    op.drop_column("users", "gender")

@@ -15,6 +15,7 @@
     записал в БД с правильной атрибуцией). Иначе пишем как 'organic'.
 Левы пишем всегда из chat_member (через join_request не проходят).
 """
+
 from __future__ import annotations
 
 import structlog
@@ -27,14 +28,14 @@ from app.database.models import ChannelTraffic
 
 logger = structlog.get_logger(__name__)
 
-router = Router(name='channel_traffic')
+router = Router(name="channel_traffic")
 
 # Numeric id @conturD — получен через bot.get_chat. По id фильтр строже, чем
 # по @username (username можно переименовать).
 CHANNEL_ID = -1003304830567
 
-_INSIDE = {'member', 'restricted', 'administrator', 'creator'}
-_OUTSIDE = {'left', 'kicked'}
+_INSIDE = {"member", "restricted", "administrator", "creator"}
+_OUTSIDE = {"left", "kicked"}
 
 _JR_SEEN_TTL = 60  # сек: окно, в котором ждём chat_member после join_request
 
@@ -50,36 +51,39 @@ async def on_join_request(req: ChatJoinRequest, bot: Bot, redis: Redis) -> None:
     # 1. Лог в БД С АТРИБУЦИЕЙ — это главная цель всего пайплайна
     try:
         async with AsyncSessionFactory() as session:
-            session.add(ChannelTraffic(
-                user_tg_id=user.id,
-                event='join',
-                invite_link_url=inv.invite_link if inv else None,
-                invite_link_name=(inv.name if inv else None),
-                via_chat_folder=False,
-                old_status='left',
-                new_status='member',
-            ))
+            session.add(
+                ChannelTraffic(
+                    user_tg_id=user.id,
+                    event="join",
+                    invite_link_url=inv.invite_link if inv else None,
+                    invite_link_name=(inv.name if inv else None),
+                    via_chat_folder=False,
+                    old_status="left",
+                    new_status="member",
+                )
+            )
             await session.commit()
     except Exception as exc:
-        logger.error('join_request_log_failed',
-                     user=user.id, error=str(exc)[:200])
+        logger.error("join_request_log_failed", user=user.id, error=str(exc)[:200])
 
     # 2. Флаг в Redis: chat_member-хендлер увидит и не запишет дубль
     try:
-        await redis.setex(f'jr_seen:{user.id}', _JR_SEEN_TTL, '1')
+        await redis.setex(f"jr_seen:{user.id}", _JR_SEEN_TTL, "1")
     except Exception as exc:
-        logger.warning('jr_redis_flag_failed', user=user.id, error=str(exc)[:120])
+        logger.warning("jr_redis_flag_failed", user=user.id, error=str(exc)[:120])
 
     # 3. Мгновенный аппрув — UX-задержка sub-second
     try:
         await bot.approve_chat_join_request(chat_id=CHANNEL_ID, user_id=user.id)
-        logger.info('join_request_approved',
-                    user=user.id, username=user.username,
-                    link=(inv.invite_link if inv else None),
-                    name=(inv.name if inv else None))
+        logger.info(
+            "join_request_approved",
+            user=user.id,
+            username=user.username,
+            link=(inv.invite_link if inv else None),
+            name=(inv.name if inv else None),
+        )
     except Exception as exc:
-        logger.error('join_request_approve_failed',
-                     user=user.id, error=str(exc)[:200])
+        logger.error("join_request_approve_failed", user=user.id, error=str(exc)[:200])
 
 
 @router.chat_member()
@@ -91,9 +95,9 @@ async def on_chat_member(update: ChatMemberUpdated, redis: Redis) -> None:
     new = update.new_chat_member.status if update.new_chat_member else None
 
     if old in _OUTSIDE and new in _INSIDE:
-        kind = 'join'
+        kind = "join"
     elif old in _INSIDE and new in _OUTSIDE:
-        kind = 'leave'
+        kind = "leave"
     else:
         return  # промоут/демоут — игнор
 
@@ -101,40 +105,44 @@ async def on_chat_member(update: ChatMemberUpdated, redis: Redis) -> None:
 
     # Дедуп для joi'нов через join_request flow: если флаг есть — join_request
     # уже записал атрибутированную запись, второй раз не пишем.
-    if kind == 'join':
+    if kind == "join":
         try:
-            seen = await redis.get(f'jr_seen:{user.id}')
+            seen = await redis.get(f"jr_seen:{user.id}")
         except Exception:
             seen = None
         if seen:
             try:
-                await redis.delete(f'jr_seen:{user.id}')
+                await redis.delete(f"jr_seen:{user.id}")
             except Exception:
                 pass
-            logger.info('chat_member_dedup_skip',
-                        user=user.id, reason='join_request_flow')
+            logger.info("chat_member_dedup_skip", user=user.id, reason="join_request_flow")
             return
 
     inv = update.invite_link
     try:
         async with AsyncSessionFactory() as session:
-            session.add(ChannelTraffic(
-                user_tg_id=user.id,
-                event=kind,
-                invite_link_url=inv.invite_link if inv else None,
-                invite_link_name=(inv.name if inv else None),
-                via_chat_folder=bool(update.via_chat_folder_invite_link),
-                old_status=old,
-                new_status=new,
-            ))
+            session.add(
+                ChannelTraffic(
+                    user_tg_id=user.id,
+                    event=kind,
+                    invite_link_url=inv.invite_link if inv else None,
+                    invite_link_name=(inv.name if inv else None),
+                    via_chat_folder=bool(update.via_chat_folder_invite_link),
+                    old_status=old,
+                    new_status=new,
+                )
+            )
             await session.commit()
     except Exception as exc:
-        logger.error('channel_traffic_insert_failed',
-                     kind=kind, user=user.id, error=str(exc)[:200])
+        logger.error("channel_traffic_insert_failed", kind=kind, user=user.id, error=str(exc)[:200])
         return
 
-    logger.info('channel_traffic_logged',
-                kind=kind, user=user.id, username=user.username,
-                link=(inv.invite_link if inv else None),
-                name=(inv.name if inv else None),
-                via_folder=bool(update.via_chat_folder_invite_link))
+    logger.info(
+        "channel_traffic_logged",
+        kind=kind,
+        user=user.id,
+        username=user.username,
+        link=(inv.invite_link if inv else None),
+        name=(inv.name if inv else None),
+        via_folder=bool(update.via_chat_folder_invite_link),
+    )

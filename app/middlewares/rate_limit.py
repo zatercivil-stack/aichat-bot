@@ -7,6 +7,7 @@ Pre-AI message rate-limit:
 
 Admins are exempt.
 """
+
 from __future__ import annotations
 
 import time
@@ -23,9 +24,9 @@ logger = structlog.get_logger(__name__)
 
 # (limit, window_seconds, kind)
 RULES = [
-    (5,   10,   'burst'),    # short burst
-    (30,  60,   'minute'),   # per-minute
-    (200, 3600, 'hour'),     # hourly abuse
+    (5, 10, "burst"),  # short burst
+    (30, 60, "minute"),  # per-minute
+    (200, 3600, "hour"),  # hourly abuse
 ]
 
 
@@ -63,7 +64,7 @@ class RateLimitMiddleware(BaseMiddleware):
         breached = None
         try:
             for limit, window, kind in RULES:
-                key = f'ratelimit:{kind}:{tg_user.id}'
+                key = f"ratelimit:{kind}:{tg_user.id}"
                 # Sliding window via sorted set: add timestamp, drop old, count
                 pipe = redis.pipeline()
                 pipe.zadd(key, {str(now): now})
@@ -75,30 +76,33 @@ class RateLimitMiddleware(BaseMiddleware):
                     breached = (limit, window, kind, count)
                     break
         except Exception as exc:
-            logger.warning('rate-limit check failed', error=str(exc)[:200])
+            logger.warning("rate-limit check failed", error=str(exc)[:200])
             return await handler(event, data)
 
         if breached:
             limit, window, kind, count = breached
-            logger.warning('rate-limit hit', telegram_id=tg_user.id, kind=kind, count=count, limit=limit)
+            logger.warning(
+                "rate-limit hit", telegram_id=tg_user.id, kind=kind, count=count, limit=limit
+            )
             try:
                 # Only warn on burst breaches — silent on the rest to avoid spamming
-                if kind == 'burst':
+                if kind == "burst":
                     await event.answer(
-                        '⚡ Слишком быстро. Подожди пару секунд и попробуй снова.',
+                        "⚡ Слишком быстро. Подожди пару секунд и попробуй снова.",
                     )
                 # For hour-window: notify admin once per user/day
-                if kind == 'hour':
-                    admin_alert_key = f'admin_alert:abuse:{tg_user.id}:{now // 86400}'
-                    if await redis.set(admin_alert_key, '1', nx=True, ex=86400):
+                if kind == "hour":
+                    admin_alert_key = f"admin_alert:abuse:{tg_user.id}:{now // 86400}"
+                    if await redis.set(admin_alert_key, "1", nx=True, ex=86400):
                         from app.services.admin_notify import alert_admins
+
                         await alert_admins(
-                            f'🚨 <b>Подозрение на абуз</b>\n\n'
-                            f'TG: <code>{tg_user.id}</code> @{tg_user.username or "—"}\n'
-                            f'Превышен лимит {limit}/час (текущее значение: {count})',
+                            f"🚨 <b>Подозрение на абуз</b>\n\n"
+                            f"TG: <code>{tg_user.id}</code> @{tg_user.username or '—'}\n"
+                            f"Превышен лимит {limit}/час (текущее значение: {count})",
                         )
             except Exception as exc:
-                logger.warning('rate-limit notify failed', error=str(exc)[:200])
+                logger.warning("rate-limit notify failed", error=str(exc)[:200])
             return  # drop the event
 
         return await handler(event, data)

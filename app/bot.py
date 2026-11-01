@@ -56,7 +56,7 @@ def create_dispatcher(redis: Redis) -> Dispatcher:
     storage = RedisStorage(redis=redis)
     dp = Dispatcher(storage=storage)
 
-    dp.workflow_data.update({'redis': redis})
+    dp.workflow_data.update({"redis": redis})
 
     # Middlewares (order: rate-limit first to drop abuse before any DB work)
     dp.message.outer_middleware(RateLimitMiddleware(lambda: redis))
@@ -80,7 +80,7 @@ def create_dispatcher(redis: Redis) -> Dispatcher:
     dp.include_router(wheel.router)  # колесо удачи (/spin + callback)
     dp.include_router(templates.router)
     dp.include_router(promo.router)
-    dp.include_router(voice.router)   # voice (F.voice | F.audio) — до chat
+    dp.include_router(voice.router)  # voice (F.voice | F.audio) — до chat
     dp.include_router(vision.router)  # vision (F.photo) — до chat
     dp.include_router(chat.router)
     dp.include_router(start.router)

@@ -25,19 +25,24 @@ async def get_promo_analytics(session: AsyncSession) -> list[dict]:
     """
     from app.database.models import PromoRedemption
 
-    stmt = select(
-        PromoCode.id,
-        PromoCode.code,
-        PromoCode.credits,
-        PromoCode.max_uses,
-        PromoCode.used_count,
-        PromoCode.is_active,
-        PromoCode.expires_at,
-        PromoCode.created_at,
-        func.count(PromoRedemption.id).label('redemptions'),
-        func.min(PromoRedemption.redeemed_at).label('first_used'),
-        func.max(PromoRedemption.redeemed_at).label('last_used'),
-    ).outerjoin(PromoRedemption).group_by(PromoCode.id).order_by(PromoCode.created_at.desc())
+    stmt = (
+        select(
+            PromoCode.id,
+            PromoCode.code,
+            PromoCode.credits,
+            PromoCode.max_uses,
+            PromoCode.used_count,
+            PromoCode.is_active,
+            PromoCode.expires_at,
+            PromoCode.created_at,
+            func.count(PromoRedemption.id).label("redemptions"),
+            func.min(PromoRedemption.redeemed_at).label("first_used"),
+            func.max(PromoRedemption.redeemed_at).label("last_used"),
+        )
+        .outerjoin(PromoRedemption)
+        .group_by(PromoCode.id)
+        .order_by(PromoCode.created_at.desc())
+    )
 
     result = await session.execute(stmt)
     return [dict(row) for row in result.mappings().all()]
@@ -58,20 +63,25 @@ async def get_promo_conversion_funnel(session: AsyncSession, promo_code: str) ->
 
     # Get broadcast stats for this promo
     bc_stmt = select(
-        func.sum(Broadcast.total_recipients).label('total_sent'),
-        func.sum(Broadcast.sent_count).label('delivered'),
+        func.sum(Broadcast.total_recipients).label("total_sent"),
+        func.sum(Broadcast.sent_count).label("delivered"),
     ).where(Broadcast.promo_code == promo_code)
     bc_res = await session.execute(bc_stmt)
     bc_row = bc_res.mappings().one()
 
     # Count redemptions
-    redemption_count = await session.scalar(
-        select(func.count(PromoRedemption.id)).join(PromoCode).where(PromoCode.code == promo_code)
-    ) or 0
+    redemption_count = (
+        await session.scalar(
+            select(func.count(PromoRedemption.id))
+            .join(PromoCode)
+            .where(PromoCode.code == promo_code)
+        )
+        or 0
+    )
 
     return {
-        'promo_code': promo_code,
-        'total_sent': bc_row['total_sent'] or 0,
-        'delivered': bc_row['delivered'] or 0,
-        'clicked': redemption_count,
+        "promo_code": promo_code,
+        "total_sent": bc_row["total_sent"] or 0,
+        "delivered": bc_row["delivered"] or 0,
+        "clicked": redemption_count,
     }

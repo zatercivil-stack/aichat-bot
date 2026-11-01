@@ -16,6 +16,7 @@
 Все операции defensive: при сбое Redis возвращаем «нет скидки» (полная цена),
 никогда не ломаем оплату и не списываем лишнего.
 """
+
 from __future__ import annotations
 
 import structlog
@@ -28,13 +29,14 @@ CASHBACK_RATE = 0.30
 MAX_DISCOUNT_RATE = 0.30
 CASHBACK_TTL_DAYS = 14
 # Паки, к которым применяется скидка (маржа положительна даже при −30%).
-ELIGIBLE_PACK_IDS = {'pack_2000', 'pack_6000', 'pack_20000'}
+ELIGIBLE_PACK_IDS = {"pack_2000", "pack_6000", "pack_20000"}
 
-_KEY = 'ref_cashback:{tg}'
+_KEY = "ref_cashback:{tg}"
 
 
 def _redis():
     from redis.asyncio import Redis
+
     return Redis.from_url(settings.REDIS_URL, decode_responses=True)
 
 
@@ -54,7 +56,7 @@ async def grant(referrer_tg: int, friend_paid_rub: float) -> int:
         await r.expire(key, CASHBACK_TTL_DAYS * 24 * 3600)
         return amount
     except Exception as exc:
-        logger.warning('cashback grant failed', referrer=referrer_tg, error=str(exc)[:150])
+        logger.warning("cashback grant failed", referrer=referrer_tg, error=str(exc)[:150])
         return 0
     finally:
         try:
@@ -108,7 +110,7 @@ async def redeem(user_tg: int, used_rub: int) -> None:
         if newbal is not None and int(newbal) <= 0:
             await r.delete(key)
     except Exception as exc:
-        logger.warning('cashback redeem failed', user=user_tg, error=str(exc)[:150])
+        logger.warning("cashback redeem failed", user=user_tg, error=str(exc)[:150])
     finally:
         try:
             await r.aclose()

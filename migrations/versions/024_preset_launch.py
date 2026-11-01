@@ -15,23 +15,25 @@ preset_previews.generated_at (сбивается при массовой рег�
      (фолбэк на 2026-05-01 для легаси-строк без даты).
 Дальше новые пресеты регистрируются автоматически в reload_custom_presets.
 """
+
 from __future__ import annotations
 
 import sqlalchemy as sa
 from alembic import op
 
-revision = '024'
-down_revision = '023'
+revision = "024"
+down_revision = "023"
 branch_labels = None
 depends_on = None
 
 
 def upgrade() -> None:
     op.create_table(
-        'preset_launch',
-        sa.Column('preset_key', sa.String(length=64), primary_key=True),
-        sa.Column('launched_at', sa.DateTime(timezone=True),
-                  nullable=False, server_default=sa.func.now()),
+        "preset_launch",
+        sa.Column("preset_key", sa.String(length=64), primary_key=True),
+        sa.Column(
+            "launched_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.func.now()
+        ),
     )
     # 1) Точные даты DB-пресетов.
     op.execute("""
@@ -51,4 +53,4 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
-    op.drop_table('preset_launch')
+    op.drop_table("preset_launch")

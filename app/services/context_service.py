@@ -12,7 +12,7 @@ CTX_TTL = 60 * 60 * 24  # 24 часа без активности — конте
 
 
 def _key(user_id: int) -> str:
-    return f'aichat:ctx:{user_id}'
+    return f"aichat:ctx:{user_id}"
 
 
 async def get_context(redis: Redis, user_id: int) -> list[dict]:
@@ -27,7 +27,7 @@ async def get_context(redis: Redis, user_id: int) -> list[dict]:
 
 async def add_message(redis: Redis, user_id: int, role: str, content: str) -> None:
     messages = await get_context(redis, user_id)
-    messages.append({'role': role, 'content': content})
+    messages.append({"role": role, "content": content})
     if len(messages) > MAX_MESSAGES:
         messages = messages[-MAX_MESSAGES:]
     await redis.set(_key(user_id), json.dumps(messages, ensure_ascii=False), ex=CTX_TTL)

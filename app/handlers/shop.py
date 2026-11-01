@@ -21,12 +21,12 @@ logger = structlog.get_logger(__name__)
 router = Router()
 
 
-@router.message(Command('shop'))
+@router.message(Command("shop"))
 async def cmd_shop(message: Message) -> None:
     await _show_shop(message)
 
 
-@router.callback_query(lambda c: c.data == 'shop')
+@router.callback_query(lambda c: c.data == "shop")
 async def cb_shop(callback: CallbackQuery) -> None:
     user_tg_id = callback.from_user.id
     async with AsyncSessionFactory() as session:
@@ -37,6 +37,7 @@ async def cb_shop(callback: CallbackQuery) -> None:
     # такому сообщению падает с TelegramBadRequest → юзер раньше нажимал
     # «Купить кредиты разово» и ничего не происходило (24.05 фикс).
     from app.utils import safe_edit_or_answer
+
     await safe_edit_or_answer(
         callback,
         credits_info_text(credits),
@@ -45,36 +46,41 @@ async def cb_shop(callback: CallbackQuery) -> None:
     await callback.answer()
 
 
-@router.callback_query(lambda c: c.data and c.data.startswith('buy_pack:'))
+@router.callback_query(lambda c: c.data and c.data.startswith("buy_pack:"))
 async def cb_buy_pack(callback: CallbackQuery) -> None:
-    pack_id = callback.data.split(':', 1)[1]
+    pack_id = callback.data.split(":", 1)[1]
     pack = get_pack_by_id(pack_id)
     if not pack:
-        await callback.answer('Пакет не найден.', show_alert=True)
+        await callback.answer("Пакет не найден.", show_alert=True)
         return
 
-    cr = pack['credits']
+    cr = pack["credits"]
     # Считаем в единицах фото-операций. Единый тариф: одна правка = 200 кр
     # (квалити, базовая цена; запуск-акция истекла 19.05).
     photos = cr // 200
-    expires_days = pack.get('expires_days')
+    expires_days = pack.get("expires_days")
     is_burn = expires_days is not None
 
     # Реф-кэшбэк (вариант B): на обычных паках показываем скидку от платящих друзей.
     from app.services import referral_cashback as _rc
+
     cashback = 0
-    if not is_burn and pack['id'] in _rc.ELIGIBLE_PACK_IDS:
+    if not is_burn and pack["id"] in _rc.ELIGIBLE_PACK_IDS:
         try:
-            cashback = await _rc.preview_discount(callback.from_user.id, pack['rub'])
+            cashback = await _rc.preview_discount(callback.from_user.id, pack["rub"])
         except Exception:
             cashback = 0
-    final_rub = int(pack['rub']) - int(cashback)
+    final_rub = int(pack["rub"]) - int(cashback)
     if cashback > 0:
-        price_block = (f"💳 Цена: <b>{pack['rub']}₽</b>\n"
-                       f"💸 <b>Скидка от друзей −{cashback}₽</b> при оплате картой → <b>{final_rub}₽</b>\n\n")
-    elif not is_burn and pack['id'] in _rc.ELIGIBLE_PACK_IDS:
-        price_block = (f"💳 К оплате: <b>{pack['rub']}₽</b>\n"
-                       f"<i>💡 Пригласи друга (/ref) — он купит, тебе скидка до 30%.</i>\n\n")
+        price_block = (
+            f"💳 Цена: <b>{pack['rub']}₽</b>\n"
+            f"💸 <b>Скидка от друзей −{cashback}₽</b> при оплате картой → <b>{final_rub}₽</b>\n\n"
+        )
+    elif not is_burn and pack["id"] in _rc.ELIGIBLE_PACK_IDS:
+        price_block = (
+            f"💳 К оплате: <b>{pack['rub']}₽</b>\n"
+            f"<i>💡 Пригласи друга (/ref) — он купит, тебе скидка до 30%.</i>\n\n"
+        )
     else:
         price_block = f"💳 К оплате: <b>{pack['rub']}₽</b>\n\n"
 
@@ -107,23 +113,26 @@ async def cb_buy_pack(callback: CallbackQuery) -> None:
         f"━━━━━━━━━━━━━━━━━━━━"
     )
     from app.utils import safe_edit_or_answer
-    await safe_edit_or_answer(callback, text, reply_markup=confirm_pack_kb(pack_id, card_discount=cashback))
+
+    await safe_edit_or_answer(
+        callback, text, reply_markup=confirm_pack_kb(pack_id, card_discount=cashback)
+    )
     await callback.answer()
 
 
-@router.callback_query(lambda c: c.data and c.data.startswith('pay_rub:'))
+@router.callback_query(lambda c: c.data and c.data.startswith("pay_rub:"))
 async def cb_pay_rub(callback: CallbackQuery) -> None:
     if not settings.yookassa_enabled:
         await callback.answer(
-            'Оплата временно недоступна. Попробуйте позже.',
+            "Оплата временно недоступна. Попробуйте позже.",
             show_alert=True,
         )
         return
 
-    pack_id = callback.data.split(':', 1)[1]
+    pack_id = callback.data.split(":", 1)[1]
     pack = get_pack_by_id(pack_id)
     if not pack:
-        await callback.answer('Пакет не найден.', show_alert=True)
+        await callback.answer("Пакет не найден.", show_alert=True)
         return
 
     await callback.answer()
@@ -139,9 +148,10 @@ async def cb_pay_rub(callback: CallbackQuery) -> None:
         # не подписки — маржа-гард). Кредиты пак отдаёт полные, скидка лишь на ₽.
         # Defensive: любой сбой → cashback_used=0 → полная цена (оплата не ломается).
         from app.services import referral_cashback as _rc
-        base_rub = int(pack['rub'])
+
+        base_rub = int(pack["rub"])
         cashback_used = 0
-        if pack['id'] in _rc.ELIGIBLE_PACK_IDS:
+        if pack["id"] in _rc.ELIGIBLE_PACK_IDS:
             try:
                 cashback_used = await _rc.preview_discount(callback.from_user.id, base_rub)
             except Exception:
@@ -151,35 +161,38 @@ async def cb_pay_rub(callback: CallbackQuery) -> None:
         async with AsyncSessionFactory() as session:
             user = await get_user(session, callback.from_user.id)
             if not user:
-                await callback.message.answer('❌ Пользователь не найден. Нажми /start')
+                await callback.message.answer("❌ Пользователь не найден. Нажми /start")
                 return
 
             db_payment = await create_payment(
                 session,
                 user_id=user.id,
                 amount=Decimal(final_rub),
-                currency='RUB',
-                payment_method='yookassa',
+                currency="RUB",
+                payment_method="yookassa",
                 plan=Plan.FREE,
                 extra={
-                    'credits': pack['credits'],
-                    'pack_id': pack['id'],
-                    'user_tg_id': callback.from_user.id,
+                    "credits": pack["credits"],
+                    "pack_id": pack["id"],
+                    "user_tg_id": callback.from_user.id,
                     # expires_days = None для вечных, число для burn-паков
-                    'expires_days': pack.get('expires_days'),
-                    'cashback_used': int(cashback_used),  # спишется при SUCCEEDED
+                    "expires_days": pack.get("expires_days"),
+                    "cashback_used": int(cashback_used),  # спишется при SUCCEEDED
                 },
             )
             await session.commit()
             payment_db_id = db_payment.id
 
-        yk_payment = YKPayment.create({
-            'amount': {'value': str(final_rub), 'currency': 'RUB'},
-            'confirmation': {'type': 'redirect', 'return_url': settings.yookassa_return_url},
-            'capture': True,
-            'description': f"Нейра: {pack['name']} — {pack['credits']:,} кредитов",
-            'metadata': {'payment_db_id': str(payment_db_id)},
-        }, str(uuid.uuid4()))
+        yk_payment = YKPayment.create(
+            {
+                "amount": {"value": str(final_rub), "currency": "RUB"},
+                "confirmation": {"type": "redirect", "return_url": settings.yookassa_return_url},
+                "capture": True,
+                "description": f"Нейра: {pack['name']} — {pack['credits']:,} кредитов",
+                "metadata": {"payment_db_id": str(payment_db_id)},
+            },
+            str(uuid.uuid4()),
+        )
 
         # Сохранить ID платежа YooKassa в базе данных
         async with AsyncSessionFactory() as session:
@@ -189,18 +202,30 @@ async def cb_pay_rub(callback: CallbackQuery) -> None:
         pay_url = yk_payment.confirmation.confirmation_url
 
         from app.keyboards.main import PE_BACK
+
         # Метод уже выбран (карта) — показываем только ссылку YooKassa.
-        kb = InlineKeyboardMarkup(inline_keyboard=[
-            [InlineKeyboardButton.model_construct(
-                text='Перейти к оплате', url=pay_url,
-                icon_custom_emoji_id=PE_CARD, style='success',
-            )],
-            [InlineKeyboardButton.model_construct(
-                text='Назад', callback_data=f'buy_pack:{pack["id"]}',
-                icon_custom_emoji_id=PE_BACK, style='danger',
-            )],
-        ])
+        kb = InlineKeyboardMarkup(
+            inline_keyboard=[
+                [
+                    InlineKeyboardButton.model_construct(
+                        text="Перейти к оплате",
+                        url=pay_url,
+                        icon_custom_emoji_id=PE_CARD,
+                        style="success",
+                    )
+                ],
+                [
+                    InlineKeyboardButton.model_construct(
+                        text="Назад",
+                        callback_data=f"buy_pack:{pack['id']}",
+                        icon_custom_emoji_id=PE_BACK,
+                        style="danger",
+                    )
+                ],
+            ]
+        )
         from app.utils import safe_edit_or_answer
+
         pay_line = f"💳 <b>Оплата картой: {pack['credits']:,} кр за {final_rub}₽</b>"
         if cashback_used > 0:
             pay_line += f"  <i>(скидка от друзей −{cashback_used}₽, было {base_rub}₽)</i>"
@@ -215,36 +240,38 @@ async def cb_pay_rub(callback: CallbackQuery) -> None:
         )
 
     except Exception as e:
-        logger.error('YooKassa payment creation failed', error=e, exc_info=True)
-        await callback.message.answer('❌ Ошибка создания платежа. Попробуйте позже.')
+        logger.error("YooKassa payment creation failed", error=e, exc_info=True)
+        await callback.message.answer("❌ Ошибка создания платежа. Попробуйте позже.")
 
 
-@router.callback_query(lambda c: c.data == 'complete_pending')
+@router.callback_query(lambda c: c.data == "complete_pending")
 async def cb_complete_pending(callback: CallbackQuery) -> None:
     """Ручное завершение висящих платежей для админа"""
     if callback.from_user.id not in settings.admin_ids_list:
-        await callback.answer('❌ Нет доступа', show_alert=True)
+        await callback.answer("❌ Нет доступа", show_alert=True)
         return
 
     async with AsyncSessionFactory() as session:
         pending = await get_pending_payments(session)
         if not pending:
-            await callback.answer('Нет висящих платежей', show_alert=True)
+            await callback.answer("Нет висящих платежей", show_alert=True)
             return
 
         completed = 0
         for p in pending:
-            credits = p.extra.get('credits', 0)
-            user_tg_id = p.extra.get('user_tg_id')
+            credits = p.extra.get("credits", 0)
+            user_tg_id = p.extra.get("user_tg_id")
             if credits and user_tg_id:
                 user = await get_user(session, int(user_tg_id))
                 if user:
                     await add_credits(session, user, credits)
-                    await update_payment(session, p.id, PaymentStatus.SUCCEEDED, external_id='manual')
+                    await update_payment(
+                        session, p.id, PaymentStatus.SUCCEEDED, external_id="manual"
+                    )
                     completed += 1
         await session.commit()
 
-    await callback.message.answer(f'✅ Завершено {completed} платежей, кредиты зачислены.')
+    await callback.message.answer(f"✅ Завершено {completed} платежей, кредиты зачислены.")
     await callback.answer()
 
 
@@ -256,6 +283,6 @@ async def _show_shop(message: Message) -> None:
 
     await message.answer(
         credits_info_text(credits),
-        parse_mode='HTML',
+        parse_mode="HTML",
         reply_markup=shop_kb(),
     )

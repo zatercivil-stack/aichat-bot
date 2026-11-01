@@ -17,6 +17,7 @@
   face-swap dedicated = $0.001
   gemini-25-flash     = $0.0398
 """
+
 from __future__ import annotations
 
 from datetime import UTC, datetime
@@ -32,20 +33,20 @@ logger = structlog.get_logger(__name__)
 
 # ── Тарифы fal.ai (USD per call) — реальные ставки на 18.05.2026 ───────────
 # Если ставки меняются — обновить здесь.
-COST_EDIT_QUALITY = 0.12           # quality = nano-banana-2/edit @ 2K (×1.5 от 1K $0.08)
-COST_EDIT_PRECISE = 0.12 + 0.001   # precise = edit @2K + face-swap (dedicated)
-COST_FACE_SWAP = 0.001             # standalone face-swap
-COST_GENERATE = 0.08               # channel posts @ 1K (resolution не задаём → дефолт)
+COST_EDIT_QUALITY = 0.12  # quality = nano-banana-2/edit @ 2K (×1.5 от 1K $0.08)
+COST_EDIT_PRECISE = 0.12 + 0.001  # precise = edit @2K + face-swap (dedicated)
+COST_FACE_SWAP = 0.001  # standalone face-swap
+COST_GENERATE = 0.08  # channel posts @ 1K (resolution не задаём → дефолт)
 
 # Пороги защиты (USD)
-PRECISE_BLOCK_THRESHOLD = 0.20      # ниже — выключаем precise
-ALL_FAL_BLOCK_THRESHOLD = 0.05      # ниже — выключаем все fal-операции
+PRECISE_BLOCK_THRESHOLD = 0.20  # ниже — выключаем precise
+ALL_FAL_BLOCK_THRESHOLD = 0.05  # ниже — выключаем все fal-операции
 LOW_BALANCE_ALERT_THRESHOLD = 0.30  # ниже — шлём админу alert (1 раз/день)
 
 # Keys в bot_config
-KEY_BASELINE_USD = 'fal_topup_baseline_usd'
-KEY_BASELINE_AT = 'fal_topup_baseline_at'  # ISO datetime
-KEY_LAST_ALERT_AT = 'fal_low_balance_last_alert'  # ISO datetime, чтобы не спамить
+KEY_BASELINE_USD = "fal_topup_baseline_usd"
+KEY_BASELINE_AT = "fal_topup_baseline_at"  # ISO datetime
+KEY_LAST_ALERT_AT = "fal_low_balance_last_alert"  # ISO datetime, чтобы не спамить
 
 
 async def set_baseline(balance_usd: float) -> None:
@@ -57,9 +58,9 @@ async def set_baseline(balance_usd: float) -> None:
         await set_config_value(session, KEY_BASELINE_USD, str(balance_usd))
         await set_config_value(session, KEY_BASELINE_AT, now_iso)
         # Сбрасываем last_alert чтобы при новом падении шёл alert
-        await set_config_value(session, KEY_LAST_ALERT_AT, '')
+        await set_config_value(session, KEY_LAST_ALERT_AT, "")
         await session.commit()
-    logger.info('fal baseline set', balance=balance_usd, at=now_iso)
+    logger.info("fal baseline set", balance=balance_usd, at=now_iso)
 
 
 async def fetch_real_balance() -> float | None:
@@ -71,26 +72,28 @@ async def fetch_real_balance() -> float | None:
     админ-скриптовые генерации (они идут мимо bot_events).
     """
     from app.config import settings
-    key = (settings.FAL_BILLING_API_KEY or '').strip()
+
+    key = (settings.FAL_BILLING_API_KEY or "").strip()
     if not key:
         return None
     import aiohttp
+
     try:
         async with aiohttp.ClientSession() as s:
             async with s.get(
-                'https://api.fal.ai/v1/account/billing?expand=credits',
-                headers={'Authorization': f'Key {key}'},
+                "https://api.fal.ai/v1/account/billing?expand=credits",
+                headers={"Authorization": f"Key {key}"},
                 timeout=aiohttp.ClientTimeout(total=10),
             ) as resp:
                 if resp.status != 200:
                     body = (await resp.text())[:200]
-                    logger.warning('fetch_real_balance HTTP %d: %s', resp.status, body)
+                    logger.warning("fetch_real_balance HTTP %d: %s", resp.status, body)
                     return None
                 data = await resp.json()
-        bal = float(((data or {}).get('credits') or {}).get('current_balance', 0))
+        bal = float(((data or {}).get("credits") or {}).get("current_balance", 0))
         return bal
     except Exception as exc:
-        logger.warning('fetch_real_balance failed: %s', str(exc)[:200])
+        logger.warning("fetch_real_balance failed: %s", str(exc)[:200])
         return None
 
 
@@ -105,7 +108,7 @@ async def sync_baseline_from_real() -> float | None:
     if bal is None:
         return None
     await set_baseline(bal)
-    logger.info('fal baseline auto-synced from API', balance=bal)
+    logger.info("fal baseline auto-synced from API", balance=bal)
     return bal
 
 
@@ -123,7 +126,7 @@ async def _get_baseline() -> tuple[float, datetime | None]:
             at = at.replace(tzinfo=UTC)
         return bal, at
     except Exception as exc:
-        logger.warning('fal baseline parse failed', error=str(exc)[:200])
+        logger.warning("fal baseline parse failed", error=str(exc)[:200])
         return 0.0, None
 
 
@@ -139,27 +142,25 @@ async def _calculate_spent_since(since: datetime) -> float:
         rows = await session.execute(
             select(BotEvent.event_type, BotEvent.extra)
             .where(BotEvent.created_at >= since)
-            .where(BotEvent.event_type.in_(
-                ['image_edited', 'face_swapped', 'image_generated']
-            ))
+            .where(BotEvent.event_type.in_(["image_edited", "face_swapped", "image_generated"]))
         )
         events = rows.all()
 
     total = 0.0
     for event_type, extra in events:
-        if event_type == 'image_edited':
-            mode = (extra or {}).get('quality_mode', 'quality')
-            if mode == 'precise':
+        if event_type == "image_edited":
+            mode = (extra or {}).get("quality_mode", "quality")
+            if mode == "precise":
                 total += COST_EDIT_PRECISE
-            elif mode == 'fast':
+            elif mode == "fast":
                 # fast идёт через openrouter, не fal — не считаем
                 continue
             else:
                 # quality или без mode (default quality)
                 total += COST_EDIT_QUALITY
-        elif event_type == 'face_swapped':
+        elif event_type == "face_swapped":
             total += COST_FACE_SWAP
-        elif event_type == 'image_generated':
+        elif event_type == "image_generated":
             # Может идти через fal или OpenRouter — пессимистично считаем как fal
             total += COST_GENERATE
     return total
@@ -216,14 +217,14 @@ async def should_alert_admin() -> bool:
 
 async def mark_alert_sent() -> None:
     async with AsyncSessionFactory() as session:
-        await set_config_value(session, KEY_LAST_ALERT_AT,
-                               datetime.now(UTC).isoformat())
+        await set_config_value(session, KEY_LAST_ALERT_AT, datetime.now(UTC).isoformat())
         await session.commit()
 
 
 async def get_daily_stats() -> dict:
     """Для daily-отчёта. Считает расход за последние 24 часа и тренд."""
     from datetime import timedelta
+
     now = datetime.now(UTC)
     today_start = now - timedelta(hours=24)
     yesterday_start = now - timedelta(hours=48)
@@ -235,23 +236,23 @@ async def get_daily_stats() -> dict:
             select(BotEvent.event_type, BotEvent.extra)
             .where(BotEvent.created_at >= yesterday_start)
             .where(BotEvent.created_at < today_start)
-            .where(BotEvent.event_type.in_(['image_edited', 'face_swapped', 'image_generated']))
+            .where(BotEvent.event_type.in_(["image_edited", "face_swapped", "image_generated"]))
         )
         events = rows.all()
     spent_yesterday = 0.0
-    counts = {'quality': 0, 'precise': 0, 'face_swap': 0, 'gen': 0, 'fast': 0}
+    counts = {"quality": 0, "precise": 0, "face_swap": 0, "gen": 0, "fast": 0}
     for et, extra in events:
-        if et == 'image_edited':
-            mode = (extra or {}).get('quality_mode', 'quality')
-            if mode == 'precise':
+        if et == "image_edited":
+            mode = (extra or {}).get("quality_mode", "quality")
+            if mode == "precise":
                 spent_yesterday += COST_EDIT_PRECISE
-            elif mode == 'fast':
+            elif mode == "fast":
                 continue
             else:
                 spent_yesterday += COST_EDIT_QUALITY
-        elif et == 'face_swapped':
+        elif et == "face_swapped":
             spent_yesterday += COST_FACE_SWAP
-        elif et == 'image_generated':
+        elif et == "image_generated":
             spent_yesterday += COST_GENERATE
 
     # Подсчёт операций за сегодня для отчёта
@@ -259,26 +260,26 @@ async def get_daily_stats() -> dict:
         rows = await session.execute(
             select(BotEvent.event_type, BotEvent.extra)
             .where(BotEvent.created_at >= today_start)
-            .where(BotEvent.event_type.in_(['image_edited', 'face_swapped', 'image_generated']))
+            .where(BotEvent.event_type.in_(["image_edited", "face_swapped", "image_generated"]))
         )
         events = rows.all()
     for et, extra in events:
-        if et == 'image_edited':
-            mode = (extra or {}).get('quality_mode', 'quality')
-            counts[mode if mode in counts else 'quality'] += 1
-        elif et == 'face_swapped':
-            counts['face_swap'] += 1
-        elif et == 'image_generated':
-            counts['gen'] += 1
+        if et == "image_edited":
+            mode = (extra or {}).get("quality_mode", "quality")
+            counts[mode if mode in counts else "quality"] += 1
+        elif et == "face_swapped":
+            counts["face_swap"] += 1
+        elif et == "image_generated":
+            counts["gen"] += 1
 
     balance = await get_balance()
     days_left = None
     if balance is not None and spent_today > 0.01:
         days_left = balance / spent_today
     return {
-        'balance': balance,
-        'spent_today': spent_today,
-        'spent_yesterday': spent_yesterday,
-        'counts': counts,
-        'days_left': days_left,
+        "balance": balance,
+        "spent_today": spent_today,
+        "spent_yesterday": spent_yesterday,
+        "counts": counts,
+        "days_left": days_left,
     }

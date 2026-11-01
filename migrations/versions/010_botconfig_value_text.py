@@ -5,20 +5,22 @@ Revises: 009
 Create Date: 2026-05-10 07:20:00.000000
 
 """
+
 from __future__ import annotations
 
 import sqlalchemy as sa
 from alembic import op
 
-revision = '010'
-down_revision = '009'
+revision = "010"
+down_revision = "009"
 branch_labels = None
 depends_on = None
 
 
 def upgrade() -> None:
     op.alter_column(
-        'bot_config', 'value',
+        "bot_config",
+        "value",
         existing_type=sa.String(512),
         type_=sa.Text(),
         existing_nullable=False,
@@ -27,7 +29,8 @@ def upgrade() -> None:
 
 def downgrade() -> None:
     op.alter_column(
-        'bot_config', 'value',
+        "bot_config",
+        "value",
         existing_type=sa.Text(),
         type_=sa.String(512),
         existing_nullable=False,

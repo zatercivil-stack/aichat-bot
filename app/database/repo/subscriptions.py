@@ -97,6 +97,7 @@ async def extend_subscription(
 
 async def count_by_plan(session: AsyncSession) -> dict[str, int]:
     from sqlalchemy import func
+
     now = datetime.now(UTC)
     result = await session.execute(
         select(Subscription.plan, func.count())

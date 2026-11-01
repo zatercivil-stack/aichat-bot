@@ -7,6 +7,7 @@ Targets PENDING YooKassa/Platega payments aged 1h–24h. Анти-спам:
 - Не шлём повторно, если последнее уведомление было <24ч назад (по любому
   из его pending платежей).
 """
+
 from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
@@ -22,11 +23,11 @@ logger = structlog.get_logger(__name__)
 
 
 _RECOVERY_TEXT = (
-    '💳 <b>Оплата не завершилась</b>\n\n'
-    'Заметил, что платёж был начат, но не прошёл.\n\n'
-    '💡 <b>Частая причина — включённый VPN:</b> из-за него страница оплаты '
-    'YooKassa не открывается. Выключи VPN и попробуй снова — обычно помогает.\n\n'
-    'Если просто передумал — это сообщение можно проигнорировать 🙂'
+    "💳 <b>Оплата не завершилась</b>\n\n"
+    "Заметил, что платёж был начат, но не прошёл.\n\n"
+    "💡 <b>Частая причина — включённый VPN:</b> из-за него страница оплаты "
+    "YooKassa не открывается. Выключи VPN и попробуй снова — обычно помогает.\n\n"
+    "Если просто передумал — это сообщение можно проигнорировать 🙂"
 )
 
 # Не шлём повторное recovery если уже отправляли в последние 24 часа
@@ -39,7 +40,7 @@ async def run_payment_recovery(bot_instance) -> None:
     # YooKassa отменяет pending примерно за час → нудж не успевал (платёж уже
     # canceled, из выборки выпал). 20 мин = ловим, пока ещё PENDING и юзер тёплый.
     too_recent = now - timedelta(minutes=20)
-    too_old = now - timedelta(hours=24)     # >24ч — поздно, отметим failed
+    too_old = now - timedelta(hours=24)  # >24ч — поздно, отметим failed
     cooldown_cutoff = now - RECOVERY_COOLDOWN
 
     sent = expired = skipped_dup = 0
@@ -62,12 +63,18 @@ async def run_payment_recovery(bot_instance) -> None:
             # Юзеры с недавним УСПЕШНЫМ платежом (оплатили другим способом —
             # Stars/крипта, пока pre-created YooKassa-pending висел) — НЕ нудлим
             # «незавершённой оплатой», иначе шлём ложь уже после покупки.
-            paid_uids = set((await session.execute(
-                select(Payment.user_id).where(
-                    Payment.status == PaymentStatus.SUCCEEDED,
-                    Payment.created_at > too_old,
+            paid_uids = set(
+                (
+                    await session.execute(
+                        select(Payment.user_id).where(
+                            Payment.status == PaymentStatus.SUCCEEDED,
+                            Payment.created_at > too_old,
+                        )
+                    )
                 )
-            )).scalars().all())
+                .scalars()
+                .all()
+            )
 
             # Группируем pending по юзеру: один юзер → max 1 нотификация за run.
             by_user: dict[int, list[Payment]] = {}
@@ -94,7 +101,7 @@ async def run_payment_recovery(bot_instance) -> None:
                         continue
                     user_payments_to_notify.append(payment)
                     # Самое свежее recovery_sent_at среди его pending'ов
-                    rs = (payment.extra or {}).get('recovery_sent_at')
+                    rs = (payment.extra or {}).get("recovery_sent_at")
                     if rs:
                         try:
                             rs_dt = datetime.fromisoformat(rs)
@@ -118,41 +125,52 @@ async def run_payment_recovery(bot_instance) -> None:
                     from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 
                     from app.keyboards.main import PE_BACK, PE_CARD
-                    kb = InlineKeyboardMarkup(inline_keyboard=[
-                        [InlineKeyboardButton.model_construct(
-                            text='Вернуться в магазин',
-                            callback_data='shop',
-                            icon_custom_emoji_id=PE_CARD, style='success',
-                        )],
-                        [InlineKeyboardButton.model_construct(
-                            text='Не сейчас',
-                            callback_data='main_menu',
-                            icon_custom_emoji_id=PE_BACK, style='danger',
-                        )],
-                    ])
+
+                    kb = InlineKeyboardMarkup(
+                        inline_keyboard=[
+                            [
+                                InlineKeyboardButton.model_construct(
+                                    text="Вернуться в магазин",
+                                    callback_data="shop",
+                                    icon_custom_emoji_id=PE_CARD,
+                                    style="success",
+                                )
+                            ],
+                            [
+                                InlineKeyboardButton.model_construct(
+                                    text="Не сейчас",
+                                    callback_data="main_menu",
+                                    icon_custom_emoji_id=PE_BACK,
+                                    style="danger",
+                                )
+                            ],
+                        ]
+                    )
                     await bot_instance.send_message(
-                        tg_id, _RECOVERY_TEXT,
-                        parse_mode='HTML', reply_markup=kb,
+                        tg_id,
+                        _RECOVERY_TEXT,
+                        parse_mode="HTML",
+                        reply_markup=kb,
                     )
                     sent += 1
                 except Exception as exc:
-                    logger.warning('recovery send failed',
-                                   user_id=user.id, error=str(exc)[:200])
+                    logger.warning("recovery send failed", user_id=user.id, error=str(exc)[:200])
                     continue
 
                 # Помечаем ВСЕ pending этого юзера — чтобы будущие run'ы тоже
                 # уважали cooldown даже если юзер создаст новый pending позже
                 for payment in user_payments_to_notify:
                     extra = dict(payment.extra or {})
-                    extra['recovery_sent_at'] = now.isoformat()
+                    extra["recovery_sent_at"] = now.isoformat()
                     payment.extra = extra
-                    flag_modified(payment, 'extra')
+                    flag_modified(payment, "extra")
 
             await session.commit()
     except Exception as exc:
-        logger.error('payment_recovery failed', error=str(exc)[:200])
+        logger.error("payment_recovery failed", error=str(exc)[:200])
         return
 
     if sent or expired or skipped_dup:
-        logger.info('payment_recovery done',
-                    recovered=sent, expired=expired, dedup_skipped=skipped_dup)
+        logger.info(
+            "payment_recovery done", recovered=sent, expired=expired, dedup_skipped=skipped_dup
+        )

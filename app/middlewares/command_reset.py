@@ -7,6 +7,7 @@
 Outer-middleware вызывается до фильтров — успеваем сбросить state, и Command-фильтр
 матчится корректно.
 """
+
 from __future__ import annotations
 
 from collections.abc import Awaitable, Callable
@@ -27,11 +28,12 @@ class CommandResetStateMiddleware(BaseMiddleware):
         event: TelegramObject,
         data: dict[str, Any],
     ) -> Any:
-        if isinstance(event, Message) and event.text and event.text.startswith('/'):
-            state: FSMContext | None = data.get('state')
+        if isinstance(event, Message) and event.text and event.text.startswith("/"):
+            state: FSMContext | None = data.get("state")
             if state is not None:
                 try:
                     from app.states import SupportState
+
                     cur = await state.get_state()
                     # Режим тикета — НЕ сбрасываем: пользователь в «опиши проблему»,
                     # любой текст (в т.ч. начинающийся с /) = тело обращения; выход —
@@ -39,5 +41,5 @@ class CommandResetStateMiddleware(BaseMiddleware):
                     if cur is not None and cur != SupportState.waiting_message.state:
                         await state.clear()
                 except Exception as exc:
-                    logger.warning('command-reset state clear failed', error=str(exc)[:200])
+                    logger.warning("command-reset state clear failed", error=str(exc)[:200])
         return await handler(event, data)

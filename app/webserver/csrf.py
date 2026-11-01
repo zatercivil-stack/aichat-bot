@@ -11,6 +11,7 @@ CSRF), но без совпадающего form-поля csrf_token запро�
   • render() читает contextvar, вставляет <input hidden csrf_token> в каждую
     <form> серверно (надёжнее JS — работает даже без JavaScript)
 """
+
 from __future__ import annotations
 
 import hashlib
@@ -20,14 +21,14 @@ from contextvars import ContextVar
 from app.config import settings
 
 # Сессия текущего запроса — ставит middleware, читает render() для инжекта.
-current_session: ContextVar[str | None] = ContextVar('csrf_session', default=None)
+current_session: ContextVar[str | None] = ContextVar("csrf_session", default=None)
 
 
 def csrf_for(session_token: str | None) -> str:
     """Детерминированный CSRF-токен для данной сессии. Пустая строка если нет
     сессии (неавторизован — на login csrf не нужен)."""
     if not session_token:
-        return ''
+        return ""
     return hmac.new(
         settings.ADMIN_SECRET_KEY.encode(),
         session_token.encode(),

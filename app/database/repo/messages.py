@@ -11,8 +11,11 @@ logger = structlog.get_logger(__name__)
 
 
 async def save_message(
-    user_id: int, role: str, content: str,
-    model_key: str | None = None, credits_spent: int = 0,
+    user_id: int,
+    role: str,
+    content: str,
+    model_key: str | None = None,
+    credits_spent: int = 0,
 ) -> None:
     """Persist a single chat message. Truncates very long content."""
     try:
@@ -27,14 +30,15 @@ async def save_message(
             session.add(msg)
             await session.commit()
     except Exception as exc:
-        logger.warning('save_message failed', user_id=user_id, role=role, error=str(exc)[:200])
+        logger.warning("save_message failed", user_id=user_id, role=role, error=str(exc)[:200])
 
 
-def save_message_bg(user_id: int, role: str, content: str,
-                    model_key: str | None = None, credits_spent: int = 0) -> None:
+def save_message_bg(
+    user_id: int, role: str, content: str, model_key: str | None = None, credits_spent: int = 0
+) -> None:
     """Fire-and-forget version usable from sync contexts."""
     try:
         loop = asyncio.get_running_loop()
         loop.create_task(save_message(user_id, role, content, model_key, credits_spent))
     except RuntimeError:
-        logger.warning('save_message_bg: no running loop')
+        logger.warning("save_message_bg: no running loop")

@@ -34,12 +34,10 @@ async def redeem_promo(session: AsyncSession, user_id: int, promo: PromoCode) ->
     redemption = PromoRedemption(user_id=user_id, promo_code_id=promo.id)
     session.add(redemption)
     new_count = promo.used_count + 1
-    values: dict = {'used_count': new_count}
+    values: dict = {"used_count": new_count}
     if promo.max_uses > 0 and new_count >= promo.max_uses:
-        values['is_active'] = False
-    await session.execute(
-        update(PromoCode).where(PromoCode.id == promo.id).values(**values)
-    )
+        values["is_active"] = False
+    await session.execute(update(PromoCode).where(PromoCode.id == promo.id).values(**values))
     await session.flush()
 
 

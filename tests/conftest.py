@@ -3,7 +3,7 @@ import asyncio
 import pytest
 
 
-@pytest.fixture(scope='session')
+@pytest.fixture(scope="session")
 def event_loop():
     """Единый event loop на всю сессию.
 

@@ -6,6 +6,7 @@ DeepSeek через OpenRouter + транскрипция WAV = убыточно
 История логики (текст-чат через OpenRouter, ffmpeg-конверсия, voice-service)
 осталась в git до коммита отключения — восстановить при возврате к чату.
 """
+
 from __future__ import annotations
 
 import structlog
@@ -26,32 +27,43 @@ async def handle_voice(message: Message) -> None:
     async with AsyncSessionFactory() as session:
         user = await get_user(session, user_tg_id)
         if not user:
-            await message.answer('Нажми /start для начала работы.')
+            await message.answer("Нажми /start для начала работы.")
             return
         if user.is_banned:
-            await message.answer('🚫 Ваш аккаунт заблокирован.')
+            await message.answer("🚫 Ваш аккаунт заблокирован.")
             return
 
-    kb = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton.model_construct(
-            text='Открыть каталог настроений',
-            callback_data='gallery_open',
-            icon_custom_emoji_id=PE_FRAME, style='success',
-        )],
-        [InlineKeyboardButton.model_construct(
-            text='Подменить лицо в чужом фото',
-            callback_data='face_swap_start',
-            icon_custom_emoji_id=PE_ROBOT, style='primary',
-        )],
-        [InlineKeyboardButton.model_construct(
-            text='В главное меню',
-            callback_data='main_menu',
-            icon_custom_emoji_id=PE_HOME, style='danger',
-        )],
-    ])
+    kb = InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton.model_construct(
+                    text="Открыть каталог настроений",
+                    callback_data="gallery_open",
+                    icon_custom_emoji_id=PE_FRAME,
+                    style="success",
+                )
+            ],
+            [
+                InlineKeyboardButton.model_construct(
+                    text="Подменить лицо в чужом фото",
+                    callback_data="face_swap_start",
+                    icon_custom_emoji_id=PE_ROBOT,
+                    style="primary",
+                )
+            ],
+            [
+                InlineKeyboardButton.model_construct(
+                    text="В главное меню",
+                    callback_data="main_menu",
+                    icon_custom_emoji_id=PE_HOME,
+                    style="danger",
+                )
+            ],
+        ]
+    )
     await message.answer(
-        '🪄 <b>Голосовые я не разбираю — я делаю фото с твоим лицом.</b>\n\n'
-        'Кинь селфи или открой каталог настроений 👇',
-        parse_mode='HTML',
+        "🪄 <b>Голосовые я не разбираю — я делаю фото с твоим лицом.</b>\n\n"
+        "Кинь селфи или открой каталог настроений 👇",
+        parse_mode="HTML",
         reply_markup=kb,
     )

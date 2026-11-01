@@ -23,8 +23,7 @@ async def is_paid_user(session: AsyncSession, user_db_id: int) -> bool:
     Иначе → watermark."""
     cutoff = datetime.utcnow() - timedelta(days=PAID_PERIOD_DAYS)
     recent_paid = await session.scalar(
-        select(func.count(Payment.id))
-        .where(
+        select(func.count(Payment.id)).where(
             Payment.user_id == user_db_id,
             Payment.status == PaymentStatus.SUCCEEDED,
             Payment.created_at >= cutoff,
@@ -32,9 +31,7 @@ async def is_paid_user(session: AsyncSession, user_db_id: int) -> bool:
     )
     if (recent_paid or 0) > 0:
         return True
-    sub = await session.scalar(
-        select(Subscription).where(Subscription.user_id == user_db_id)
-    )
+    sub = await session.scalar(select(Subscription).where(Subscription.user_id == user_db_id))
     if sub and sub.is_active and sub.expires_at:
         expires = sub.expires_at
         if expires.tzinfo is not None:
@@ -45,19 +42,22 @@ async def is_paid_user(session: AsyncSession, user_db_id: int) -> bool:
 
 
 async def get_all_telegram_ids(session: AsyncSession) -> list[int]:
-    result = await session.execute(
-        select(User.telegram_id).where(not User.is_banned)
-    )
+    result = await session.execute(select(User.telegram_id).where(not User.is_banned))
     return list(result.scalars().all())
 
 
-async def add_referral_bonus(session: AsyncSession, telegram_id: int, amount: int = 150,
-                             burn_expires_at: datetime | None = None) -> None:
+async def add_referral_bonus(
+    session: AsyncSession,
+    telegram_id: int,
+    amount: int = 150,
+    burn_expires_at: datetime | None = None,
+) -> None:
     """Начисляет реферальный бонус + инкрементит счётчик приглашённых. Идёт
     через add_credits (а не direct UPDATE), чтобы корректно отработать
     _clean_expired_burn и единый путь начисления. Если задан burn_expires_at —
     бонус кладётся в СГОРАЕМЫЙ pool (urgency, без вечного глута)."""
     from app.database.repo.credits import add_credits
+
     user = await session.scalar(
         select(User).where(User.telegram_id == telegram_id).with_for_update()
     )
@@ -88,7 +88,7 @@ async def get_or_create_user(
     telegram_id: int,
     username: str | None,
     full_name: str,
-    language_code: str = 'ru',
+    language_code: str = "ru",
     referrer_id: int | None = None,
 ) -> tuple[User, bool]:
     user = await get_user(session, telegram_id)
@@ -110,13 +110,12 @@ async def get_or_create_user(
 
 async def update_last_active(session: AsyncSession, telegram_id: int) -> None:
     await session.execute(
-        update(User)
-        .where(User.telegram_id == telegram_id)
-        .values(last_active_at=datetime.now(UTC))
+        update(User).where(User.telegram_id == telegram_id).values(last_active_at=datetime.now(UTC))
     )
 
 
 async def get_total_users_count(session: AsyncSession) -> int:
     from sqlalchemy import func, select
+
     result = await session.execute(select(func.count()).select_from(User))
     return result.scalar_one()

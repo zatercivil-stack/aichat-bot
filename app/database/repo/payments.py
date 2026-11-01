@@ -64,12 +64,13 @@ async def get_revenue_today(session: AsyncSession) -> Decimal:
     from datetime import date
 
     from sqlalchemy import func
+
     today = date.today()
     result = await session.execute(
         select(func.coalesce(func.sum(Payment.amount), 0))
         .where(Payment.status == PaymentStatus.SUCCEEDED)
         .where(func.date(Payment.created_at) == today)
-        .where(Payment.currency == 'RUB')
+        .where(Payment.currency == "RUB")
     )
     return result.scalar_one()
 
@@ -77,13 +78,11 @@ async def get_revenue_today(session: AsyncSession) -> Decimal:
 async def get_pending_payments(session: AsyncSession):
     """Получить все висящие платежи"""
     from sqlalchemy import select
-    result = await session.execute(
-        select(Payment).where(Payment.status == PaymentStatus.PENDING)
-    )
+
+    result = await session.execute(select(Payment).where(Payment.status == PaymentStatus.PENDING))
     return result.scalars().all()
 
 
 def complete_pending_payments(session: AsyncSession):
     """Завершить все висящие платежи (устарело, используйте get_pending_payments + update)"""
     pass
-

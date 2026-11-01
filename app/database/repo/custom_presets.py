@@ -4,6 +4,7 @@
 reload_custom_presets() в app/handlers/image_edit.py. Превью этих пресетов
 лежат в preset_previews по тому же key (position 0=жен, 1=муж).
 """
+
 from __future__ import annotations
 
 from sqlalchemy import select
@@ -12,8 +13,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.database.models import CustomPreset
 
 
-async def list_custom_presets(session: AsyncSession,
-                              only_enabled: bool = False) -> list[CustomPreset]:
+async def list_custom_presets(
+    session: AsyncSession, only_enabled: bool = False
+) -> list[CustomPreset]:
     stmt = select(CustomPreset).order_by(CustomPreset.created_at.desc())
     if only_enabled:
         stmt = stmt.where(CustomPreset.enabled == True)  # noqa: E712
@@ -29,14 +31,25 @@ async def get_by_key(session: AsyncSession, key: str) -> CustomPreset | None:
 
 
 async def create_custom_preset(
-    session: AsyncSession, *, key: str, label: str, prompt: str,
-    male_prompt: str | None = None, quality_mode: str = 'quality',
-    category: str | None = None, female_only: bool = False,
+    session: AsyncSession,
+    *,
+    key: str,
+    label: str,
+    prompt: str,
+    male_prompt: str | None = None,
+    quality_mode: str = "quality",
+    category: str | None = None,
+    female_only: bool = False,
 ) -> CustomPreset:
     preset = CustomPreset(
-        key=key, label=label, prompt=prompt, male_prompt=male_prompt or None,
-        quality_mode=quality_mode, category=category or None,
-        female_only=female_only, enabled=True,
+        key=key,
+        label=label,
+        prompt=prompt,
+        male_prompt=male_prompt or None,
+        quality_mode=quality_mode,
+        category=category or None,
+        female_only=female_only,
+        enabled=True,
     )
     session.add(preset)
     await session.flush()
@@ -47,8 +60,16 @@ async def update_custom_preset(session: AsyncSession, preset_id: int, **fields) 
     preset = await session.get(CustomPreset, preset_id)
     if not preset:
         return False
-    allowed = {'label', 'prompt', 'male_prompt', 'quality_mode',
-               'category', 'female_only', 'enabled', 'featured'}
+    allowed = {
+        "label",
+        "prompt",
+        "male_prompt",
+        "quality_mode",
+        "category",
+        "female_only",
+        "enabled",
+        "featured",
+    }
     for k, v in fields.items():
         if k in allowed:
             setattr(preset, k, v)

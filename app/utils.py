@@ -43,15 +43,15 @@ def plural_ru(n: int, one: str, few: str, many: str) -> str:
     return many
 
 
-_RE_FENCED = re.compile(r'```([a-zA-Z0-9_+\-]*)\n?(.*?)```', re.DOTALL)
-_RE_INLINE = re.compile(r'`([^`\n]+)`')
-_RE_BOLD = re.compile(r'\*\*([^*\n]+?)\*\*')
-_RE_BOLD_UNDER = re.compile(r'(?<!_)__([^_\n]+?)__(?!_)')
-_RE_ITALIC_STAR = re.compile(r'(?<![\w*])\*([^*\n]+?)\*(?![\w*])')
-_RE_ITALIC_UNDER = re.compile(r'(?<![\w_])_([^_\n]+?)_(?![\w_])')
-_RE_STRIKE = re.compile(r'~~([^~\n]+?)~~')
-_RE_HEADER = re.compile(r'^#{1,6}\s+(.+?)\s*#*\s*$', re.MULTILINE)
-_RE_LINK = re.compile(r'\[([^\]\n]+?)\]\(([^)\s]+?)\)')
+_RE_FENCED = re.compile(r"```([a-zA-Z0-9_+\-]*)\n?(.*?)```", re.DOTALL)
+_RE_INLINE = re.compile(r"`([^`\n]+)`")
+_RE_BOLD = re.compile(r"\*\*([^*\n]+?)\*\*")
+_RE_BOLD_UNDER = re.compile(r"(?<!_)__([^_\n]+?)__(?!_)")
+_RE_ITALIC_STAR = re.compile(r"(?<![\w*])\*([^*\n]+?)\*(?![\w*])")
+_RE_ITALIC_UNDER = re.compile(r"(?<![\w_])_([^_\n]+?)_(?![\w_])")
+_RE_STRIKE = re.compile(r"~~([^~\n]+?)~~")
+_RE_HEADER = re.compile(r"^#{1,6}\s+(.+?)\s*#*\s*$", re.MULTILINE)
+_RE_LINK = re.compile(r"\[([^\]\n]+?)\]\(([^)\s]+?)\)")
 
 
 def markdown_to_html(text: str) -> str:
@@ -69,13 +69,13 @@ def markdown_to_html(text: str) -> str:
 
     def stash_block(match: re.Match) -> str:
         blocks.append(match.group(2))
-        return f'\x00B{len(blocks) - 1}\x00'
+        return f"\x00B{len(blocks) - 1}\x00"
 
     text = _RE_FENCED.sub(stash_block, text)
 
     def stash_inline(match: re.Match) -> str:
         inlines.append(match.group(1))
-        return f'\x00C{len(inlines) - 1}\x00'
+        return f"\x00C{len(inlines) - 1}\x00"
 
     text = _RE_INLINE.sub(stash_inline, text)
 
@@ -85,21 +85,21 @@ def markdown_to_html(text: str) -> str:
         lambda m: f'<a href="{html.escape(m.group(2), quote=True)}">{m.group(1)}</a>',
         text,
     )
-    text = _RE_BOLD.sub(r'<b>\1</b>', text)
-    text = _RE_BOLD_UNDER.sub(r'<b>\1</b>', text)
-    text = _RE_STRIKE.sub(r'<s>\1</s>', text)
-    text = _RE_ITALIC_STAR.sub(r'<i>\1</i>', text)
-    text = _RE_ITALIC_UNDER.sub(r'<i>\1</i>', text)
-    text = _RE_HEADER.sub(r'<b>\1</b>', text)
+    text = _RE_BOLD.sub(r"<b>\1</b>", text)
+    text = _RE_BOLD_UNDER.sub(r"<b>\1</b>", text)
+    text = _RE_STRIKE.sub(r"<s>\1</s>", text)
+    text = _RE_ITALIC_STAR.sub(r"<i>\1</i>", text)
+    text = _RE_ITALIC_UNDER.sub(r"<i>\1</i>", text)
+    text = _RE_HEADER.sub(r"<b>\1</b>", text)
 
     text = re.sub(
-        r'\x00C(\d+)\x00',
-        lambda m: f'<code>{html.escape(inlines[int(m.group(1))], quote=False)}</code>',
+        r"\x00C(\d+)\x00",
+        lambda m: f"<code>{html.escape(inlines[int(m.group(1))], quote=False)}</code>",
         text,
     )
     text = re.sub(
-        r'\x00B(\d+)\x00',
-        lambda m: f'<pre>{html.escape(blocks[int(m.group(1))], quote=False)}</pre>',
+        r"\x00B(\d+)\x00",
+        lambda m: f"<pre>{html.escape(blocks[int(m.group(1))], quote=False)}</pre>",
         text,
     )
     return text
@@ -114,11 +114,11 @@ def split_text(text: str, limit: int = TG_LIMIT) -> list[str]:
         if len(text) <= limit:
             chunks.append(text)
             break
-        pos = text.rfind('\n\n', 0, limit)
+        pos = text.rfind("\n\n", 0, limit)
         if pos == -1:
-            pos = text.rfind('\n', 0, limit)
+            pos = text.rfind("\n", 0, limit)
         if pos == -1:
-            pos = text.rfind(' ', 0, limit)
+            pos = text.rfind(" ", 0, limit)
         if pos == -1:
             pos = limit
         chunks.append(text[:pos].rstrip())
@@ -126,7 +126,9 @@ def split_text(text: str, limit: int = TG_LIMIT) -> list[str]:
     return chunks
 
 
-async def safe_edit_or_answer(callback, text: str, reply_markup=None, parse_mode: str = 'HTML') -> None:
+async def safe_edit_or_answer(
+    callback, text: str, reply_markup=None, parse_mode: str = "HTML"
+) -> None:
     """Безопасное обновление сообщения, к которому привязан callback.
 
     Проблема: с welcome-коллажем главное меню — это PHOTO с caption (нет text).
@@ -138,6 +140,7 @@ async def safe_edit_or_answer(callback, text: str, reply_markup=None, parse_mode
     edit_caption; иначе (или при любой ошибке) — удалить старое и отправить
     новое. Так одна и та же кнопка работает и на тексте, и на фото-меню."""
     from aiogram.exceptions import TelegramBadRequest
+
     msg = callback.message
     try:
         if msg.text is not None:
@@ -158,7 +161,9 @@ async def safe_edit_or_answer(callback, text: str, reply_markup=None, parse_mode
     await msg.answer(text, parse_mode=parse_mode, reply_markup=reply_markup)
 
 
-async def send_long(message: Message, text: str, reply_markup=None, parse_mode: str = 'HTML') -> None:
+async def send_long(
+    message: Message, text: str, reply_markup=None, parse_mode: str = "HTML"
+) -> None:
     """Send potentially long text, splitting into multiple messages if needed."""
     chunks = split_text(text)
     for i, chunk in enumerate(chunks):
@@ -166,68 +171,83 @@ async def send_long(message: Message, text: str, reply_markup=None, parse_mode: 
         await message.answer(chunk, parse_mode=parse_mode, reply_markup=kb)
 
 
-async def edit_or_send_long(status_msg: Message, message: Message, text: str, reply_markup=None) -> None:
+async def edit_or_send_long(
+    status_msg: Message, message: Message, text: str, reply_markup=None
+) -> None:
     """Edit status message with first chunk; send overflow as new messages."""
     chunks = split_text(text)
     try:
-        await status_msg.edit_text(chunks[0], parse_mode='HTML',
-                                   reply_markup=reply_markup if len(chunks) == 1 else None)
+        await status_msg.edit_text(
+            chunks[0], parse_mode="HTML", reply_markup=reply_markup if len(chunks) == 1 else None
+        )
     except Exception:
-        await message.answer(chunks[0], parse_mode='HTML',
-                             reply_markup=reply_markup if len(chunks) == 1 else None)
+        await message.answer(
+            chunks[0], parse_mode="HTML", reply_markup=reply_markup if len(chunks) == 1 else None
+        )
     for i, chunk in enumerate(chunks[1:], 1):
         kb = reply_markup if i == len(chunks) - 1 else None
-        await message.answer(chunk, parse_mode='HTML', reply_markup=kb)
+        await message.answer(chunk, parse_mode="HTML", reply_markup=kb)
 
 
 # ─── Premium emoji helpers ────────────────────────────────────────────────────
 
 PREMIUM_EMOJI: dict[str, str] = {
-    '🥇': '5346258552849713801', '💎': '5346258552849713801', '🏆': '5346258552849713801',
-    '⚡': '5258203794772085854', '⚡️': '5258203794772085854',
-    '🌍': '5256041734005090333',
-    '🚀': '5368654333397199941',
-    '🔥': '5445088653728568921',
-    '✨': '5325547803936572038',
-    '🎁': '5440502878491930005',
-    '🛡': '5458847521331768461', '🔒': '5458847521331768461',
-    '💳': '5213403875670765022',
-    '❌': '5465665476971471368',
-    '✅': '5190782321577441092', '✔️': '5190782321577441092',
-    '📱': '5357380130144535965',
-    '⬅': '5456187398977247949', '⬅️': '5456187398977247949',
-    '◀️': '5256247952564825322',
-    '▶️': '5255835489675519149',
-    '🔓': '5429405838345265327',
-    '⏱': '5458640241915084025', '⏱️': '5458640241915084025', '⏰': '5458640241915084025', '⏳': '5458640241915084025',
-    '🤖': '6147670072706995009',
-    '🗣': '5397849751548884255',
-    '🎉': '5461151367559141950',
-    '📅': '5413879192267805083', '🗓': '5413879192267805083',
-    '💰': '5445256208992718797', '💸': '5445256208992718797',
-    '🤝': '5352795355635276043',
-    '👋': '5947404268909629849',
-    '🌇': '5870528297091206639',  # закатный город — для городских тем
-    '🎭': '5359441070201513074',  # театр-маски — перевоплощения, сцены-образы
-    '🌒': '5188666899860298925',  # тёмный полумесяц — магия, мистика
+    "🥇": "5346258552849713801",
+    "💎": "5346258552849713801",
+    "🏆": "5346258552849713801",
+    "⚡": "5258203794772085854",
+    "⚡️": "5258203794772085854",
+    "🌍": "5256041734005090333",
+    "🚀": "5368654333397199941",
+    "🔥": "5445088653728568921",
+    "✨": "5325547803936572038",
+    "🎁": "5440502878491930005",
+    "🛡": "5458847521331768461",
+    "🔒": "5458847521331768461",
+    "💳": "5213403875670765022",
+    "❌": "5465665476971471368",
+    "✅": "5190782321577441092",
+    "✔️": "5190782321577441092",
+    "📱": "5357380130144535965",
+    "⬅": "5456187398977247949",
+    "⬅️": "5456187398977247949",
+    "◀️": "5256247952564825322",
+    "▶️": "5255835489675519149",
+    "🔓": "5429405838345265327",
+    "⏱": "5458640241915084025",
+    "⏱️": "5458640241915084025",
+    "⏰": "5458640241915084025",
+    "⏳": "5458640241915084025",
+    "🤖": "6147670072706995009",
+    "🗣": "5397849751548884255",
+    "🎉": "5461151367559141950",
+    "📅": "5413879192267805083",
+    "🗓": "5413879192267805083",
+    "💰": "5445256208992718797",
+    "💸": "5445256208992718797",
+    "🤝": "5352795355635276043",
+    "👋": "5947404268909629849",
+    "🌇": "5870528297091206639",  # закатный город — для городских тем
+    "🎭": "5359441070201513074",  # театр-маски — перевоплощения, сцены-образы
+    "🌒": "5188666899860298925",  # тёмный полумесяц — магия, мистика
     # ── 04.06: ядро/бренд + путешествия (прислал владелец, один набор). Для
     #    ☀️/✈️ маплю ТОЛЬКО форму с вариатором (FE0F) — bare-дубль дал бы
     #    двойную обёртку в premium_text (замена по подстроке).
-    '🪄': '5411360790949159222',  # волшебная палочка — карточки результата
-    '🆕': '5339477701432462548',  # бейдж «Новинки»
-    '🟣': '5339128610785610228',  # бренд «Нейра»
-    '📎': '5305265301917549162',  # «пришли селфи»
-    '🖼': '5375074927252621134',  # каталог/галерея
-    '🎲': '5384474763827620477',  # Сюрприз дня
-    '🎡': '5226711870492126219',  # Колесо удачи
-    '👥': '5325926401008746697',  # рефералка/друзья
-    '📸': '5244699979506788336',  # камера/продукт
-    '☀️': '5402477260982731644',  # солнце/лето
-    '🌴': '5449372007432985754',  # пальма/пляж
-    '✈️': '5361600266225326825',  # самолёт/путешествие
-    '🥂': '5208902681225083086',  # бокалы/праздник
-    '🌊': '5386798809286189971',  # волна/океан
-    '🌅': '6332496306593859160',  # закат
+    "🪄": "5411360790949159222",  # волшебная палочка — карточки результата
+    "🆕": "5339477701432462548",  # бейдж «Новинки»
+    "🟣": "5339128610785610228",  # бренд «Нейра»
+    "📎": "5305265301917549162",  # «пришли селфи»
+    "🖼": "5375074927252621134",  # каталог/галерея
+    "🎲": "5384474763827620477",  # Сюрприз дня
+    "🎡": "5226711870492126219",  # Колесо удачи
+    "👥": "5325926401008746697",  # рефералка/друзья
+    "📸": "5244699979506788336",  # камера/продукт
+    "☀️": "5402477260982731644",  # солнце/лето
+    "🌴": "5449372007432985754",  # пальма/пляж
+    "✈️": "5361600266225326825",  # самолёт/путешествие
+    "🥂": "5208902681225083086",  # бокалы/праздник
+    "🌊": "5386798809286189971",  # волна/океан
+    "🌅": "6332496306593859160",  # закат
 }
 
 _SORTED_EMOJI_KEYS = sorted(PREMIUM_EMOJI.keys(), key=len, reverse=True)

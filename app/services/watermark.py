@@ -11,15 +11,15 @@ logger = structlog.get_logger(__name__)
 
 # ✨ U+2728 — color emoji, нет монохромного глифа в DejaVu/Liberation/Arial.
 # ★ U+2605 BLACK STAR — есть везде, читается как акцент, визуально близко.
-WATERMARK_TEXT = '★ Нейра · t.me/NeyraChatBot'
+WATERMARK_TEXT = "★ Нейра · t.me/NeyraChatBot"
 
 # Кандидаты на шрифт — берём первый существующий. fonts-dejavu-core ставится
 # в Dockerfile, на macOS dev-машинах может быть свой путь.
 _FONT_CANDIDATES = [
-    '/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf',
-    '/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf',
-    '/usr/share/fonts/TTF/DejaVuSans-Bold.ttf',
-    '/Library/Fonts/Arial Bold.ttf',
+    "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
+    "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+    "/usr/share/fonts/TTF/DejaVuSans-Bold.ttf",
+    "/Library/Fonts/Arial Bold.ttf",
 ]
 
 
@@ -31,7 +31,7 @@ def _load_font(size: int) -> ImageFont.FreeTypeFont | ImageFont.ImageFont:
                 return ImageFont.truetype(path, size)
             except OSError:
                 continue
-    logger.warning('No TTF font found, using PIL default (will be tiny)')
+    logger.warning("No TTF font found, using PIL default (will be tiny)")
     return ImageFont.load_default()
 
 
@@ -46,7 +46,7 @@ def _glyph_supported(font, text: str) -> bool:
     маска ненулевая для каждого символа."""
     try:
         # FreeType font supports getmask; bitmap default — нет.
-        if not hasattr(font, 'getmask'):
+        if not hasattr(font, "getmask"):
             return True
         for ch in text:
             if ch.isspace():
@@ -63,7 +63,7 @@ def add_watermark(image_bytes: bytes) -> bytes:
     """Накладывает watermark на картинку. При любой ошибке возвращает оригинал."""
     try:
         with Image.open(io.BytesIO(image_bytes)) as img:
-            img = img.convert('RGBA')
+            img = img.convert("RGBA")
             w, h = img.size
 
             # Размер шрифта ~3.2% высоты, в пределах [18, 56]
@@ -72,7 +72,7 @@ def add_watermark(image_bytes: bytes) -> bytes:
 
             text = WATERMARK_TEXT
 
-            overlay = Image.new('RGBA', img.size, (0, 0, 0, 0))
+            overlay = Image.new("RGBA", img.size, (0, 0, 0, 0))
             draw = ImageDraw.Draw(overlay)
 
             tw, th = _measure(draw, text, font)
@@ -84,7 +84,9 @@ def add_watermark(image_bytes: bytes) -> bytes:
             shadow_offset = max(1, font_size // 14)
             draw.text(
                 (x + shadow_offset, y + shadow_offset),
-                text, font=font, fill=(0, 0, 0, 170),
+                text,
+                font=font,
+                fill=(0, 0, 0, 170),
             )
             # Основной текст — белый, ~82% непрозрачности
             draw.text((x, y), text, font=font, fill=(255, 255, 255, 210))
@@ -94,9 +96,12 @@ def add_watermark(image_bytes: bytes) -> bytes:
             # Сохраняем как PNG (без потери качества) или JPEG (меньше размер).
             # PNG безопаснее — нет артефактов сжатия на тексте watermark.
             out_buf = io.BytesIO()
-            result.convert('RGB').save(out_buf, format='PNG', optimize=True)
+            result.convert("RGB").save(out_buf, format="PNG", optimize=True)
             return out_buf.getvalue()
     except Exception as exc:
-        logger.warning('Watermark failed — returning original',
-                      error_type=type(exc).__name__, error=str(exc)[:200])
+        logger.warning(
+            "Watermark failed — returning original",
+            error_type=type(exc).__name__,
+            error=str(exc)[:200],
+        )
         return image_bytes

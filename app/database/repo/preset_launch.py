@@ -7,6 +7,7 @@
   • хардкод    → now() при первом появлении (момент, когда бот впервые увидел ключ).
 См. модель PresetLaunch и миграцию 024.
 """
+
 from __future__ import annotations
 
 from collections.abc import Iterable
@@ -21,9 +22,7 @@ from app.database.models import PresetLaunch
 
 async def get_launch_map(session: AsyncSession) -> dict[str, datetime]:
     """{preset_key: launched_at} для всех зарегистрированных пресетов."""
-    rows = await session.execute(
-        select(PresetLaunch.preset_key, PresetLaunch.launched_at)
-    )
+    rows = await session.execute(select(PresetLaunch.preset_key, PresetLaunch.launched_at))
     return {k: ts for k, ts in rows.all()}
 
 
@@ -41,11 +40,15 @@ async def ensure_launch_rows(
     inserted = 0
     for key in keys:
         dt = created_at_map.get(key)
-        values: dict = {'preset_key': key}
+        values: dict = {"preset_key": key}
         if dt is not None:
-            values['launched_at'] = dt  # иначе сработает server_default now()
-        stmt = pg_insert(PresetLaunch).values(**values).on_conflict_do_nothing(
-            index_elements=['preset_key'],
+            values["launched_at"] = dt  # иначе сработает server_default now()
+        stmt = (
+            pg_insert(PresetLaunch)
+            .values(**values)
+            .on_conflict_do_nothing(
+                index_elements=["preset_key"],
+            )
         )
         res = await session.execute(stmt)
         inserted += res.rowcount or 0
@@ -53,14 +56,19 @@ async def ensure_launch_rows(
     return inserted
 
 
-async def set_launch(session: AsyncSession, preset_key: str,
-                     launched_at: datetime) -> None:
+async def set_launch(session: AsyncSession, preset_key: str, launched_at: datetime) -> None:
     """Принудительно выставить дату запуска (для админ-оверрайда «снова сделать
     новым» или коррекции). Upsert."""
-    stmt = pg_insert(PresetLaunch).values(
-        preset_key=preset_key, launched_at=launched_at,
-    ).on_conflict_do_update(
-        index_elements=['preset_key'], set_={'launched_at': launched_at},
+    stmt = (
+        pg_insert(PresetLaunch)
+        .values(
+            preset_key=preset_key,
+            launched_at=launched_at,
+        )
+        .on_conflict_do_update(
+            index_elements=["preset_key"],
+            set_={"launched_at": launched_at},
+        )
     )
     await session.execute(stmt)
     await session.commit()

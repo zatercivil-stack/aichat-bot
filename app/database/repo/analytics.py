@@ -1,4 +1,5 @@
 """Cohort retention + activity heatmap queries."""
+
 from __future__ import annotations
 
 from sqlalchemy import text
@@ -37,7 +38,7 @@ async def get_cohort_retention(session: AsyncSession, weeks_back: int = 12) -> d
         GROUP BY c.cohort_week, week_offset
         ORDER BY c.cohort_week DESC, week_offset
     """)
-    rows = (await session.execute(sql, {'weeks': str(weeks_back)})).all()
+    rows = (await session.execute(sql, {"weeks": str(weeks_back)})).all()
 
     # cohort_sizes: total users per cohort
     cohort_sizes_sql = text("""
@@ -47,7 +48,10 @@ async def get_cohort_retention(session: AsyncSession, weeks_back: int = 12) -> d
         GROUP BY cohort_week
         ORDER BY cohort_week DESC
     """)
-    sizes = {r[0]: int(r[1]) for r in (await session.execute(cohort_sizes_sql, {'weeks': str(weeks_back)})).all()}
+    sizes = {
+        r[0]: int(r[1])
+        for r in (await session.execute(cohort_sizes_sql, {"weeks": str(weeks_back)})).all()
+    }
 
     # Build matrix
     cohorts: dict = {}
@@ -65,17 +69,17 @@ async def get_cohort_retention(session: AsyncSession, weeks_back: int = 12) -> d
     for cohort_week in sorted(sizes.keys(), reverse=True):
         size = sizes[cohort_week]
         row_data = {
-            'week': cohort_week.strftime('%d.%m.%Y'),
-            'size': size,
-            'cells': [],
+            "week": cohort_week.strftime("%d.%m.%Y"),
+            "size": size,
+            "cells": [],
         }
         for off in range(0, min(max_offset + 1, 9)):
             cnt = cohorts.get(cohort_week, {}).get(off, 0)
             pct = (cnt / size * 100) if size else 0
-            row_data['cells'].append({'cnt': cnt, 'pct': round(pct, 1)})
+            row_data["cells"].append({"cnt": cnt, "pct": round(pct, 1)})
         matrix.append(row_data)
 
-    return {'matrix': matrix, 'max_offset': min(max_offset, 8)}
+    return {"matrix": matrix, "max_offset": min(max_offset, 8)}
 
 
 async def get_activity_heatmap(session: AsyncSession, days: int = 30) -> dict:
@@ -90,7 +94,7 @@ async def get_activity_heatmap(session: AsyncSession, days: int = 30) -> dict:
           AND created_at >= NOW() - (CAST(:days AS text) || ' days')::interval
         GROUP BY weekday, hour
     """)
-    rows = (await session.execute(sql, {'days': str(days)})).all()
+    rows = (await session.execute(sql, {"days": str(days)})).all()
     grid: list[list[int]] = [[0] * 24 for _ in range(7)]
     max_val = 0
     for weekday, hour, cnt in rows:
@@ -98,4 +102,4 @@ async def get_activity_heatmap(session: AsyncSession, days: int = 30) -> dict:
         grid[int(weekday)][int(hour)] = c
         if c > max_val:
             max_val = c
-    return {'grid': grid, 'max': max_val, 'days': days}
+    return {"grid": grid, "max": max_val, "days": days}

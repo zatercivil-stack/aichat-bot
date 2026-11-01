@@ -5,6 +5,7 @@
 
 gpt-5.5 на ключе пока без квоты (insufficient_quota) — используем mini.
 """
+
 from __future__ import annotations
 
 import httpx
@@ -40,8 +41,9 @@ _SYSTEM = (
     "блоками — пустая строка. Ключевые 1-2 слова выделяй <b>жирным</b>. Можно одну "
     "мысль дать списком из 2-3 пунктов с «•».\n\n"
     "ФОРМАТ: только HTML-теги Telegram (<b>, <i>), НЕ markdown-звёздочки. "
-    "ЭМОДЗИ строго из набора (другие НЕЛЬЗЯ), всего 1-3 на пост: " + _ALLOWED_EMOJI +
-    ". Пиши ТОЛЬКО тело поста (до ~6 строк с учётом пустых), без хэштегов, без "
+    "ЭМОДЗИ строго из набора (другие НЕЛЬЗЯ), всего 1-3 на пост: "
+    + _ALLOWED_EMOJI
+    + ". Пиши ТОЛЬКО тело поста (до ~6 строк с учётом пустых), без хэштегов, без "
     "ссылок, без подписи канала и без CTA/призыва в конце — их добавлю сам."
 )
 
@@ -68,12 +70,17 @@ async def generate_post(scene_label: str) -> str | None:
         async with httpx.AsyncClient(timeout=45) as c:
             r = await c.post(
                 _URL,
-                headers={"Authorization": f"Bearer {settings.OPENAI_API_KEY}",
-                         "Content-Type": "application/json"},
-                json={"model": _MODEL, "instructions": _SYSTEM,
-                      "input": f"Сцена/образ: «{scene_label}». "
-                               f"Напиши пост, который вызывает желание оказаться в этом кадре.",
-                      "store": False},
+                headers={
+                    "Authorization": f"Bearer {settings.OPENAI_API_KEY}",
+                    "Content-Type": "application/json",
+                },
+                json={
+                    "model": _MODEL,
+                    "instructions": _SYSTEM,
+                    "input": f"Сцена/образ: «{scene_label}». "
+                    f"Напиши пост, который вызывает желание оказаться в этом кадре.",
+                    "store": False,
+                },
             )
             if r.status_code != 200:
                 log.warning("gpt_post non-200", status=r.status_code, body=r.text[:200])

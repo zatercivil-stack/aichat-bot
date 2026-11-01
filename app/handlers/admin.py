@@ -32,7 +32,7 @@ _payment_checker_task = None
 
 @router.message(
     F.photo,
-    F.caption.startswith('setpreview:'),
+    F.caption.startswith("setpreview:"),
     F.from_user.id.in_(set(settings.admin_ids_list)),
 )
 async def cmd_set_preview(message: Message) -> None:
@@ -43,26 +43,29 @@ async def cmd_set_preview(message: Message) -> None:
     юзеров (даже если они случайно/намеренно поставят такую подпись)."""
     from app.database.repo.preset_previews import save_preview
     from app.handlers.image_edit import EDIT_PRESETS, reload_custom_presets
-    parts = (message.caption or '').split(':')
+
+    parts = (message.caption or "").split(":")
     if len(parts) < 3:
-        await message.answer('Формат: <code>setpreview:&lt;key&gt;:&lt;0|1&gt;</code>', parse_mode='HTML')
+        await message.answer(
+            "Формат: <code>setpreview:&lt;key&gt;:&lt;0|1&gt;</code>", parse_mode="HTML"
+        )
         return
     key, pos_raw = parts[1].strip(), parts[2].strip()
     try:
         pos = int(pos_raw)
     except ValueError:
-        await message.answer('pos должен быть 0 (жен) или 1 (муж).')
+        await message.answer("pos должен быть 0 (жен) или 1 (муж).")
         return
     if key not in EDIT_PRESETS:
-        await message.answer(f'Пресет «{key}» не найден.')
+        await message.answer(f"Пресет «{key}» не найден.")
         return
     fid = message.photo[-1].file_id
     async with AsyncSessionFactory() as session:
-        await save_preview(session, key, fid, position=pos, source_file='manual')
+        await save_preview(session, key, fid, position=pos, source_file="manual")
         await session.commit()
     await reload_custom_presets()
-    gender = 'муж' if pos == 1 else 'жен'
-    await message.answer(f'✅ Превью «{key}» ({gender}) сохранено из присланного фото.')
+    gender = "муж" if pos == 1 else "жен"
+    await message.answer(f"✅ Превью «{key}» ({gender}) сохранено из присланного фото.")
 
 
 async def ensure_default_promos() -> None:
@@ -82,15 +85,15 @@ async def ensure_default_promos() -> None:
 
     defaults = [
         # код, кредиты, максимум использований (0 = безлимит), дней до истечения (0 = бессрочно)
-        ('СТАРТ149', 500, 0, 30),
+        ("СТАРТ149", 500, 0, 30),
     ]
     now = datetime.now(UTC)
     async with AsyncSessionFactory() as session:
         for code, credits, max_uses, expire_days in defaults:
             expires_at = (now + timedelta(days=expire_days)) if expire_days > 0 else None
-            existing = (await session.execute(
-                select(PromoCode).where(PromoCode.code == code.upper())
-            )).scalar_one_or_none()
+            existing = (
+                await session.execute(select(PromoCode).where(PromoCode.code == code.upper()))
+            ).scalar_one_or_none()
             if existing:
                 # Дефолтный промо должен оставаться рабочим: истёкший/выключенный
                 # реактивируем и продлеваем, активный — не трогаем.
@@ -100,20 +103,20 @@ async def ensure_default_promos() -> None:
                 if not existing.is_active or (exp is not None and exp <= now):
                     existing.expires_at = expires_at
                     existing.is_active = True
-                    logger.info('Default promo refreshed', code=code)
+                    logger.info("Default promo refreshed", code=code)
                 continue
             try:
                 await create_promo(session, code, credits, max_uses, expires_at)
-                logger.info('Default promo created', code=code, credits=credits)
+                logger.info("Default promo created", code=code, credits=credits)
             except Exception as e:
                 await session.rollback()
-                logger.error('Failed to create default promo', code=code, error=e)
+                logger.error("Failed to create default promo", code=code, error=e)
         await session.commit()
 
 
 # YooKassa использует американское написание 'canceled' (одна l). Британское
 # 'cancelled' держим для совместимости — мало ли отдадут оба варианта.
-_YOOKASSA_FAILED_STATUSES = {'canceled', 'cancelled', 'expired', 'refunded'}
+_YOOKASSA_FAILED_STATUSES = {"canceled", "cancelled", "expired", "refunded"}
 _PAYMENT_EXPIRE_HOURS = 24
 
 
@@ -144,29 +147,35 @@ async def check_yookassa_payments(bot=None) -> None:
                         created = created.replace(tzinfo=UTC)
                     if (now_utc - created).total_seconds() > _PAYMENT_EXPIRE_HOURS * 3600:
                         await update_payment(session, payment.id, PaymentStatus.FAILED)
-                        logger.info('Payment auto-expired (no external_id)',
-                                    payment_id=payment.id)
+                        logger.info("Payment auto-expired (no external_id)", payment_id=payment.id)
                     continue
 
                 # Обрабатываем И обычные паки (yookassa) И подписки (yookassa_sub).
                 # До 2026-05-17 фильтр игнорировал _sub — подписки не активировались
                 # через checker, юзер платил и ничего не получал.
-                if payment.payment_method not in ('yookassa', 'yookassa_sub'):
+                if payment.payment_method not in ("yookassa", "yookassa_sub"):
                     continue
 
                 try:
                     yk_payment = YKPayment.find_one(payment.external_id)
                 except Exception as e:
-                    logger.error('Failed to check YooKassa payment status',
-                                 payment_id=payment.id, external_id=payment.external_id, error=e)
+                    logger.error(
+                        "Failed to check YooKassa payment status",
+                        payment_id=payment.id,
+                        external_id=payment.external_id,
+                        error=e,
+                    )
                     continue
 
-                if yk_payment.status == 'succeeded':
+                if yk_payment.status == "succeeded":
                     to_activate.append((payment.id, payment.external_id))
                 elif yk_payment.status in _YOOKASSA_FAILED_STATUSES:
                     await update_payment(session, payment.id, PaymentStatus.FAILED)
-                    logger.info('YooKassa payment marked failed',
-                                payment_id=payment.id, yk_status=yk_payment.status)
+                    logger.info(
+                        "YooKassa payment marked failed",
+                        payment_id=payment.id,
+                        yk_status=yk_payment.status,
+                    )
 
             await session.commit()
 
@@ -175,24 +184,30 @@ async def check_yookassa_payments(bot=None) -> None:
         # auto_renew не включится — но это OK для fallback-пути.
         if to_activate:
             from app.services.payment_processing import process_succeeded_payment
+
             for payment_id, yk_id in to_activate:
                 try:
                     await process_succeeded_payment(
-                        payment_id, external_id=yk_id, bot=bot,
+                        payment_id,
+                        external_id=yk_id,
+                        bot=bot,
                     )
-                    logger.info('Payment activated via checker', payment_id=payment_id)
+                    logger.info("Payment activated via checker", payment_id=payment_id)
                 except Exception as e:
-                    logger.error('Failed to activate payment via checker',
-                                 payment_id=payment_id, error=str(e)[:200])
+                    logger.error(
+                        "Failed to activate payment via checker",
+                        payment_id=payment_id,
+                        error=str(e)[:200],
+                    )
 
     except Exception as e:
-        logger.error('Failed to check YooKassa payments', error=e)
+        logger.error("Failed to check YooKassa payments", error=e)
 
 
 def start_payment_checker(bot_instance) -> None:
     """Запустить периодическую проверку платежей"""
     global _payment_checker_task
-    logger.info('Creating payment checker task...')
+    logger.info("Creating payment checker task...")
 
     async def payment_checker_loop():
         while True:
@@ -200,11 +215,11 @@ def start_payment_checker(bot_instance) -> None:
                 await check_yookassa_payments(bot_instance)
                 await asyncio.sleep(60)  # Проверять каждую минуту для быстрого зачисления
             except Exception as e:
-                logger.error('Payment checker error', error=e)
+                logger.error("Payment checker error", error=e)
                 await asyncio.sleep(60)
 
     _payment_checker_task = asyncio.create_task(payment_checker_loop())
-    logger.info('Payment checker task created')
+    logger.info("Payment checker task created")
 
 
 def stop_payment_checker() -> None:
@@ -212,53 +227,76 @@ def stop_payment_checker() -> None:
     global _payment_checker_task
     if _payment_checker_task:
         _payment_checker_task.cancel()
-        logger.info('Payment checker stopped')
+        logger.info("Payment checker stopped")
 
 
 # ─── Daily push: умная сегментация + ротация ──────────────────────────────────
 
-_BOT_URL = 'https://t.me/NeyraChatBot'
+_BOT_URL = "https://t.me/NeyraChatBot"
 
 # Кнопка push'ей — ведёт СРАЗУ в каталог сцен (а не открывает чат бота вхолостую).
 # callback gallery_open работает в личке: открывает карусель пресетов с превью.
-_OPEN_BOT_KB = InlineKeyboardMarkup(inline_keyboard=[
-    [InlineKeyboardButton.model_construct(
-        text='Сделать фото с моим лицом',
-        callback_data='gallery_open',
-        icon_custom_emoji_id=PE_SPARKLES, style='success',
-    )],
-])
+_OPEN_BOT_KB = InlineKeyboardMarkup(
+    inline_keyboard=[
+        [
+            InlineKeyboardButton.model_construct(
+                text="Сделать фото с моим лицом",
+                callback_data="gallery_open",
+                icon_custom_emoji_id=PE_SPARKLES,
+                style="success",
+            )
+        ],
+    ]
+)
 
-_BUY_PUSH_KB = InlineKeyboardMarkup(inline_keyboard=[
-    [InlineKeyboardButton.model_construct(
-        text='Пополнить — от 99₽',
-        callback_data='shop',
-        icon_custom_emoji_id=PE_LIGHTNING, style='success',
-    )],
-    [InlineKeyboardButton.model_construct(
-        text='Подписка выгоднее',
-        callback_data='subscription',
-        icon_custom_emoji_id=PE_AU_GOLD, style='primary',
-    )],
-])
+_BUY_PUSH_KB = InlineKeyboardMarkup(
+    inline_keyboard=[
+        [
+            InlineKeyboardButton.model_construct(
+                text="Пополнить — от 99₽",
+                callback_data="shop",
+                icon_custom_emoji_id=PE_LIGHTNING,
+                style="success",
+            )
+        ],
+        [
+            InlineKeyboardButton.model_construct(
+                text="Подписка выгоднее",
+                callback_data="subscription",
+                icon_custom_emoji_id=PE_AU_GOLD,
+                style="primary",
+            )
+        ],
+    ]
+)
 
-_SUB_PUSH_KB = InlineKeyboardMarkup(inline_keyboard=[
-    [InlineKeyboardButton.model_construct(
-        text='СТАРТ — 149₽/мес',
-        callback_data='choose_plan:starter',
-        icon_custom_emoji_id=PE_LIGHTNING, style='primary',
-    )],
-    [InlineKeyboardButton.model_construct(
-        text='ПРО — 399₽/мес',
-        callback_data='choose_plan:pro',
-        icon_custom_emoji_id=PE_ROCKET, style='success',
-    )],
-    [InlineKeyboardButton.model_construct(
-        text='Купить разово',
-        callback_data='shop',
-        icon_custom_emoji_id=PE_CARD,
-    )],
-])
+_SUB_PUSH_KB = InlineKeyboardMarkup(
+    inline_keyboard=[
+        [
+            InlineKeyboardButton.model_construct(
+                text="СТАРТ — 149₽/мес",
+                callback_data="choose_plan:starter",
+                icon_custom_emoji_id=PE_LIGHTNING,
+                style="primary",
+            )
+        ],
+        [
+            InlineKeyboardButton.model_construct(
+                text="ПРО — 399₽/мес",
+                callback_data="choose_plan:pro",
+                icon_custom_emoji_id=PE_ROCKET,
+                style="success",
+            )
+        ],
+        [
+            InlineKeyboardButton.model_construct(
+                text="Купить разово",
+                callback_data="shop",
+                icon_custom_emoji_id=PE_CARD,
+            )
+        ],
+    ]
+)
 
 # Ротация по дням недели для активных пользователей (0=Пн … 6=Вс).
 # 24.05 v2: monetization-push переехал на ПЯТНИЦУ (получка, расходное
@@ -331,21 +369,23 @@ async def build_day_push() -> tuple[str, InlineKeyboardMarkup]:
     не должен врать. Если есть активный Mystery дня — добавляем его строкой
     в конец как «бонус-крючок»."""
     from app.utils import today_msk
+
     weekday = today_msk().weekday()  # МСК — синхронно с гейтом Подарка дня (не UTC)
     text, kb = _DAY_PUSH_HARDCODED[weekday]
     try:
         from app.services.mystery_preset import get_today_mystery
+
         m = await get_today_mystery()
         if m:
             # Strip emoji from label for cleanliness
             import re
-            clean = re.sub(r'^\W+', '', m['label']).strip()
-            text = (
-                text + f"\n\n🎲 <i>Сегодня бесплатно — «{clean}»</i>"
-            )
+
+            clean = re.sub(r"^\W+", "", m["label"]).strip()
+            text = text + f"\n\n🎲 <i>Сегодня бесплатно — «{clean}»</i>"
     except Exception:
         pass
     return text, kb
+
 
 # Сообщения для тех, кто молчал 2-7 дней.
 # Без «соскучился» — нейтральный, уважительный тон. Каждое сообщение
@@ -418,92 +458,109 @@ _daily_push_scheduler = None
 # (event_type='activation_survey', extra.reason). Тест сначала на @grelok.
 # ─────────────────────────────────────────────────────────────────────────
 _SURVEY_TEXT = (
-    '👋 <b>Привет, это Нейра.</b>\n\n'
-    'Ты когда-то заглянул, но так и не сделал фото — и это окей. '
-    'Помоги мне стать лучше: что тогда остановило? Одна кнопка — и спасибо 🙏'
+    "👋 <b>Привет, это Нейра.</b>\n\n"
+    "Ты когда-то заглянул, но так и не сделал фото — и это окей. "
+    "Помоги мне стать лучше: что тогда остановило? Одна кнопка — и спасибо 🙏"
 )
-_SURVEY_KB = InlineKeyboardMarkup(inline_keyboard=[
-    [InlineKeyboardButton.model_construct(
-        text='Не понял, что бот делает', callback_data='whyq:not_clear')],
-    [InlineKeyboardButton.model_construct(
-        text='Не хотел отправлять своё лицо', callback_data='whyq:face_fear')],
-    [InlineKeyboardButton.model_construct(
-        text='Заходил только за кредитами', callback_data='whyq:just_credits')],
-    [InlineKeyboardButton.model_construct(
-        text='Показалось сложно или долго', callback_data='whyq:too_complex')],
-    [InlineKeyboardButton.model_construct(
-        text='Другое', callback_data='whyq:other')],
-])
+_SURVEY_KB = InlineKeyboardMarkup(
+    inline_keyboard=[
+        [
+            InlineKeyboardButton.model_construct(
+                text="Не понял, что бот делает", callback_data="whyq:not_clear"
+            )
+        ],
+        [
+            InlineKeyboardButton.model_construct(
+                text="Не хотел отправлять своё лицо", callback_data="whyq:face_fear"
+            )
+        ],
+        [
+            InlineKeyboardButton.model_construct(
+                text="Заходил только за кредитами", callback_data="whyq:just_credits"
+            )
+        ],
+        [
+            InlineKeyboardButton.model_construct(
+                text="Показалось сложно или долго", callback_data="whyq:too_complex"
+            )
+        ],
+        [InlineKeyboardButton.model_construct(text="Другое", callback_data="whyq:other")],
+    ]
+)
 
 
 async def send_activation_survey(bot_instance, tg_id: int) -> bool:
     """Отправить опрос одному юзеру. True если ушло."""
     try:
         await bot_instance.send_message(
-            tg_id, _SURVEY_TEXT, parse_mode='HTML', reply_markup=_SURVEY_KB)
+            tg_id, _SURVEY_TEXT, parse_mode="HTML", reply_markup=_SURVEY_KB
+        )
         return True
     except Exception as exc:
-        logger.warning('survey send failed', tg_id=tg_id, error=str(exc)[:150])
+        logger.warning("survey send failed", tg_id=tg_id, error=str(exc)[:150])
         return False
 
 
-@router.callback_query(F.data.startswith('whyq:'))
+@router.callback_query(F.data.startswith("whyq:"))
 async def cb_activation_survey(callback: CallbackQuery) -> None:
-    reason = callback.data.split(':', 1)[1]
+    reason = callback.data.split(":", 1)[1]
     try:
         from app.database.repo.events import log_event
         from app.database.repo.users import get_user
+
         async with AsyncSessionFactory() as s:
             u = await get_user(s, callback.from_user.id)
         if u:
-            await log_event(u.id, 'activation_survey', reason=reason)
+            await log_event(u.id, "activation_survey", reason=reason)
     except Exception as exc:
-        logger.warning('survey log failed', error=str(exc)[:150])
-    await callback.answer('Спасибо! 🙏')
+        logger.warning("survey log failed", error=str(exc)[:150])
+    await callback.answer("Спасибо! 🙏")
     try:
         await callback.message.edit_text(
-            '🙏 <b>Спасибо — это правда помогает.</b>\n\n'
-            'А если захочешь попробовать: пришли одно селфи — и через минуту '
-            'получишь фото с твоим лицом в любой сцене.',
-            parse_mode='HTML',
+            "🙏 <b>Спасибо — это правда помогает.</b>\n\n"
+            "А если захочешь попробовать: пришли одно селфи — и через минуту "
+            "получишь фото с твоим лицом в любой сцене.",
+            parse_mode="HTML",
         )
     except Exception:
         pass
 
 
 # ── Кнопки из алерта о входе в панель с нового IP ──────────────────────────
-@router.callback_query(F.data == 'sec:rotate')
+@router.callback_query(F.data == "sec:rotate")
 async def cb_sec_rotate(callback: CallbackQuery) -> None:
     """«Это не я» — мгновенно ротируем токен (чужая сессия слетает), новый
     токен присылаем владельцу сюда же (его личка = надёжное место)."""
     if callback.from_user.id not in settings.admin_ids_list:
         return
     from app.webserver.admin import rotate_admin_token
+
     try:
         new = await rotate_admin_token()
     except Exception as exc:
-        logger.error('token rotate failed', error=str(exc)[:200])
-        await callback.answer('Ошибка смены токена — попробуй ещё раз', show_alert=True)
+        logger.error("token rotate failed", error=str(exc)[:200])
+        await callback.answer("Ошибка смены токена — попробуй ещё раз", show_alert=True)
         return
-    await callback.answer('Токен сменён')
+    await callback.answer("Токен сменён")
     try:
         await callback.message.edit_reply_markup(reply_markup=None)
     except Exception:
         pass
     await callback.message.answer(
-        '🔒 <b>Токен сменён — все прежние сессии сброшены.</b>\n\n'
-        'Новый токен (нажми, чтобы скопировать; сохрани в менеджер паролей):\n'
-        f'<code>{new}</code>\n\n'
-        '🔗 Войди заново: https://admin.example.com/admin/login',
-        parse_mode='HTML', disable_web_page_preview=True,
+        "🔒 <b>Токен сменён — все прежние сессии сброшены.</b>\n\n"
+        "Новый токен (нажми, чтобы скопировать; сохрани в менеджер паролей):\n"
+        f"<code>{new}</code>\n\n"
+        "🔗 Войди заново: https://admin.example.com/admin/login",
+        parse_mode="HTML",
+        disable_web_page_preview=True,
     )
 
 
-@router.callback_query(F.data == 'sec:trust')
+@router.callback_query(F.data == "sec:trust")
 async def cb_sec_trust(callback: CallbackQuery) -> None:
     if callback.from_user.id not in settings.admin_ids_list:
         return
-    await callback.answer('Ок — IP уже в доверенных')
+    await callback.answer("Ок — IP уже в доверенных")
     try:
         await callback.message.edit_reply_markup(reply_markup=None)
     except Exception:
@@ -522,27 +579,35 @@ async def dispatch_scheduled_broadcasts() -> None:
 
     now = datetime.now(UTC)
     async with AsyncSessionFactory() as session:
-        due = (await session.execute(
-            _sel(ScheduledBroadcast).where(
-                ScheduledBroadcast.status == 'pending',
-                ScheduledBroadcast.send_at <= now,
-            ).order_by(ScheduledBroadcast.send_at)
-        )).scalars().all()
+        due = (
+            (
+                await session.execute(
+                    _sel(ScheduledBroadcast)
+                    .where(
+                        ScheduledBroadcast.status == "pending",
+                        ScheduledBroadcast.send_at <= now,
+                    )
+                    .order_by(ScheduledBroadcast.send_at)
+                )
+            )
+            .scalars()
+            .all()
+        )
         if not due:
             return
         # помечаем running ДО запуска (чтобы повторный тик не схватил)
         for sb in due:
-            sb.status = 'running'
+            sb.status = "running"
         await session.commit()
-        jobs = [(sb.id, sb.preset_id, sb.audience, sb.caption or '') for sb in due]
+        jobs = [(sb.id, sb.preset_id, sb.audience, sb.caption or "") for sb in due]
 
     for sb_id, preset_id, audience, caption in jobs:
         try:
             await _do_preset_broadcast(preset_id, audience, caption)
-            new_status, err = 'sent', None
+            new_status, err = "sent", None
         except Exception as exc:
-            new_status, err = 'failed', str(exc)[:300]
-            logger.warning('scheduled broadcast failed', sb_id=sb_id, error=err)
+            new_status, err = "failed", str(exc)[:300]
+            logger.warning("scheduled broadcast failed", sb_id=sb_id, error=err)
         async with AsyncSessionFactory() as session:
             sb = await session.get(ScheduledBroadcast, sb_id)
             if sb:
@@ -560,16 +625,13 @@ _ZERO_GEN_MSGS: list[str] = [
     "🪄 <b>Вот что Нейра делает из обычного селфи 👆</b>\n\n"
     "У тебя уже <b>500 кр</b> — хватит на 2-3 такие сцены.\n"
     "Нужно одно селфи. Минута до первого результата.",
-
     "📸 <b>Одно селфи — и ты в сцене с обложки 👆</b>\n\n"
     "Фото идёт только в генерацию, нигде не публикуется и не хранится — "
     "стереть всё можно командой /reset.\n"
     "Твои <b>500 кр</b> ждут — попробуй первую сцену.",
-
     "🤔 <b>Не уверен с чего начать? Глянь примеры 👆</b>\n\n"
     "Жми кнопку — листай свободно. Селфи попрошу только когда выберешь "
     "конкретную сцену. Без обязательств, первая — за счёт подарка.",
-
     "🎁 <b>Твои 500 кр уже на счету 👆</b>\n\n"
     "Хватит на 2-3 сцены из каталога. А по вторникам и четвергам — "
     "Подарок дня: ещё один пресет бесплатно.",
@@ -583,7 +645,6 @@ _ZERO_GEN_REFERRED_MSGS: list[str] = [
     "🎁 <b>Тебя пригласил друг — и тебе уже начислено 500 кр 👆</b>\n\n"
     "Хватит на 2-3 фото с твоим лицом в любой сцене. Нужно одно селфи — "
     "минута до первого результата.",
-
     "👋 <b>Ты зашёл по приглашению — добро пожаловать!</b>\n\n"
     "Твои <b>500 кр</b> на старте уже ждут. Пришли селфи — покажу тебя "
     "в сцене с обложки за минуту. Первая сцена за счёт подарка 👆",
@@ -609,46 +670,71 @@ async def send_daily_push(bot_instance) -> None:
 
     async with AsyncSessionFactory() as session:
         from app.database.models import Subscription
-        stmt = select(User).where(and_(
-            User.last_active_at >= cutoff_max,
-            User.last_active_at <= cutoff_recent,
-            not User.is_banned,
-        )).limit(5000)
+
+        stmt = (
+            select(User)
+            .where(
+                and_(
+                    User.last_active_at >= cutoff_max,
+                    User.last_active_at <= cutoff_recent,
+                    not User.is_banned,
+                )
+            )
+            .limit(5000)
+        )
         users = (await session.execute(stmt)).scalars().all()
         # Pre-compute set юзеров с хотя бы одной генерацией — для O(1) проверки
         # в цикле (иначе N queries для каждого).
-        edited_uids = set((await session.execute(
-            select(BotEvent.user_id).where(
-                BotEvent.event_type == 'image_edited'
-            ).distinct()
-        )).scalars().all())
+        edited_uids = set(
+            (
+                await session.execute(
+                    select(BotEvent.user_id).where(BotEvent.event_type == "image_edited").distinct()
+                )
+            )
+            .scalars()
+            .all()
+        )
         # Кол-во сгенерированных фото за 7 дней — для smart upsell
         # (юзер активно тратит → предлагаем подписку как «выгоднее»).
         from sqlalchemy import func as _func
-        edits_last7 = dict((await session.execute(
-            select(BotEvent.user_id, _func.count())
-            .where(BotEvent.event_type == 'image_edited',
-                   BotEvent.created_at >= now - timedelta(days=7))
-            .group_by(BotEvent.user_id)
-        )).all())
+
+        edits_last7 = dict(
+            (
+                await session.execute(
+                    select(BotEvent.user_id, _func.count())
+                    .where(
+                        BotEvent.event_type == "image_edited",
+                        BotEvent.created_at >= now - timedelta(days=7),
+                    )
+                    .group_by(BotEvent.user_id)
+                )
+            ).all()
+        )
         # Активные подписчики — этих не дёргаем upsell'ом
-        subscribed_uids = set((await session.execute(
-            select(Subscription.user_id).where(Subscription.is_active)
-        )).scalars().all())
+        subscribed_uids = set(
+            (await session.execute(select(Subscription.user_id).where(Subscription.is_active)))
+            .scalars()
+            .all()
+        )
         # Кто хоть раз крутил Колесо удачи (событие wheel_spin). НЕ-круткивших
         # зовём на ПЕРВУЮ крутку (free-credit hook) — цикл «колесо готово»
         # их не догоняет (ZSET наполняется только при спине).
-        spun_uids = set((await session.execute(
-            select(BotEvent.user_id).where(
-                BotEvent.event_type == 'wheel_spin'
-            ).distinct()
-        )).scalars().all())
+        spun_uids = set(
+            (
+                await session.execute(
+                    select(BotEvent.user_id).where(BotEvent.event_type == "wheel_spin").distinct()
+                )
+            )
+            .scalars()
+            .all()
+        )
 
     day_text, day_kb = await build_day_push()
 
     # Redis для анти-спама wheel-нуджа (1 приглашение раз в 3 дня на юзера).
     try:
         from redis.asyncio import Redis as _RedisDP
+
         _wheel_redis = _RedisDP.from_url(settings.REDIS_URL, decode_responses=True)
     except Exception:
         _wheel_redis = None
@@ -658,9 +744,10 @@ async def send_daily_push(bot_instance) -> None:
     # на текстовый пуш (photo=None ниже).
     try:
         from app.services.welcome_collage import get_or_build_welcome_collage_fid
+
         onboard_collage_fid = await get_or_build_welcome_collage_fid(bot_instance)
     except Exception as exc:
-        logger.warning('daily_push: collage fetch failed', error=str(exc)[:120])
+        logger.warning("daily_push: collage fetch failed", error=str(exc)[:120])
         onboard_collage_fid = None
 
     # Пул превью сцен для монетизационных пушей (подписка/покупка). Каждому
@@ -669,10 +756,11 @@ async def send_daily_push(bot_instance) -> None:
     # один раз, дальше random.choice в цикле (file_id reuse, без затрат).
     try:
         from app.database.repo.preset_previews import get_preview_pool
+
         async with AsyncSessionFactory() as session:
             sub_image_pool = await get_preview_pool(session, limit=60)
     except Exception as exc:
-        logger.warning('daily_push: preview pool fetch failed', error=str(exc)[:120])
+        logger.warning("daily_push: preview pool fetch failed", error=str(exc)[:120])
         sub_image_pool = []
 
     sent = failed = 0
@@ -733,11 +821,14 @@ async def send_daily_push(bot_instance) -> None:
                 from urllib.parse import quote as _q
 
                 from app.constants import REFERRAL_BONUS as _RB
-                _bu = settings.BOT_USERNAME or 'NeyraChatBot'
-                _rl = f'https://t.me/{_bu}?start=ref_{user.telegram_id}'
-                _st = ('Заценил Нейру — кидаешь селфи, получаешь себя в любой сцене. '
-                       'Лицо в точности твоё.')
-                _su = f'https://t.me/share/url?url={_q(_rl, safe="")}&text={_q(_st, safe="")}'
+
+                _bu = settings.BOT_USERNAME or "NeyraChatBot"
+                _rl = f"https://t.me/{_bu}?start=ref_{user.telegram_id}"
+                _st = (
+                    "Заценил Нейру — кидаешь селфи, получаешь себя в любой сцене. "
+                    "Лицо в точности твоё."
+                )
+                _su = f"https://t.me/share/url?url={_q(_rl, safe='')}&text={_q(_st, safe='')}"
                 bal = total_balance(user)
                 text = (
                     "⚡ <b>Кредиты кончились — а сцена ждёт.</b>\n\n"
@@ -746,14 +837,26 @@ async def send_daily_push(bot_instance) -> None:
                     "(другу — 500 на старт).\n"
                     "🔥 <b>Или сразу:</b> 1 500 кр за 99₽ — на 7 сцен."
                 )
-                kb = InlineKeyboardMarkup(inline_keyboard=[
-                    [InlineKeyboardButton.model_construct(
-                        text=f'Позвать друга → +{_RB}', url=_su,
-                        icon_custom_emoji_id=PE_HANDSHAKE, style='success')],
-                    [InlineKeyboardButton.model_construct(
-                        text='Пополнить — от 99₽', callback_data='shop',
-                        icon_custom_emoji_id=PE_LIGHTNING, style='primary')],
-                ])
+                kb = InlineKeyboardMarkup(
+                    inline_keyboard=[
+                        [
+                            InlineKeyboardButton.model_construct(
+                                text=f"Позвать друга → +{_RB}",
+                                url=_su,
+                                icon_custom_emoji_id=PE_HANDSHAKE,
+                                style="success",
+                            )
+                        ],
+                        [
+                            InlineKeyboardButton.model_construct(
+                                text="Пополнить — от 99₽",
+                                callback_data="shop",
+                                icon_custom_emoji_id=PE_LIGHTNING,
+                                style="primary",
+                            )
+                        ],
+                    ]
+                )
                 if sub_image_pool:
                     photo = random.choice(sub_image_pool)
             else:
@@ -763,13 +866,17 @@ async def send_daily_push(bot_instance) -> None:
                 nudge_wheel = False
                 if _wheel_redis is not None and user.id not in spun_uids:
                     try:
-                        nudge_wheel = bool(await _wheel_redis.set(
-                            f'wheel_nudge:{user.telegram_id}', '1', nx=True, ex=3 * 86400))
+                        nudge_wheel = bool(
+                            await _wheel_redis.set(
+                                f"wheel_nudge:{user.telegram_id}", "1", nx=True, ex=3 * 86400
+                            )
+                        )
                     except Exception:
                         nudge_wheel = False
                 if nudge_wheel:
                     from app.handlers.wheel import _wheel_ready_kb
                     from app.utils import premium_text as _pt
+
                     text = _pt(random.choice(_WHEEL_FIRST_MSGS))
                     kb = _wheel_ready_kb()
                 else:
@@ -786,12 +893,18 @@ async def send_daily_push(bot_instance) -> None:
         try:
             if photo:
                 await bot_instance.send_photo(
-                    user.telegram_id, photo=photo, caption=text,
-                    parse_mode='HTML', reply_markup=kb,
+                    user.telegram_id,
+                    photo=photo,
+                    caption=text,
+                    parse_mode="HTML",
+                    reply_markup=kb,
                 )
             else:
                 await bot_instance.send_message(
-                    user.telegram_id, text, parse_mode='HTML', reply_markup=kb,
+                    user.telegram_id,
+                    text,
+                    parse_mode="HTML",
+                    reply_markup=kb,
                 )
             sent += 1
             await asyncio.sleep(0.05)
@@ -803,7 +916,7 @@ async def send_daily_push(bot_instance) -> None:
             await _wheel_redis.aclose()
         except Exception:
             pass
-    logger.info('Daily push complete', sent=sent, failed=failed, total=len(users))
+    logger.info("Daily push complete", sent=sent, failed=failed, total=len(users))
 
 
 async def dispatch_admin_reminder(bot_instance) -> None:
@@ -815,35 +928,36 @@ async def dispatch_admin_reminder(bot_instance) -> None:
     from datetime import datetime
 
     from app.database.repo.bot_config import get_config_value, set_config_value
+
     try:
         async with AsyncSessionFactory() as session:
-            raw = await get_config_value(session, 'pending_admin_reminder')
+            raw = await get_config_value(session, "pending_admin_reminder")
     except Exception:
         return
     if not raw:
         return
     try:
         data = json.loads(raw)
-        due = datetime.fromisoformat(data['send_at_iso'])
+        due = datetime.fromisoformat(data["send_at_iso"])
         if due.tzinfo is None:
             due = due.replace(tzinfo=UTC)
         if datetime.now(UTC) < due:
             return
     except Exception:
         async with AsyncSessionFactory() as session:
-            await set_config_value(session, 'pending_admin_reminder', '')
+            await set_config_value(session, "pending_admin_reminder", "")
             await session.commit()
         return
-    text = data.get('text') or '🔔 Напоминание'
+    text = data.get("text") or "🔔 Напоминание"
     for aid in settings.admin_ids_list:
         try:
-            await bot_instance.send_message(aid, text, parse_mode='HTML')
+            await bot_instance.send_message(aid, text, parse_mode="HTML")
         except Exception:
             pass
     async with AsyncSessionFactory() as session:
-        await set_config_value(session, 'pending_admin_reminder', '')
+        await set_config_value(session, "pending_admin_reminder", "")
         await session.commit()
-    logger.info('admin reminder sent')
+    logger.info("admin reminder sent")
 
 
 async def send_mystery_push(bot_instance) -> None:
@@ -876,41 +990,54 @@ async def send_mystery_push(bot_instance) -> None:
 
     async with AsyncSessionFactory() as session:
         # Активные за 14д с хотя бы одной генерацией
-        edited_uids = set((await session.execute(
-            select(BotEvent.user_id).where(
-                BotEvent.event_type == 'image_edited'
-            ).distinct()
-        )).scalars().all())
-        stmt = select(User).where(and_(
-            User.last_active_at >= cutoff,
-            not User.is_banned,
-            User.id.in_(edited_uids) if edited_uids else False,
-        )).limit(5000)
+        edited_uids = set(
+            (
+                await session.execute(
+                    select(BotEvent.user_id).where(BotEvent.event_type == "image_edited").distinct()
+                )
+            )
+            .scalars()
+            .all()
+        )
+        stmt = (
+            select(User)
+            .where(
+                and_(
+                    User.last_active_at >= cutoff,
+                    not User.is_banned,
+                    User.id.in_(edited_uids) if edited_uids else False,
+                )
+            )
+            .limit(5000)
+        )
         users = (await session.execute(stmt)).scalars().all()
 
     # Название под пол через единый helper (учитывает и муж-, и жен-оверрайды):
     # «Валькирия»↔«Викинг», «по-джентльменски»↔«по-светски». Готовим оба текста,
     # в цикле берём по полу юзера.
     from app.handlers.image_edit import _gender_label
-    _key = mystery['preset_key']
-    female_label = re.sub(r'^\W+', '', _gender_label(_key, is_male=False)).strip()
-    male_label = re.sub(r'^\W+', '', _gender_label(_key, is_male=True)).strip()
+
+    _key = mystery["preset_key"]
+    female_label = re.sub(r"^\W+", "", _gender_label(_key, is_male=False)).strip()
+    male_label = re.sub(r"^\W+", "", _gender_label(_key, is_male=True)).strip()
 
     def _mk_gift_text(lbl: str) -> str:
         return (
-            f'🎁 <b>Подарок дня — бесплатно, без списания кредитов</b>\n\n'
-            f'Сегодня дарю сцену «{lbl}» 👆 Пришли селфи — и ты в ней за '
-            f'минуту, лицо <b>в точности твоё</b>.\n\n'
-            f'⏳ Только сегодня, до полуночи МСК. В следующий раз — другая.'
+            f"🎁 <b>Подарок дня — бесплатно, без списания кредитов</b>\n\n"
+            f"Сегодня дарю сцену «{lbl}» 👆 Пришли селфи — и ты в ней за "
+            f"минуту, лицо <b>в точности твоё</b>.\n\n"
+            f"⏳ Только сегодня, до полуночи МСК. В следующий раз — другая."
         )
+
     text_f, text_m = _mk_gift_text(female_label), _mk_gift_text(male_label)
     # Превью самой сцены — показываем ЧТО дарим (визуал > текста для фото-бота).
     # Привязка к полу: грузим обе версии (0=жен, 1=муж) один раз, в цикле берём
     # под пол юзера (фолбэк на женское, если мужского нет).
     from app.database.repo.preset_previews import get_preview_file_id
+
     async with AsyncSessionFactory() as session:
-        gift_fid_f = await get_preview_file_id(session, mystery['preset_key'], position=0)
-        gift_fid_m = await get_preview_file_id(session, mystery['preset_key'], position=1)
+        gift_fid_f = await get_preview_file_id(session, mystery["preset_key"], position=0)
+        gift_fid_m = await get_preview_file_id(session, mystery["preset_key"], position=1)
 
     sent = skipped = failed = 0
     for user in users:
@@ -918,26 +1045,38 @@ async def send_mystery_push(bot_instance) -> None:
         if await is_used_today(user.telegram_id):
             skipped += 1
             continue
-        is_male = (user.gender == 'male')
+        is_male = user.gender == "male"
         gift_fid = gift_fid_m if (is_male and gift_fid_m) else gift_fid_f
         text = text_m if is_male else text_f
         try:
             if gift_fid:
                 await bot_instance.send_photo(
-                    user.telegram_id, photo=gift_fid, caption=text,
-                    parse_mode='HTML', reply_markup=_OPEN_BOT_KB,
+                    user.telegram_id,
+                    photo=gift_fid,
+                    caption=text,
+                    parse_mode="HTML",
+                    reply_markup=_OPEN_BOT_KB,
                 )
             else:
                 await bot_instance.send_message(
-                    user.telegram_id, text, parse_mode='HTML', reply_markup=_OPEN_BOT_KB,
+                    user.telegram_id,
+                    text,
+                    parse_mode="HTML",
+                    reply_markup=_OPEN_BOT_KB,
                 )
             sent += 1
             await asyncio.sleep(0.05)
         except Exception:
             failed += 1
 
-    logger.info('Mystery push complete', preset=mystery['preset_key'],
-                sent=sent, skipped=skipped, failed=failed, total=len(users))
+    logger.info(
+        "Mystery push complete",
+        preset=mystery["preset_key"],
+        sent=sent,
+        skipped=skipped,
+        failed=failed,
+        total=len(users),
+    )
 
 
 async def send_subscription_expiring_notifications(bot_instance) -> None:
@@ -954,12 +1093,18 @@ async def send_subscription_expiring_notifications(bot_instance) -> None:
     in_3_days = now + timedelta(days=3)
 
     async with AsyncSessionFactory() as session:
-        stmt = select(Subscription, User).join(User, Subscription.user_id == User.id).where(and_(
-            Subscription.is_active,
-            Subscription.expires_at > now,
-            Subscription.expires_at <= in_3_days,
-            Subscription.plan != Plan.FREE,
-        ))
+        stmt = (
+            select(Subscription, User)
+            .join(User, Subscription.user_id == User.id)
+            .where(
+                and_(
+                    Subscription.is_active,
+                    Subscription.expires_at > now,
+                    Subscription.expires_at <= in_3_days,
+                    Subscription.plan != Plan.FREE,
+                )
+            )
+        )
         result = await session.execute(stmt)
         rows = result.all()
 
@@ -973,30 +1118,30 @@ async def send_subscription_expiring_notifications(bot_instance) -> None:
         delta_days = (sub_expires - now).days + 1
         days_left = max(1, delta_days)
 
-        plan_val = sub.plan.value if hasattr(sub.plan, 'value') else str(sub.plan)
-        plan_dict = next((p for p in SUBSCRIPTION_PLANS if p['plan_enum'] == plan_val), None)
+        plan_val = sub.plan.value if hasattr(sub.plan, "value") else str(sub.plan)
+        plan_dict = next((p for p in SUBSCRIPTION_PLANS if p["plan_enum"] == plan_val), None)
         if not plan_dict:
             continue
 
         if days_left == 1:
-            day_word = 'день'
+            day_word = "день"
         elif days_left in (2, 3, 4):
-            day_word = 'дня'
+            day_word = "дня"
         else:
-            day_word = 'дней'
+            day_word = "дней"
 
         try:
             await bot_instance.send_message(
                 user.telegram_id,
                 f"⏰ <b>Подписка {plan_dict['name']} истекает через {days_left} {day_word}</b>\n\n"
                 f"Продли сейчас за <b>{plan_dict['rub']}₽</b>, чтобы не потерять доступ.",
-                parse_mode='HTML',
+                parse_mode="HTML",
             )
             sent += 1
             await asyncio.sleep(0.05)
         except Exception:
             pass
-    logger.info('Sub expiry notifications sent', count=sent, total=len(rows))
+    logger.info("Sub expiry notifications sent", count=sent, total=len(rows))
 
 
 async def send_streak_reminders(bot_instance) -> None:
@@ -1012,38 +1157,40 @@ async def send_streak_reminders(bot_instance) -> None:
     yesterday = yesterday_msk()  # МСК — иначе ночью считает не тех
     sent = 0
     async with AsyncSessionFactory() as session:
-        stmt = select(User).where(and_(
-            User.streak_last_date == yesterday,   # последний заход — вчера (не сегодня)
-            User.streak_days >= 2,                # есть что терять
-            User.is_banned == False,              # noqa: E712
-            User.id.notin_([1, 2]),               # без админов
-        ))
+        stmt = select(User).where(
+            and_(
+                User.streak_last_date == yesterday,  # последний заход — вчера (не сегодня)
+                User.streak_days >= 2,  # есть что терять
+                User.is_banned == False,  # noqa: E712
+                User.id.notin_([1, 2]),  # без админов
+            )
+        )
         users = (await session.execute(stmt)).scalars().all()
 
     for user in users:
         days = user.streak_days
         nm = next_streak_milestone(days)
-        tail = ''
+        tail = ""
         if nm:
             d, amt = nm
             left = d - days
             if left <= 2:
-                tail = f'\n\n🎁 До награды <b>+{amt} кр</b> осталось всего {left} дн — не останавливайся!'
+                tail = f"\n\n🎁 До награды <b>+{amt} кр</b> осталось всего {left} дн — не останавливайся!"
         try:
             await bot_instance.send_message(
                 user.telegram_id,
                 premium_text(
-                    f'🔥 <b>Твоя серия — {days} дней подряд.</b>\n\n'
-                    f'Загляни сегодня, чтобы не обнулить её! Достаточно открыть '
-                    f'Нейру — и серия в безопасности.{tail}'
+                    f"🔥 <b>Твоя серия — {days} дней подряд.</b>\n\n"
+                    f"Загляни сегодня, чтобы не обнулить её! Достаточно открыть "
+                    f"Нейру — и серия в безопасности.{tail}"
                 ),
-                parse_mode='HTML',
+                parse_mode="HTML",
             )
             sent += 1
             await asyncio.sleep(0.05)
         except Exception:
             pass
-    logger.info('Streak reminders sent', count=sent, candidates=len(users))
+    logger.info("Streak reminders sent", count=sent, candidates=len(users))
 
 
 async def grant_time_bonuses(bot_instance) -> None:
@@ -1058,11 +1205,13 @@ async def grant_time_bonuses(bot_instance) -> None:
 
     async with AsyncSessionFactory() as session:
         # Найти кандидатов: promo_activated_at установлен, бонус ещё не выдан, 24ч прошло
-        stmt = select(User).where(and_(
-            User.promo_activated_at.is_not(None),
-            not User.time_bonus_granted,
-            User.promo_activated_at <= cutoff,
-        ))
+        stmt = select(User).where(
+            and_(
+                User.promo_activated_at.is_not(None),
+                not User.time_bonus_granted,
+                User.promo_activated_at <= cutoff,
+            )
+        )
         result = await session.execute(stmt)
         candidates = result.scalars().all()
 
@@ -1072,11 +1221,17 @@ async def grant_time_bonuses(bot_instance) -> None:
                 activated_at = activated_at.replace(tzinfo=None)
 
             # Проверяем, было ли хотя бы 1 сообщение после активации
-            msg_stmt = select(BotEvent).where(and_(
-                BotEvent.user_id == user.id,
-                BotEvent.event_type == 'message_sent',
-                BotEvent.created_at > activated_at,
-            )).limit(1)
+            msg_stmt = (
+                select(BotEvent)
+                .where(
+                    and_(
+                        BotEvent.user_id == user.id,
+                        BotEvent.event_type == "message_sent",
+                        BotEvent.created_at > activated_at,
+                    )
+                )
+                .limit(1)
+            )
             msg_result = await session.execute(msg_stmt)
             has_message = msg_result.scalars().first() is not None
 
@@ -1091,21 +1246,24 @@ async def grant_time_bonuses(bot_instance) -> None:
 
             try:
                 from app.utils import premium_text
+
                 await bot_instance.send_message(
                     user.telegram_id,
                     premium_text(
-                        '🎉 <b>+200 кредитов — бонус за активность!</b>\n\n'
-                        'Ты использовал бот в первые сутки после получения подарка. '
-                        'Держи ещё 200 кредитов сверху — на будущие вопросы.'
+                        "🎉 <b>+200 кредитов — бонус за активность!</b>\n\n"
+                        "Ты использовал бот в первые сутки после получения подарка. "
+                        "Держи ещё 200 кредитов сверху — на будущие вопросы."
                     ),
-                    parse_mode='HTML',
+                    parse_mode="HTML",
                 )
             except Exception as exc:
-                logger.warning('time_bonus notify failed', user_id=user.telegram_id, error=str(exc)[:200])
+                logger.warning(
+                    "time_bonus notify failed", user_id=user.telegram_id, error=str(exc)[:200]
+                )
 
         await session.commit()
 
-    logger.info('Time bonus check complete', candidates=len(candidates))
+    logger.info("Time bonus check complete", candidates=len(candidates))
 
 
 async def check_error_spike() -> None:
@@ -1121,22 +1279,24 @@ async def check_error_spike() -> None:
     try:
         async with AsyncSessionFactory() as session:
             count = await session.scalar(
-                select(func.count()).select_from(BotEvent)
-                .where(BotEvent.event_type == 'error', BotEvent.created_at >= since)
+                select(func.count())
+                .select_from(BotEvent)
+                .where(BotEvent.event_type == "error", BotEvent.created_at >= since)
             )
         if (count or 0) >= threshold:
             # Throttle via a global config flag (key: 'last_error_alert_at')
             from app.database.repo.bot_config import get_config_value, set_config_value
+
             async with AsyncSessionFactory() as session:
-                last_str = await get_config_value(session, 'last_error_alert_at') or '0'
+                last_str = await get_config_value(session, "last_error_alert_at") or "0"
                 last_ts = int(last_str) if last_str.isdigit() else 0
                 now_ts = int(datetime.now(UTC).timestamp())
                 if now_ts - last_ts >= 3600:  # 1h between alerts
-                    await alert_error_spike('error', int(count), window_min)
-                    await set_config_value(session, 'last_error_alert_at', str(now_ts))
+                    await alert_error_spike("error", int(count), window_min)
+                    await set_config_value(session, "last_error_alert_at", str(now_ts))
                     await session.commit()
     except Exception as exc:
-        logger.warning('error spike check failed', error=str(exc)[:200])
+        logger.warning("error spike check failed", error=str(exc)[:200])
 
 
 def start_daily_push_scheduler(bot_instance):
@@ -1156,7 +1316,7 @@ def start_daily_push_scheduler(bot_instance):
         send_daily_push,
         trigger=CronTrigger(hour=10, minute=0, timezone=settings.tz),
         args=[bot_instance],
-        id='daily_push',
+        id="daily_push",
         replace_existing=True,
     )
     # Mystery Push (12:00 МСК) — главный retention-крючок. Зовёт активных
@@ -1167,24 +1327,23 @@ def start_daily_push_scheduler(bot_instance):
     # чтобы не будить джоб впустую (раньше была и Сб — холостой прогон).
     _daily_push_scheduler.add_job(
         send_mystery_push,
-        trigger=CronTrigger(day_of_week='tue,thu', hour=12, minute=0,
-                            timezone=settings.tz),
+        trigger=CronTrigger(day_of_week="tue,thu", hour=12, minute=0, timezone=settings.tz),
         args=[bot_instance],
-        id='mystery_push',
+        id="mystery_push",
         replace_existing=True,
     )
     _daily_push_scheduler.add_job(
         send_subscription_expiring_notifications,
         trigger=CronTrigger(hour=11, minute=0, timezone=settings.tz),
         args=[bot_instance],
-        id='sub_expiring',
+        id="sub_expiring",
         replace_existing=True,
     )
     _daily_push_scheduler.add_job(
         grant_time_bonuses,
         trigger=CronTrigger(minute=0),  # каждый час
         args=[bot_instance],
-        id='time_bonus',
+        id="time_bonus",
         replace_existing=True,
     )
     # Channel auto-publisher: 2 поста в день КАЖДЫЙ день (раскрутка канала 31.05).
@@ -1213,7 +1372,7 @@ def start_daily_push_scheduler(bot_instance):
                 timezone=settings.tz,
             ),
             args=[bot_instance],
-            id='channel_morning_publish',
+            id="channel_morning_publish",
             replace_existing=True,
             misfire_grace_time=3600,
         )
@@ -1225,31 +1384,31 @@ def start_daily_push_scheduler(bot_instance):
                 timezone=settings.tz,
             ),
             args=[bot_instance],
-            id='channel_evening_publish',
+            id="channel_evening_publish",
             replace_existing=True,
             misfire_grace_time=3600,
         )
     _daily_push_scheduler.add_job(
         check_error_spike,
-        trigger=CronTrigger(minute='*/15'),  # every 15 min
-        id='error_spike_check',
+        trigger=CronTrigger(minute="*/15"),  # every 15 min
+        id="error_spike_check",
         replace_existing=True,
     )
     # Диспатчер отложенных пресет-рассылок (см. ScheduledBroadcast). Каждую
     # минуту проверяет pending due → зовёт _do_preset_broadcast.
     _daily_push_scheduler.add_job(
         dispatch_scheduled_broadcasts,
-        trigger=CronTrigger(minute='*'),
-        id='scheduled_broadcasts_dispatcher',
+        trigger=CronTrigger(minute="*"),
+        id="scheduled_broadcasts_dispatcher",
         replace_existing=True,
     )
     # Отложенный ручной пост в канал (showcase и т.п.): каждую минуту проверяем
     # bot_config['pending_channel_post'] и публикуем когда наступит publish_at.
     _daily_push_scheduler.add_job(
         publish_pending_channel_post,
-        trigger=CronTrigger(minute='*'),
+        trigger=CronTrigger(minute="*"),
         args=[bot_instance],
-        id='pending_channel_post',
+        id="pending_channel_post",
         replace_existing=True,
     )
     # ПОЛНЫЙ АВТОПОСТИНГ канала (gpt-5.4-mini на OPENAI_API_KEY): 1 пост/день
@@ -1260,42 +1419,45 @@ def start_daily_push_scheduler(bot_instance):
     # если бот лежал в момент слота (ребут), пост опубликуется при подъёме.
     # Слот: ВЕЧЕР ~19 МСК (прайм-тайм аудитории), mode='feature' (+100 кр в CTA).
     from app.handlers.channel_admin import run_auto_post_publish
+
     _daily_push_scheduler.add_job(
         run_auto_post_publish,
-        trigger=CronTrigger(hour=19, minute=random.randint(2, 14),
-                            timezone=settings.tz),
-        args=[bot_instance, 'feature'],
-        id='auto_post_publish_evening',
+        trigger=CronTrigger(hour=19, minute=random.randint(2, 14), timezone=settings.tz),
+        args=[bot_instance, "feature"],
+        id="auto_post_publish_evening",
         replace_existing=True,
         misfire_grace_time=3600,
     )
     # Колесо удачи: каждые 30 мин шлём push «колесо готово» юзерам с
     # истёкшим cooldown'ом (ZSET wheel:ready_at). Ночью (23-09 МСК) тихо.
     from app.handlers.wheel import notify_wheel_ready
+
     _daily_push_scheduler.add_job(
         notify_wheel_ready,
-        trigger=CronTrigger(minute='*/30'),
+        trigger=CronTrigger(minute="*/30"),
         args=[bot_instance],
-        id='wheel_ready_notifier',
+        id="wheel_ready_notifier",
         replace_existing=True,
     )
     # CryptoBot: поллинг оплаченных крипто-инвойсов каждую минуту (быстрое
     # подтверждение). Лёгкий — запрос к API только если есть pending cryptobot.
     from app.services.payments_alt import poll_crypto_payments
+
     _daily_push_scheduler.add_job(
         poll_crypto_payments,
-        trigger=CronTrigger(minute='*'),
+        trigger=CronTrigger(minute="*"),
         args=[bot_instance],
-        id='cryptobot_poll',
+        id="cryptobot_poll",
         replace_existing=True,
     )
     # Phase 2: payment recovery every 30 min
     from app.services.payment_recovery import run_payment_recovery
+
     _daily_push_scheduler.add_job(
         run_payment_recovery,
-        trigger=CronTrigger(minute='*/15'),  # чаще → ловим VPN-абандон вовремя
+        trigger=CronTrigger(minute="*/15"),  # чаще → ловим VPN-абандон вовремя
         args=[bot_instance],
-        id='payment_recovery',
+        id="payment_recovery",
         replace_existing=True,
     )
     # Fal.ai отчёт админу каждый день в 9:00 МСК — утренняя сводка
@@ -1304,7 +1466,7 @@ def start_daily_push_scheduler(bot_instance):
         _fal_daily_report,
         trigger=CronTrigger(hour=9, minute=0, timezone=settings.tz),
         args=[bot_instance],
-        id='fal_daily_report',
+        id="fal_daily_report",
         replace_existing=True,
     )
     # Fal.ai low-balance check каждый час — анти-спам через should_alert_admin()
@@ -1312,36 +1474,39 @@ def start_daily_push_scheduler(bot_instance):
         _fal_low_balance_check,
         trigger=CronTrigger(minute=5),  # каждый час в hh:05
         args=[bot_instance],
-        id='fal_low_balance_check',
+        id="fal_low_balance_check",
         replace_existing=True,
     )
     # Phase 2: trial-end conversion push, hourly at minute 30
     from app.services.trial_conversion import run_trial_end_push
+
     _daily_push_scheduler.add_job(
         run_trial_end_push,
         trigger=CronTrigger(minute=30),
         args=[bot_instance],
-        id='trial_end_push',
+        id="trial_end_push",
         replace_existing=True,
     )
     # Phase 3: YooKassa subscription auto-renewal — daily at 03:00 MSK
     # (тихое время, чтобы не наспамить юзера ночью pre-charge уведомлениями).
     from app.services.subscription_renewal import run_subscription_renewals
+
     _daily_push_scheduler.add_job(
         run_subscription_renewals,
         trigger=CronTrigger(hour=3, minute=0, timezone=settings.tz),
         args=[bot_instance],
-        id='subscription_renewals',
+        id="subscription_renewals",
         replace_existing=True,
     )
     # Phase 4: burn-credit expiry — ежедневно в 04:00 МСК. Обнуляет сгоревшие
     # burn-pool и отправляет напоминание за 2 дня до сгорания.
     from app.services.burn_expiry import run_burn_expiry
+
     _daily_push_scheduler.add_job(
         run_burn_expiry,
         trigger=CronTrigger(hour=4, minute=0, timezone=settings.tz),
         args=[bot_instance],
-        id='burn_expiry',
+        id="burn_expiry",
         replace_existing=True,
     )
     # Тихий утренний грант ежедневного бонуса платным подписчикам в 09:00 МСК —
@@ -1350,7 +1515,7 @@ def start_daily_push_scheduler(bot_instance):
         grant_daily_to_subscribers,
         trigger=CronTrigger(hour=9, minute=0, timezone=settings.tz),
         args=[bot_instance],
-        id='daily_subscriber_grant',
+        id="daily_subscriber_grant",
         replace_existing=True,
     )
     # Напоминание админу про gamification-план — каждый день в 18:00 МСК.
@@ -1358,7 +1523,7 @@ def start_daily_push_scheduler(bot_instance):
         send_gamification_reminder,
         trigger=CronTrigger(hour=18, minute=0, timezone=settings.tz),
         args=[bot_instance],
-        id='gamification_reminder',
+        id="gamification_reminder",
         replace_existing=True,
     )
     # Вечернее напоминание «не потеряй серию» — 20:00 МСК (вечер, не ночь).
@@ -1366,42 +1531,44 @@ def start_daily_push_scheduler(bot_instance):
         send_streak_reminders,
         trigger=CronTrigger(hour=20, minute=0, timezone=settings.tz),
         args=[bot_instance],
-        id='streak_reminders',
+        id="streak_reminders",
         replace_existing=True,
     )
     # Одноразовые напоминания админу (bot_config['pending_admin_reminder']).
     _daily_push_scheduler.add_job(
         dispatch_admin_reminder,
-        trigger=CronTrigger(minute='*'),
+        trigger=CronTrigger(minute="*"),
         args=[bot_instance],
-        id='admin_reminder_dispatch',
+        id="admin_reminder_dispatch",
         replace_existing=True,
     )
     # Реф-напоминание: пинг реферера, чей друг зашёл, но не сделал фото (бонус
     # не сработал). Раз в день 12:30 МСК, один пинг на реферал (кулдаун в Redis).
     from app.services.referral_reminder import send_referral_stall_reminders
+
     _daily_push_scheduler.add_job(
         send_referral_stall_reminders,
         trigger=CronTrigger(hour=12, minute=30, timezone=settings.tz),
         args=[bot_instance],
-        id='referral_stall_reminder',
+        id="referral_stall_reminder",
         replace_existing=True,
     )
     # Автосинк реального fal.ai баланса с API → baseline. Каждый час в hh:50.
     # Источник истины — официальный billing endpoint, не локальный трекер
     # (который не видит админ-скриптовых генераций).
     from app.services.fal_balance import sync_baseline_from_real
+
     _daily_push_scheduler.add_job(
         sync_baseline_from_real,
         trigger=CronTrigger(minute=50),  # каждый час в hh:50
-        id='fal_balance_autosync',
+        id="fal_balance_autosync",
         replace_existing=True,
     )
     _daily_push_scheduler.start()
     logger.info(
-        'Daily push scheduler started',
-        schedule='10:00 MSK daily / 11:00 MSK sub-expiry / hourly time-bonus',
-        channel_schedule='auto-publish 1/day ~19:0X MSK (feature), every day',
+        "Daily push scheduler started",
+        schedule="10:00 MSK daily / 11:00 MSK sub-expiry / hourly time-bonus",
+        channel_schedule="auto-publish 1/day ~19:0X MSK (feature), every day",
     )
     return _daily_push_scheduler
 
@@ -1410,7 +1577,7 @@ def stop_daily_push_scheduler() -> None:
     global _daily_push_scheduler
     if _daily_push_scheduler:
         _daily_push_scheduler.shutdown(wait=False)
-        logger.info('Daily push scheduler stopped')
+        logger.info("Daily push scheduler stopped")
 
 
 def is_admin(message: Message) -> bool:
@@ -1440,84 +1607,121 @@ async def _build_admin_dashboard() -> str:
 
     async with AsyncSessionFactory() as session:
         not_test = User.id.notin_(_TEST_USER_IDS)
-        total = await session.scalar(
-            select(func.count(User.id)).where(not_test)) or 0
-        new_24h = await session.scalar(
-            select(func.count(User.id)).where(and_(not_test, User.created_at >= day_ago))) or 0
-        active_24h = await session.scalar(
-            select(func.count(User.id)).where(and_(not_test, User.last_active_at >= day_ago))) or 0
-        active_7d = await session.scalar(
-            select(func.count(User.id)).where(and_(not_test, User.last_active_at >= week_ago))) or 0
-        banned = await session.scalar(
-            select(func.count(User.id)).where(and_(not_test, User.is_banned.is_(True)))) or 0
+        total = await session.scalar(select(func.count(User.id)).where(not_test)) or 0
+        new_24h = (
+            await session.scalar(
+                select(func.count(User.id)).where(and_(not_test, User.created_at >= day_ago))
+            )
+            or 0
+        )
+        active_24h = (
+            await session.scalar(
+                select(func.count(User.id)).where(and_(not_test, User.last_active_at >= day_ago))
+            )
+            or 0
+        )
+        active_7d = (
+            await session.scalar(
+                select(func.count(User.id)).where(and_(not_test, User.last_active_at >= week_ago))
+            )
+            or 0
+        )
+        banned = (
+            await session.scalar(
+                select(func.count(User.id)).where(and_(not_test, User.is_banned.is_(True)))
+            )
+            or 0
+        )
 
         # Активация: уникальные юзеры, сделавшие хотя бы один кадр
-        activated = await session.scalar(
-            select(func.count(distinct(BotEvent.user_id))).where(
-                BotEvent.event_type == 'image_edited',
-                BotEvent.user_id.notin_(_TEST_USER_IDS),
-            )) or 0
-        gens_24h = await session.scalar(
-            select(func.count()).select_from(BotEvent).where(
-                BotEvent.event_type == 'image_edited',
-                BotEvent.user_id.notin_(_TEST_USER_IDS),
-                BotEvent.created_at >= day_ago,
-            )) or 0
+        activated = (
+            await session.scalar(
+                select(func.count(distinct(BotEvent.user_id))).where(
+                    BotEvent.event_type == "image_edited",
+                    BotEvent.user_id.notin_(_TEST_USER_IDS),
+                )
+            )
+            or 0
+        )
+        gens_24h = (
+            await session.scalar(
+                select(func.count())
+                .select_from(BotEvent)
+                .where(
+                    BotEvent.event_type == "image_edited",
+                    BotEvent.user_id.notin_(_TEST_USER_IDS),
+                    BotEvent.created_at >= day_ago,
+                )
+            )
+            or 0
+        )
 
-        pay_count, pay_total = (await session.execute(
-            select(func.count(), func.coalesce(func.sum(Payment.amount), 0)).where(
-                Payment.status == PaymentStatus.SUCCEEDED,
-                Payment.user_id.notin_(_TEST_USER_IDS),
-            ))).one()
-        active_subs = await session.scalar(
-            select(func.count(Subscription.id)).where(and_(
-                Subscription.is_active.is_(True), Subscription.expires_at > now))) or 0
+        pay_count, pay_total = (
+            await session.execute(
+                select(func.count(), func.coalesce(func.sum(Payment.amount), 0)).where(
+                    Payment.status == PaymentStatus.SUCCEEDED,
+                    Payment.user_id.notin_(_TEST_USER_IDS),
+                )
+            )
+        ).one()
+        active_subs = (
+            await session.scalar(
+                select(func.count(Subscription.id)).where(
+                    and_(Subscription.is_active.is_(True), Subscription.expires_at > now)
+                )
+            )
+            or 0
+        )
 
     activation_pct = (activated / total * 100) if total else 0
     conv_pct = (pay_count / total * 100) if total else 0
 
     bal = await fal_balance.get_balance()
     fal_stats = await fal_balance.get_daily_stats()
-    bal_str = f'${bal:.2f}' if bal is not None else 'не задан (/falbalance)'
-    days_left = fal_stats['days_left']
-    days_str = f'~{days_left:.0f} дн' if days_left and days_left < 999 else '∞'
-    low = '  ⚠️' if (bal is not None and bal < 0.30) else ''
+    bal_str = f"${bal:.2f}" if bal is not None else "не задан (/falbalance)"
+    days_left = fal_stats["days_left"]
+    days_str = f"~{days_left:.0f} дн" if days_left and days_left < 999 else "∞"
+    low = "  ⚠️" if (bal is not None and bal < 0.30) else ""
 
-    msk = datetime.now(timezone(timedelta(hours=3))).strftime('%d.%m %H:%M')
+    msk = datetime.now(timezone(timedelta(hours=3))).strftime("%d.%m %H:%M")
 
     return (
-        f'🎛 <b>Нейра · командный центр</b>  <i>{msk} МСК</i>\n\n'
-        f'👥 <b>Юзеры:</b> {total} всего · +{new_24h} за 24ч\n'
-        f'🟢 <b>Активны:</b> {active_24h} за 24ч · {active_7d} за 7д\n'
-        f'🚫 Заблокировали бота: {banned}\n\n'
-        f'🎯 <b>Активация:</b> {activated}/{total} сделали ≥1 кадр '
-        f'(<b>{activation_pct:.0f}%</b>)\n'
-        f'🎨 Генераций за 24ч: {gens_24h}\n\n'
-        f'💰 <b>Платящих:</b> {pay_count} ({conv_pct:.1f}%) · собрано {float(pay_total):,.0f}₽\n'
-        f'📅 Активных подписок: {active_subs}\n\n'
-        f'💵 <b>fal.ai:</b> {bal_str}{low} · хватит {days_str} · '
-        f'сегодня ${fal_stats["spent_today"]:.3f}\n\n'
-        f'<i>Полная разбивка: /analytics · посты: /neyra_status</i>'
+        f"🎛 <b>Нейра · командный центр</b>  <i>{msk} МСК</i>\n\n"
+        f"👥 <b>Юзеры:</b> {total} всего · +{new_24h} за 24ч\n"
+        f"🟢 <b>Активны:</b> {active_24h} за 24ч · {active_7d} за 7д\n"
+        f"🚫 Заблокировали бота: {banned}\n\n"
+        f"🎯 <b>Активация:</b> {activated}/{total} сделали ≥1 кадр "
+        f"(<b>{activation_pct:.0f}%</b>)\n"
+        f"🎨 Генераций за 24ч: {gens_24h}\n\n"
+        f"💰 <b>Платящих:</b> {pay_count} ({conv_pct:.1f}%) · собрано {float(pay_total):,.0f}₽\n"
+        f"📅 Активных подписок: {active_subs}\n\n"
+        f"💵 <b>fal.ai:</b> {bal_str}{low} · хватит {days_str} · "
+        f"сегодня ${fal_stats['spent_today']:.3f}\n\n"
+        f"<i>Полная разбивка: /analytics · посты: /neyra_status</i>"
     )
 
 
 def _admin_dashboard_kb() -> InlineKeyboardMarkup:
-    return InlineKeyboardMarkup(inline_keyboard=[[
-        InlineKeyboardButton(text='🔄 Обновить', callback_data='admin:refresh'),
-        InlineKeyboardButton(text='💵 fal-отчёт', callback_data='admin:fal'),
-    ]])
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(text="🔄 Обновить", callback_data="admin:refresh"),
+                InlineKeyboardButton(text="💵 fal-отчёт", callback_data="admin:fal"),
+            ]
+        ]
+    )
 
 
-@router.message(Command('admin'))
+@router.message(Command("admin"))
 async def cmd_admin(message: Message) -> None:
     """Командный центр: один экран с ключевыми метриками + кнопки."""
     if not is_admin(message):
         return
     text = await _build_admin_dashboard()
-    await message.answer(text, parse_mode='HTML', reply_markup=_admin_dashboard_kb())
+    await message.answer(text, parse_mode="HTML", reply_markup=_admin_dashboard_kb())
 
 
-@router.callback_query(F.data == 'admin:refresh')
+@router.callback_query(F.data == "admin:refresh")
 async def cb_admin_refresh(callback: CallbackQuery) -> None:
     if callback.from_user.id not in settings.admin_ids_list:
         await callback.answer()
@@ -1525,25 +1729,27 @@ async def cb_admin_refresh(callback: CallbackQuery) -> None:
     text = await _build_admin_dashboard()
     try:
         await callback.message.edit_text(
-            text, parse_mode='HTML', reply_markup=_admin_dashboard_kb())
+            text, parse_mode="HTML", reply_markup=_admin_dashboard_kb()
+        )
     except Exception:
         # «message is not modified» когда цифры не изменились — это норма
         pass
-    await callback.answer('Обновлено')
+    await callback.answer("Обновлено")
 
 
-@router.callback_query(F.data == 'admin:fal')
+@router.callback_query(F.data == "admin:fal")
 async def cb_admin_fal(callback: CallbackQuery) -> None:
     if callback.from_user.id not in settings.admin_ids_list:
         await callback.answer()
         return
     from app.services import fal_balance
+
     stats = await fal_balance.get_daily_stats()
-    await callback.message.answer(_format_fal_report(stats), parse_mode='HTML')
+    await callback.message.answer(_format_fal_report(stats), parse_mode="HTML")
     await callback.answer()
 
 
-@router.message(Command('analytics'))
+@router.message(Command("analytics"))
 async def cmd_analytics(message: Message) -> None:
     if not is_admin(message):
         return
@@ -1559,58 +1765,90 @@ async def cmd_analytics(message: Message) -> None:
 
     async with AsyncSessionFactory() as session:
         total_users = await session.scalar(select(func.count(User.id))) or 0
-        new_today = await session.scalar(
-            select(func.count(User.id)).where(User.created_at >= day_ago)
-        ) or 0
-        new_week = await session.scalar(
-            select(func.count(User.id)).where(User.created_at >= week_ago)
-        ) or 0
-        dau = await session.scalar(
-            select(func.count(User.id)).where(User.last_active_at >= day_ago)
-        ) or 0
-        wau = await session.scalar(
-            select(func.count(User.id)).where(User.last_active_at >= week_ago)
-        ) or 0
-        mau = await session.scalar(
-            select(func.count(User.id)).where(User.last_active_at >= month_ago)
-        ) or 0
-
-        revenue_today = await session.scalar(
-            select(func.coalesce(func.sum(Payment.amount), 0)).where(and_(
-                Payment.status == PaymentStatus.SUCCEEDED,
-                Payment.created_at >= day_ago,
-            ))
-        ) or 0
-        revenue_week = await session.scalar(
-            select(func.coalesce(func.sum(Payment.amount), 0)).where(and_(
-                Payment.status == PaymentStatus.SUCCEEDED,
-                Payment.created_at >= week_ago,
-            ))
-        ) or 0
-        revenue_month = await session.scalar(
-            select(func.coalesce(func.sum(Payment.amount), 0)).where(and_(
-                Payment.status == PaymentStatus.SUCCEEDED,
-                Payment.created_at >= month_ago,
-            ))
-        ) or 0
-        revenue_total = await session.scalar(
-            select(func.coalesce(func.sum(Payment.amount), 0)).where(
-                Payment.status == PaymentStatus.SUCCEEDED,
+        new_today = (
+            await session.scalar(select(func.count(User.id)).where(User.created_at >= day_ago)) or 0
+        )
+        new_week = (
+            await session.scalar(select(func.count(User.id)).where(User.created_at >= week_ago))
+            or 0
+        )
+        dau = (
+            await session.scalar(select(func.count(User.id)).where(User.last_active_at >= day_ago))
+            or 0
+        )
+        wau = (
+            await session.scalar(select(func.count(User.id)).where(User.last_active_at >= week_ago))
+            or 0
+        )
+        mau = (
+            await session.scalar(
+                select(func.count(User.id)).where(User.last_active_at >= month_ago)
             )
-        ) or 0
+            or 0
+        )
 
-        paying_users = await session.scalar(
-            select(func.count(distinct(Payment.user_id))).where(
-                Payment.status == PaymentStatus.SUCCEEDED,
+        revenue_today = (
+            await session.scalar(
+                select(func.coalesce(func.sum(Payment.amount), 0)).where(
+                    and_(
+                        Payment.status == PaymentStatus.SUCCEEDED,
+                        Payment.created_at >= day_ago,
+                    )
+                )
             )
-        ) or 0
+            or 0
+        )
+        revenue_week = (
+            await session.scalar(
+                select(func.coalesce(func.sum(Payment.amount), 0)).where(
+                    and_(
+                        Payment.status == PaymentStatus.SUCCEEDED,
+                        Payment.created_at >= week_ago,
+                    )
+                )
+            )
+            or 0
+        )
+        revenue_month = (
+            await session.scalar(
+                select(func.coalesce(func.sum(Payment.amount), 0)).where(
+                    and_(
+                        Payment.status == PaymentStatus.SUCCEEDED,
+                        Payment.created_at >= month_ago,
+                    )
+                )
+            )
+            or 0
+        )
+        revenue_total = (
+            await session.scalar(
+                select(func.coalesce(func.sum(Payment.amount), 0)).where(
+                    Payment.status == PaymentStatus.SUCCEEDED,
+                )
+            )
+            or 0
+        )
 
-        active_subs = await session.scalar(
-            select(func.count(Subscription.id)).where(and_(
-                Subscription.is_active,
-                Subscription.expires_at > now,
-            ))
-        ) or 0
+        paying_users = (
+            await session.scalar(
+                select(func.count(distinct(Payment.user_id))).where(
+                    Payment.status == PaymentStatus.SUCCEEDED,
+                )
+            )
+            or 0
+        )
+
+        active_subs = (
+            await session.scalar(
+                select(func.count(Subscription.id)).where(
+                    and_(
+                        Subscription.is_active,
+                        Subscription.expires_at > now,
+                    )
+                )
+            )
+            or 0
+        )
 
     conv_pct = (paying_users / total_users * 100) if total_users else 0
     avg_revenue = (float(revenue_total) / paying_users) if paying_users else 0
@@ -1636,52 +1874,53 @@ async def cmd_analytics(message: Message) -> None:
         f"• Активных подписок: {active_subs}"
     )
 
-    await message.answer(text, parse_mode='HTML')
+    await message.answer(text, parse_mode="HTML")
 
 
 def _format_fal_report(stats: dict) -> str:
     """Общий форматтер отчёта — используется и в /falreport, и в daily-push."""
-    bal = stats['balance']
-    bal_str = f'${bal:.2f}' if bal is not None else 'не задан (/falbalance)'
-    spent_today = stats['spent_today']
-    spent_yest = stats['spent_yesterday']
-    counts = stats['counts']
-    days_left = stats['days_left']
-    days_left_str = (f'~{days_left:.1f} дн.' if days_left and days_left < 999 else '∞')
-    trend = ''
+    bal = stats["balance"]
+    bal_str = f"${bal:.2f}" if bal is not None else "не задан (/falbalance)"
+    spent_today = stats["spent_today"]
+    spent_yest = stats["spent_yesterday"]
+    counts = stats["counts"]
+    days_left = stats["days_left"]
+    days_left_str = f"~{days_left:.1f} дн." if days_left and days_left < 999 else "∞"
+    trend = ""
     if spent_yest > 0:
         diff = spent_today - spent_yest
-        sign = '+' if diff >= 0 else ''
-        trend = f' ({sign}${diff:.3f} vs вчера)'
-    warning = ''
+        sign = "+" if diff >= 0 else ""
+        trend = f" ({sign}${diff:.3f} vs вчера)"
+    warning = ""
     if bal is not None and bal < 0.30:
-        warning = '\n⚠️ <b>Низкий баланс — пополни fal.ai</b>\n'
+        warning = "\n⚠️ <b>Низкий баланс — пополни fal.ai</b>\n"
     return (
-        f'📊 <b>fal.ai отчёт</b>{warning}\n'
-        f'💰 Баланс: <b>{bal_str}</b>\n'
-        f'📅 За сутки: <b>${spent_today:.3f}</b>{trend}\n'
-        f'⏱ При текущем темпе хватит: <b>{days_left_str}</b>\n\n'
-        f'<b>Операции за сутки:</b>\n'
-        f'· quality: {counts["quality"]}\n'
-        f'· precise: {counts["precise"]}\n'
-        f'· face_swap: {counts["face_swap"]}\n'
-        f'· gen (channel): {counts["gen"]}\n\n'
-        f'<i>Пороги: precise блок ниже $0.20, всё fal ниже $0.05</i>'
+        f"📊 <b>fal.ai отчёт</b>{warning}\n"
+        f"💰 Баланс: <b>{bal_str}</b>\n"
+        f"📅 За сутки: <b>${spent_today:.3f}</b>{trend}\n"
+        f"⏱ При текущем темпе хватит: <b>{days_left_str}</b>\n\n"
+        f"<b>Операции за сутки:</b>\n"
+        f"· quality: {counts['quality']}\n"
+        f"· precise: {counts['precise']}\n"
+        f"· face_swap: {counts['face_swap']}\n"
+        f"· gen (channel): {counts['gen']}\n\n"
+        f"<i>Пороги: precise блок ниже $0.20, всё fal ниже $0.05</i>"
     )
 
 
 async def _fal_daily_report(bot_instance) -> None:
     """Scheduled-job: каждый день в 23:00 МСК шлёт админам сводку."""
     from app.services import fal_balance
+
     stats = await fal_balance.get_daily_stats()
     text = _format_fal_report(stats)
     for admin_id in settings.admin_ids_list:
         try:
-            await bot_instance.send_message(admin_id, text, parse_mode='HTML',
-                                            disable_notification=True)
+            await bot_instance.send_message(
+                admin_id, text, parse_mode="HTML", disable_notification=True
+            )
         except Exception as exc:
-            logger.warning('fal daily report send failed',
-                          admin_id=admin_id, error=str(exc)[:200])
+            logger.warning("fal daily report send failed", admin_id=admin_id, error=str(exc)[:200])
 
 
 async def _fal_low_balance_check(bot_instance) -> None:
@@ -1690,23 +1929,23 @@ async def _fal_low_balance_check(bot_instance) -> None:
     fal_balance.should_alert_admin().
     """
     from app.services import fal_balance
+
     if not await fal_balance.should_alert_admin():
         return
     bal = await fal_balance.get_balance()
     if bal is None:
         return
     text = (
-        f'⚠️ <b>fal.ai баланс низкий: ${bal:.2f}</b>\n\n'
-        f'Скоро отключатся precise (порог $0.20) и весь fal (порог $0.05).\n'
-        f'Пополни кабинет: https://fal.ai/dashboard\n\n'
-        f'После пополнения скажи мне: <code>/falbalance N</code> (где N — новая сумма).'
+        f"⚠️ <b>fal.ai баланс низкий: ${bal:.2f}</b>\n\n"
+        f"Скоро отключатся precise (порог $0.20) и весь fal (порог $0.05).\n"
+        f"Пополни кабинет: https://fal.ai/dashboard\n\n"
+        f"После пополнения скажи мне: <code>/falbalance N</code> (где N — новая сумма)."
     )
     for admin_id in settings.admin_ids_list:
         try:
-            await bot_instance.send_message(admin_id, text, parse_mode='HTML')
+            await bot_instance.send_message(admin_id, text, parse_mode="HTML")
         except Exception as exc:
-            logger.warning('fal low balance alert failed',
-                          admin_id=admin_id, error=str(exc)[:200])
+            logger.warning("fal low balance alert failed", admin_id=admin_id, error=str(exc)[:200])
     await fal_balance.mark_alert_sent()
 
 
@@ -1731,11 +1970,13 @@ async def grant_daily_to_subscribers(bot_instance=None) -> None:
         stmt = (
             select(User)
             .join(Subscription, Subscription.user_id == User.id)
-            .where(and_(
-                Subscription.is_active.is_(True),
-                Subscription.expires_at > now,
-                Subscription.plan.in_([Plan.BASIC, Plan.PRO, Plan.MAX]),
-            ))
+            .where(
+                and_(
+                    Subscription.is_active.is_(True),
+                    Subscription.expires_at > now,
+                    Subscription.plan.in_([Plan.BASIC, Plan.PRO, Plan.MAX]),
+                )
+            )
         )
         users = (await session.execute(stmt)).scalars().all()
         for user in users:
@@ -1744,9 +1985,12 @@ async def grant_daily_to_subscribers(bot_instance=None) -> None:
                 granted_users += 1
                 granted_credits += amt
         await session.commit()
-    logger.info('daily subscriber grant complete',
-                active_subs=len(users), granted_users=granted_users,
-                granted_credits=granted_credits)
+    logger.info(
+        "daily subscriber grant complete",
+        active_subs=len(users),
+        granted_users=granted_users,
+        granted_credits=granted_credits,
+    )
 
 
 async def send_gamification_reminder(bot_instance) -> None:
@@ -1755,6 +1999,7 @@ async def send_gamification_reminder(bot_instance) -> None:
     Раньше это был remote-routine, чей ответ уходил в облачную сессию и до юзера
     не доходил. Теперь — прямое сообщение в Telegram."""
     from app.services import fal_balance
+
     try:
         bal = await fal_balance.get_balance()
     except Exception:
@@ -1765,8 +2010,10 @@ async def send_gamification_reminder(bot_instance) -> None:
         rec = "Сначала задай baseline, чтобы видеть, когда можно стартовать."
     elif bal >= 30:
         bal_line = f"💵 fal.ai: <b>${bal:.2f}</b> ✅"
-        rec = ("Порог достигнут — можно запускать <b>Этап 1: Streak Escalation</b> "
-               "(поля БД готовы, безопаснее всего).")
+        rec = (
+            "Порог достигнут — можно запускать <b>Этап 1: Streak Escalation</b> "
+            "(поля БД готовы, безопаснее всего)."
+        )
     else:
         bal_line = f"💵 fal.ai: <b>${bal:.2f}</b>"
         rec = f"Для старта Этапа 1 нужно ≥ $30. Не хватает <b>${30 - bal:.2f}</b> — пока ждём."
@@ -1782,14 +2029,16 @@ async def send_gamification_reminder(bot_instance) -> None:
     )
     for admin_id in settings.admin_ids_list:
         try:
-            await bot_instance.send_message(admin_id, text, parse_mode='HTML',
-                                            disable_web_page_preview=True)
+            await bot_instance.send_message(
+                admin_id, text, parse_mode="HTML", disable_web_page_preview=True
+            )
         except Exception as exc:
-            logger.warning('gamification reminder send failed',
-                          admin_id=admin_id, error=str(exc)[:200])
+            logger.warning(
+                "gamification reminder send failed", admin_id=admin_id, error=str(exc)[:200]
+            )
 
 
-@router.message(Command('falbalance'))
+@router.message(Command("falbalance"))
 async def cmd_fal_set_balance(message: Message) -> None:
     """Админ устанавливает текущий баланс fal.ai после пополнения.
     Использование: /falbalance 30   (после пополнения на $30)
@@ -1797,35 +2046,37 @@ async def cmd_fal_set_balance(message: Message) -> None:
     """
     if not is_admin(message):
         return
-    parts = (message.text or '').split()
+    parts = (message.text or "").split()
     if len(parts) != 2:
         await message.answer(
-            '<b>Использование:</b>\n'
-            '<code>/falbalance 30</code> — указать что сейчас на fal.ai $30\n\n'
-            'Бот будет считать расход с этого момента и блокировать precise/face_swap '
-            'когда оценочный баланс упадёт ниже $0.20.',
-            parse_mode='HTML',
+            "<b>Использование:</b>\n"
+            "<code>/falbalance 30</code> — указать что сейчас на fal.ai $30\n\n"
+            "Бот будет считать расход с этого момента и блокировать precise/face_swap "
+            "когда оценочный баланс упадёт ниже $0.20.",
+            parse_mode="HTML",
         )
         return
     try:
         amount = float(parts[1])
         if amount < 0 or amount > 10000:
-            raise ValueError('out of range')
+            raise ValueError("out of range")
     except ValueError:
-        await message.answer('❌ Сумма должна быть числом, например <code>/falbalance 30</code>',
-                             parse_mode='HTML')
+        await message.answer(
+            "❌ Сумма должна быть числом, например <code>/falbalance 30</code>", parse_mode="HTML"
+        )
         return
     from app.services import fal_balance
+
     await fal_balance.set_baseline(amount)
     await message.answer(
-        f'✓ Baseline установлен: <b>${amount:.2f}</b>\n\n'
-        f'С этого момента бот будет считать расход.\n'
-        f'Команда <code>/falreport</code> покажет статистику.',
-        parse_mode='HTML',
+        f"✓ Baseline установлен: <b>${amount:.2f}</b>\n\n"
+        f"С этого момента бот будет считать расход.\n"
+        f"Команда <code>/falreport</code> покажет статистику.",
+        parse_mode="HTML",
     )
 
 
-@router.message(Command('neyra_status', 'status_neyra'))
+@router.message(Command("neyra_status", "status_neyra"))
 async def cmd_neyra_status(message: Message) -> None:
     """Полный снимок проекта в личке админа: юзеры + платежи + fal + канал.
     Удобно с мобилы посмотреть «как дела» без захода на сервер.
@@ -1843,28 +2094,34 @@ async def cmd_neyra_status(message: Message) -> None:
             select(func.count()).select_from(User).where(User.id.notin_([1, 2]))
         )
         users_7d = await session.scalar(
-            select(func.count()).select_from(User).where(
+            select(func.count())
+            .select_from(User)
+            .where(
                 User.id.notin_([1, 2]),
                 User.last_active_at > func.now() - text("INTERVAL '7 days'"),
             )
         )
         users_24h = await session.scalar(
-            select(func.count()).select_from(User).where(
+            select(func.count())
+            .select_from(User)
+            .where(
                 User.id.notin_([1, 2]),
                 User.last_active_at > func.now() - text("INTERVAL '24 hours'"),
             )
         )
         # Платежи (succeeded only)
         pay_stats = await session.execute(
-            select(func.count(), func.coalesce(func.sum(Payment.amount), 0))
-            .where(Payment.status == PaymentStatus.SUCCEEDED,
-                   Payment.user_id.notin_([1, 2]))
+            select(func.count(), func.coalesce(func.sum(Payment.amount), 0)).where(
+                Payment.status == PaymentStatus.SUCCEEDED, Payment.user_id.notin_([1, 2])
+            )
         )
         pay_count, pay_total = pay_stats.one()
         # AI ops 24ч
         ai_24h = await session.scalar(
-            select(func.count()).select_from(BotEvent).where(
-                BotEvent.event_type == 'image_edited',
+            select(func.count())
+            .select_from(BotEvent)
+            .where(
+                BotEvent.event_type == "image_edited",
                 BotEvent.user_id.notin_([1, 2]),
                 BotEvent.created_at > func.now() - text("INTERVAL '24 hours'"),
             )
@@ -1872,55 +2129,59 @@ async def cmd_neyra_status(message: Message) -> None:
         # Последний пост канала
         last_post = await session.execute(
             select(ChannelPost.topic, ChannelPost.cta_type, ChannelPost.published_at)
-            .where(ChannelPost.status == 'published')
-            .order_by(ChannelPost.published_at.desc()).limit(1)
+            .where(ChannelPost.status == "published")
+            .order_by(ChannelPost.published_at.desc())
+            .limit(1)
         )
         last_post_row = last_post.first()
 
     # fal balance
     bal = await fal_balance.get_balance()
     fal_stats = await fal_balance.get_daily_stats()
-    bal_str = (f'${bal:.2f}' if bal is not None else 'не задан (/falbalance)')
-    days_left = fal_stats['days_left']
-    days_str = (f'~{days_left:.0f} дн' if days_left and days_left < 999 else '∞')
+    bal_str = f"${bal:.2f}" if bal is not None else "не задан (/falbalance)"
+    days_left = fal_stats["days_left"]
+    days_str = f"~{days_left:.0f} дн" if days_left and days_left < 999 else "∞"
 
-    last_post_str = '—'
+    last_post_str = "—"
     if last_post_row:
         topic, cta, dt = last_post_row
         from datetime import timedelta, timezone
+
         msk = timezone(timedelta(hours=3))
-        dt_str = dt.astimezone(msk).strftime('%d.%m %H:%M') if dt else '?'
-        last_post_str = f'{dt_str} · {cta} · <i>{topic[:50]}</i>'
+        dt_str = dt.astimezone(msk).strftime("%d.%m %H:%M") if dt else "?"
+        last_post_str = f"{dt_str} · {cta} · <i>{topic[:50]}</i>"
 
     text = (
-        f'📊 <b>Нейра · снимок</b>\n\n'
-        f'👥 <b>Юзеры:</b> {users_total} всего · {users_7d} за 7д · {users_24h} за 24ч\n'
-        f'💰 <b>Платящих:</b> {pay_count} · собрано {pay_total}₽\n'
-        f'🎨 <b>AI за 24ч:</b> {ai_24h} операций\n\n'
-        f'💵 <b>fal.ai:</b> {bal_str} · хватит {days_str}\n'
-        f'   за сутки: ${fal_stats["spent_today"]:.3f}\n\n'
-        f'📢 <b>Последний пост канала:</b>\n{last_post_str}\n\n'
-        f'<i>Команды: /falreport /falbalance /stats /admin</i>'
+        f"📊 <b>Нейра · снимок</b>\n\n"
+        f"👥 <b>Юзеры:</b> {users_total} всего · {users_7d} за 7д · {users_24h} за 24ч\n"
+        f"💰 <b>Платящих:</b> {pay_count} · собрано {pay_total}₽\n"
+        f"🎨 <b>AI за 24ч:</b> {ai_24h} операций\n\n"
+        f"💵 <b>fal.ai:</b> {bal_str} · хватит {days_str}\n"
+        f"   за сутки: ${fal_stats['spent_today']:.3f}\n\n"
+        f"📢 <b>Последний пост канала:</b>\n{last_post_str}\n\n"
+        f"<i>Команды: /falreport /falbalance /stats /admin</i>"
     )
-    await message.answer(text, parse_mode='HTML')
+    await message.answer(text, parse_mode="HTML")
 
 
-@router.message(Command('falreport'))
+@router.message(Command("falreport"))
 async def cmd_fal_report(message: Message) -> None:
     """Текущий баланс fal.ai + расход за сутки."""
     if not is_admin(message):
         return
     from app.services import fal_balance
+
     stats = await fal_balance.get_daily_stats()
-    await message.answer(_format_fal_report(stats), parse_mode='HTML')
+    await message.answer(_format_fal_report(stats), parse_mode="HTML")
 
 
-@router.message(Command('stats'))
+@router.message(Command("stats"))
 async def cmd_stats(message: Message) -> None:
     if not is_admin(message):
         return
 
     from app.database.repo.promos import list_promos
+
     async with AsyncSessionFactory() as session:
         total_users = await get_total_users_count(session)
         promos = await list_promos(session)
@@ -1929,15 +2190,15 @@ async def cmd_stats(message: Message) -> None:
     total_redemptions = sum(p.used_count for p in promos)
 
     text = (
-        '📊 <b>Статистика</b>\n\n'
-        f'👥 Всего пользователей: <b>{total_users}</b>\n\n'
-        f'🎟 Активных промокодов: <b>{active_promos}</b>\n'
-        f'✅ Всего активаций: <b>{total_redemptions}</b>'
+        "📊 <b>Статистика</b>\n\n"
+        f"👥 Всего пользователей: <b>{total_users}</b>\n\n"
+        f"🎟 Активных промокодов: <b>{active_promos}</b>\n"
+        f"✅ Всего активаций: <b>{total_redemptions}</b>"
     )
-    await message.answer(text, parse_mode='HTML')
+    await message.answer(text, parse_mode="HTML")
 
 
-@router.message(Command('fixpayments'))
+@router.message(Command("fixpayments"))
 async def cmd_fix_payments(message: Message) -> None:
     """Завершить все висящие платежи YooKassa"""
     if not is_admin(message):
@@ -1945,74 +2206,81 @@ async def cmd_fix_payments(message: Message) -> None:
 
     async with AsyncSessionFactory() as session:
         pending = await get_pending_payments(session)
-        yookassa_pending = [p for p in pending if p.payment_method == 'yookassa']
+        yookassa_pending = [p for p in pending if p.payment_method == "yookassa"]
 
         if not yookassa_pending:
-            await message.answer('✅ Нет висящих платежей YooKassa.')
+            await message.answer("✅ Нет висящих платежей YooKassa.")
             return
 
         completed = 0
         for p in yookassa_pending:
-            credits = p.extra.get('credits', 0)
-            user_tg_id = p.extra.get('user_tg_id')
+            credits = p.extra.get("credits", 0)
+            user_tg_id = p.extra.get("user_tg_id")
             if credits and user_tg_id:
                 user = await get_user(session, int(user_tg_id))
                 if user:
                     await add_credits(session, user, credits)
-                    await update_payment(session, p.id, PaymentStatus.SUCCEEDED, external_id='admin_fix')
+                    await update_payment(
+                        session, p.id, PaymentStatus.SUCCEEDED, external_id="admin_fix"
+                    )
                     completed += 1
 
                     # Отправить уведомление пользователю
                     try:
                         from app.database.repo.credits import total_balance as _tb
+
                         await message.bot.send_message(
                             chat_id=int(user_tg_id),
                             text=(
-                                f'✅ <b>{credits:,} кредитов зачислено!</b>\n\n'
-                                f'💳 Твой баланс: <b>{_tb(user):,} кредитов</b>\n\n'
-                                f'Просто напиши мне — я готов помочь 🚀'
+                                f"✅ <b>{credits:,} кредитов зачислено!</b>\n\n"
+                                f"💳 Твой баланс: <b>{_tb(user):,} кредитов</b>\n\n"
+                                f"Просто напиши мне — я готов помочь 🚀"
                             ),
-                            parse_mode='HTML',
+                            parse_mode="HTML",
                         )
                     except Exception as e:
-                        logger.error('Failed to send payment notification', user_id=user_tg_id, error=e)
+                        logger.error(
+                            "Failed to send payment notification", user_id=user_tg_id, error=e
+                        )
 
         await session.commit()
 
-    await message.answer(f'✅ Завершено {completed} платежей YooKassa, кредиты зачислены и уведомления отправлены.')
+    await message.answer(
+        f"✅ Завершено {completed} платежей YooKassa, кредиты зачислены и уведомления отправлены."
+    )
 
 
-@router.message(Command('checkpayments'))
+@router.message(Command("checkpayments"))
 async def cmd_check_payments(message: Message) -> None:
     """Проверить статус платежей YooKassa через API"""
     if not is_admin(message):
         return
 
-    await message.answer('🔄 Проверяю статус платежей YooKassa...')
+    await message.answer("🔄 Проверяю статус платежей YooKassa...")
 
     try:
         await check_yookassa_payments(message.bot)
-        await message.answer('✅ Проверка платежей завершена.')
+        await message.answer("✅ Проверка платежей завершена.")
     except Exception as e:
-        logger.error('Manual payment check failed', error=e)
-        await message.answer(f'❌ Ошибка проверки платежей: {e}')
+        logger.error("Manual payment check failed", error=e)
+        await message.answer(f"❌ Ошибка проверки платежей: {e}")
 
 
-@router.message(Command('addpromo'))
+@router.message(Command("addpromo"))
 async def cmd_addpromo(message: Message) -> None:
     if not is_admin(message):
         return
 
-    parts = (message.text or '').removeprefix('/addpromo').strip().split()
+    parts = (message.text or "").removeprefix("/addpromo").strip().split()
     if len(parts) < 2:
         await message.answer(
-            '❌ Формат:\n'
-            '<code>/addpromo КОД КРЕДИТЫ [МАХ] [ДНЕЙ_ДО_ИСТЕЧЕНИЯ]</code>\n\n'
-            'Примеры:\n'
-            '<code>/addpromo WELCOME 200</code> — безлимит, бессрочно\n'
-            '<code>/addpromo PROMO100 100 50</code> — 50 активаций\n'
-            '<code>/addpromo LAUNCH 500 0 7</code> — истекает через 7 дней',
-            parse_mode='HTML',
+            "❌ Формат:\n"
+            "<code>/addpromo КОД КРЕДИТЫ [МАХ] [ДНЕЙ_ДО_ИСТЕЧЕНИЯ]</code>\n\n"
+            "Примеры:\n"
+            "<code>/addpromo WELCOME 200</code> — безлимит, бессрочно\n"
+            "<code>/addpromo PROMO100 100 50</code> — 50 активаций\n"
+            "<code>/addpromo LAUNCH 500 0 7</code> — истекает через 7 дней",
+            parse_mode="HTML",
         )
         return
 
@@ -2022,91 +2290,96 @@ async def cmd_addpromo(message: Message) -> None:
         max_uses = int(parts[2]) if len(parts) > 2 else 0
         expire_days = int(parts[3]) if len(parts) > 3 else 0
     except ValueError:
-        await message.answer('❌ Кредиты, макс. использований и дни должны быть числами.')
+        await message.answer("❌ Кредиты, макс. использований и дни должны быть числами.")
         return
 
     if credits <= 0:
-        await message.answer('❌ Количество кредитов должно быть больше 0.')
+        await message.answer("❌ Количество кредитов должно быть больше 0.")
         return
 
     expires_at = datetime.now(UTC) + timedelta(days=expire_days) if expire_days > 0 else None
 
     from app.database.repo.promos import create_promo
+
     async with AsyncSessionFactory() as session:
         try:
             await create_promo(session, code, credits, max_uses, expires_at)
             await session.commit()
         except Exception:
-            await message.answer(f'❌ Промокод <code>{code}</code> уже существует.', parse_mode='HTML')
+            await message.answer(
+                f"❌ Промокод <code>{code}</code> уже существует.", parse_mode="HTML"
+            )
             return
 
-    uses_label = f'{max_uses}' if max_uses > 0 else '∞'
-    exp_label = expires_at.strftime('%d.%m.%Y') if expires_at else 'бессрочно'
+    uses_label = f"{max_uses}" if max_uses > 0 else "∞"
+    exp_label = expires_at.strftime("%d.%m.%Y") if expires_at else "бессрочно"
 
     await message.answer(
-        f'✅ <b>Промокод создан</b>\n\n'
-        f'Код: <code>{code}</code>\n'
-        f'Кредиты: <b>{credits}</b>\n'
-        f'Активаций: <b>{uses_label}</b>\n'
-        f'Истекает: <b>{exp_label}</b>',
-        parse_mode='HTML',
+        f"✅ <b>Промокод создан</b>\n\n"
+        f"Код: <code>{code}</code>\n"
+        f"Кредиты: <b>{credits}</b>\n"
+        f"Активаций: <b>{uses_label}</b>\n"
+        f"Истекает: <b>{exp_label}</b>",
+        parse_mode="HTML",
     )
 
 
-@router.message(Command('listpromos'))
+@router.message(Command("listpromos"))
 async def cmd_listpromos(message: Message) -> None:
     if not is_admin(message):
         return
 
     from app.database.repo.promos import list_promos
+
     async with AsyncSessionFactory() as session:
         promos = await list_promos(session)
 
     if not promos:
-        await message.answer('Промокодов нет.')
+        await message.answer("Промокодов нет.")
         return
 
-    lines = ['🎟 <b>Промокоды (последние 20)</b>\n']
+    lines = ["🎟 <b>Промокоды (последние 20)</b>\n"]
     for p in promos:
-        status = '✅' if p.is_active else '❌'
-        uses = f'{p.used_count}/{p.max_uses}' if p.max_uses > 0 else f'{p.used_count}/∞'
-        exp = p.expires_at.strftime('%d.%m') if p.expires_at else '—'
-        lines.append(f'{status} <code>{p.code}</code> · {p.credits}кр · {uses} · до {exp}')
+        status = "✅" if p.is_active else "❌"
+        uses = f"{p.used_count}/{p.max_uses}" if p.max_uses > 0 else f"{p.used_count}/∞"
+        exp = p.expires_at.strftime("%d.%m") if p.expires_at else "—"
+        lines.append(f"{status} <code>{p.code}</code> · {p.credits}кр · {uses} · до {exp}")
 
-    await message.answer('\n'.join(lines), parse_mode='HTML')
+    await message.answer("\n".join(lines), parse_mode="HTML")
 
 
-@router.message(Command('delpromo'))
+@router.message(Command("delpromo"))
 async def cmd_delpromo(message: Message) -> None:
     if not is_admin(message):
         return
 
-    code = (message.text or '').removeprefix('/delpromo').strip().upper()
+    code = (message.text or "").removeprefix("/delpromo").strip().upper()
     if not code:
-        await message.answer('❌ Укажи код: <code>/delpromo КОД</code>', parse_mode='HTML')
+        await message.answer("❌ Укажи код: <code>/delpromo КОД</code>", parse_mode="HTML")
         return
 
     from app.database.repo.promos import deactivate_promo
+
     async with AsyncSessionFactory() as session:
         ok = await deactivate_promo(session, code)
         await session.commit()
 
     if ok:
-        await message.answer(f'✅ Промокод <code>{code}</code> деактивирован.', parse_mode='HTML')
+        await message.answer(f"✅ Промокод <code>{code}</code> деактивирован.", parse_mode="HTML")
     else:
-        await message.answer(f'❌ Промокод <code>{code}</code> не найден.', parse_mode='HTML')
+        await message.answer(f"❌ Промокод <code>{code}</code> не найден.", parse_mode="HTML")
 
 
-@router.message(Command('broadcast'))
+@router.message(Command("broadcast"))
 async def cmd_broadcast(message: Message) -> None:
     if not is_admin(message):
         return
 
-    text = message.text.removeprefix('/broadcast').strip()
+    text = message.text.removeprefix("/broadcast").strip()
     if not text:
         await message.answer(
-            '❌ Укажи текст рассылки:\n<code>/broadcast Ваш текст здесь</code>',
-            parse_mode='HTML',
+            "❌ Укажи текст рассылки:\n<code>/broadcast Ваш текст здесь</code>",
+            parse_mode="HTML",
         )
         return
 
@@ -2117,23 +2390,21 @@ async def cmd_broadcast(message: Message) -> None:
     sent = 0
     failed = 0
 
-    status_msg = await message.answer(f'📤 Начинаю рассылку на {total} пользователей...')
+    status_msg = await message.answer(f"📤 Начинаю рассылку на {total} пользователей...")
 
     for tg_id in ids:
         try:
-            await message.bot.send_message(tg_id, text, parse_mode='HTML')
+            await message.bot.send_message(tg_id, text, parse_mode="HTML")
             sent += 1
         except Exception:
             failed += 1
         await asyncio.sleep(0.05)
 
     await status_msg.edit_text(
-        f'✅ <b>Рассылка завершена</b>\n\n'
-        f'📨 Отправлено: {sent}\n'
-        f'❌ Не доставлено: {failed}',
-        parse_mode='HTML',
+        f"✅ <b>Рассылка завершена</b>\n\n📨 Отправлено: {sent}\n❌ Не доставлено: {failed}",
+        parse_mode="HTML",
     )
-    logger.info('Broadcast done', sent=sent, failed=failed, total=total)
+    logger.info("Broadcast done", sent=sent, failed=failed, total=total)
 
 
 # Промо-рассылка новых пресетов: АЛЬБОМ из 2 фото (мужское + женское превью,
@@ -2160,17 +2431,22 @@ _SHOWCASE_CTA = (
 # показался ВСЕМ получателям — и тем, кто пол не выбирал, и тем, кто выбирал.
 # Иначе у выбравших шаг «укажи пол» был бы враньём (gallery_open их пускает
 # сразу в категории). После выбора пола → категории → пресет → селфи.
-_SHOWCASE_KB = InlineKeyboardMarkup(inline_keyboard=[
-    [InlineKeyboardButton.model_construct(
-        text='Сделать фото с моим лицом',
-        callback_data='change_gender',
-        icon_custom_emoji_id=PE_SPARKLES, style='success',
-    )],
-])
+_SHOWCASE_KB = InlineKeyboardMarkup(
+    inline_keyboard=[
+        [
+            InlineKeyboardButton.model_construct(
+                text="Сделать фото с моим лицом",
+                callback_data="change_gender",
+                icon_custom_emoji_id=PE_SPARKLES,
+                style="success",
+            )
+        ],
+    ]
+)
 # Приоритеты превью: первый найденный из списка. Мужское — position=1, женское — 0.
 # marble_punk убран (жест-фак отталкивает) — 27.05.
-_SHOWCASE_MALE = ('cyber_neon', 'skull_saint', 'underwater_red')
-_SHOWCASE_FEMALE = ('underwater_red', 'goldfish_dream', 'korean_red_wall')
+_SHOWCASE_MALE = ("cyber_neon", "skull_saint", "underwater_red")
+_SHOWCASE_FEMALE = ("underwater_red", "goldfish_dream", "korean_red_wall")
 
 
 async def _build_showcase_collage(bot, male_fid: str, female_fid: str) -> bytes:
@@ -2187,29 +2463,29 @@ async def _build_showcase_collage(bot, male_fid: str, female_fid: str) -> bytes:
         await bot.download_file(f.file_path, buf)
         return buf.getvalue()
 
-    imgs = [Image.open(io.BytesIO(await _dl(f))).convert('RGB')
-            for f in (male_fid, female_fid)]
+    imgs = [Image.open(io.BytesIO(await _dl(f))).convert("RGB") for f in (male_fid, female_fid)]
     h = min(im.height for im in imgs)
     resized = [im.resize((max(1, int(im.width * h / im.height)), h)) for im in imgs]
     gap = 16
     width = sum(im.width for im in resized) + gap * (len(resized) - 1)
-    canvas = Image.new('RGB', (width, h), (18, 18, 20))
+    canvas = Image.new("RGB", (width, h), (18, 18, 20))
     x = 0
     for im in resized:
         canvas.paste(im, (x, 0))
         x += im.width + gap
     out = io.BytesIO()
-    canvas.save(out, 'JPEG', quality=92, optimize=True)
+    canvas.save(out, "JPEG", quality=92, optimize=True)
     return out.getvalue()
 
 
-@router.message(Command('showcase'))
+@router.message(Command("showcase"))
 async def cmd_showcase(message: Message) -> None:
     if not is_admin(message):
         return
-    mode = message.text.removeprefix('/showcase').strip().lower()
+    mode = message.text.removeprefix("/showcase").strip().lower()
 
     from app.database.repo.preset_previews import get_preview_file_id
+
     async with AsyncSessionFactory() as session:
         male_fid = female_fid = None
         for k in _SHOWCASE_MALE:
@@ -2222,45 +2498,61 @@ async def cmd_showcase(message: Message) -> None:
                 break
 
     if not (male_fid and female_fid):
-        await message.answer('❌ Нет пары превью (муж+жен) для showcase в БД.')
+        await message.answer("❌ Нет пары превью (муж+жен) для showcase в БД.")
         return
 
-    caption = _SHOWCASE_CAPTION + '\n\n' + _SHOWCASE_CTA
+    caption = _SHOWCASE_CAPTION + "\n\n" + _SHOWCASE_CTA
 
     # Коллаж муж+жен в ОДНОЙ картинке: грузим один раз себе → file_id, дальше
     # рассылаем по file_id (не пере-загружая байты каждому получателю).
     from aiogram.types import BufferedInputFile
+
     try:
         collage = await _build_showcase_collage(message.bot, male_fid, female_fid)
     except Exception as exc:
-        await message.answer(f'❌ Не удалось собрать коллаж: {str(exc)[:150]}')
+        await message.answer(f"❌ Не удалось собрать коллаж: {str(exc)[:150]}")
         return
     first = await message.bot.send_photo(
-        message.from_user.id, BufferedInputFile(collage, 'neyra_showcase.jpg'),
-        caption=caption, parse_mode='HTML', reply_markup=_SHOWCASE_KB,
+        message.from_user.id,
+        BufferedInputFile(collage, "neyra_showcase.jpg"),
+        caption=caption,
+        parse_mode="HTML",
+        reply_markup=_SHOWCASE_KB,
     )
     collage_fid = first.photo[-1].file_id
 
-    if mode != 'send':
+    if mode != "send":
         await message.answer(
-            '✅ Превью отправлено тебе — <b>одно сообщение</b>: 2 фото (муж+жен) '
-            '+ кнопка. Тапни кнопку и пройди путь как юзер. Если ок — '
-            '<code>/showcase send</code> разошлёт всем активным (≤30д).',
-            parse_mode='HTML',
+            "✅ Превью отправлено тебе — <b>одно сообщение</b>: 2 фото (муж+жен) "
+            "+ кнопка. Тапни кнопку и пройди путь как юзер. Если ок — "
+            "<code>/showcase send</code> разошлёт всем активным (≤30д).",
+            parse_mode="HTML",
         )
         return
 
     from sqlalchemy import and_, select
 
     from app.database.models import User
+
     cutoff = datetime.utcnow() - timedelta(days=30)
     async with AsyncSessionFactory() as session:
-        ids = (await session.execute(select(User.telegram_id).where(and_(
-            not User.is_banned, User.last_active_at >= cutoff,
-        )))).scalars().all()
+        ids = (
+            (
+                await session.execute(
+                    select(User.telegram_id).where(
+                        and_(
+                            not User.is_banned,
+                            User.last_active_at >= cutoff,
+                        )
+                    )
+                )
+            )
+            .scalars()
+            .all()
+        )
 
     total = len(ids)
-    status = await message.answer(f'📤 Showcase: рассылаю на {total} активных…')
+    status = await message.answer(f"📤 Showcase: рассылаю на {total} активных…")
     sent = failed = 0
     for tg_id in ids:
         if tg_id == message.from_user.id:
@@ -2268,15 +2560,18 @@ async def cmd_showcase(message: Message) -> None:
             continue
         try:
             await message.bot.send_photo(
-                tg_id, collage_fid, caption=caption,
-                parse_mode='HTML', reply_markup=_SHOWCASE_KB,
+                tg_id,
+                collage_fid,
+                caption=caption,
+                parse_mode="HTML",
+                reply_markup=_SHOWCASE_KB,
             )
             sent += 1
         except Exception:
             failed += 1
         await asyncio.sleep(0.05)
     await status.edit_text(
-        f'✅ <b>Showcase разослан</b>\n\n📨 Отправлено: {sent}\n❌ Не доставлено: {failed}',
-        parse_mode='HTML',
+        f"✅ <b>Showcase разослан</b>\n\n📨 Отправлено: {sent}\n❌ Не доставлено: {failed}",
+        parse_mode="HTML",
     )
-    logger.info('Showcase broadcast done', sent=sent, failed=failed, total=total)
+    logger.info("Showcase broadcast done", sent=sent, failed=failed, total=total)

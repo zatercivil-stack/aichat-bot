@@ -1,11 +1,11 @@
 # Константы для модели и текстов
 
 MODEL_LABEL = {
-    'free':  'DeepSeek V3.2',
-    'basic': 'GPT-5 nano',
-    'mid':   'GPT-5 mini',
-    'pro':   'Claude Sonnet 4.6',
-    'ultra': 'Claude Opus 4.7',
+    "free": "DeepSeek V3.2",
+    "basic": "GPT-5 nano",
+    "mid": "GPT-5 mini",
+    "pro": "Claude Sonnet 4.6",
+    "ultra": "Claude Opus 4.7",
 }
 
 REFERRAL_BONUS = 250  # сгораемые (7 дней), начисляются когда друг сделал 1-е фото
@@ -46,25 +46,28 @@ async def build_help_text() -> str:
     from app.services.pricing import get_promo_info
 
     info = await get_promo_info()
-    eff = info['effective_costs']
-    base = info['base_costs']
+    eff = info["effective_costs"]
+    base = info["base_costs"]
     # Реальное число настроений на сегодня (из EDIT_PRESETS).
     scenes_count = len(EDIT_PRESETS)
     # Подарок новичку
     async with AsyncSessionFactory() as session:
-        welcome_bonus_raw = (await get_config_value(session, 'welcome_bonus_credits') or '300').strip()
+        welcome_bonus_raw = (
+            await get_config_value(session, "welcome_bonus_credits") or "300"
+        ).strip()
     try:
         welcome_bonus = int(welcome_bonus_raw)
     except ValueError:
         welcome_bonus = 300
     # Цены с пометкой promo
-    if info['active'] and info['discount'] > 0:
-        until_str = info['until']
+    if info["active"] and info["discount"] > 0:
+        until_str = info["until"]
         # Перевод ISO даты → ДД.ММ
         try:
             from datetime import date as _date
+
             d = _date.fromisoformat(until_str)
-            until_human = d.strftime('%d.%m')
+            until_human = d.strftime("%d.%m")
         except Exception:
             until_human = until_str
         promo_line = (
@@ -72,13 +75,13 @@ async def build_help_text() -> str:
             f"-{info['discount']} кр на правки и face-swap. "
             f"После — базовые цены."
         )
-        edit_q = eff['image_edit']
-        face_swap = eff['face_swap']
+        edit_q = eff["image_edit"]
+        face_swap = eff["face_swap"]
     else:
-        promo_line = ''
-        edit_q = base['image_edit']
-        face_swap = base['face_swap']
-    img_gen = MODEL_COSTS['image']
+        promo_line = ""
+        edit_q = base["image_edit"]
+        face_swap = base["face_swap"]
+    img_gen = MODEL_COSTS["image"]
 
     return (
         "ℹ️ <b>Как пользоваться Нейрой</b>\n\n"

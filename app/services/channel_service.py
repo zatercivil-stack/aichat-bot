@@ -52,7 +52,7 @@ async def is_subscribed(bot: Bot, user_tg_id: int) -> bool:
     try:
         return await check(bot, _get_redis(), user_tg_id)
     except Exception as exc:
-        logger.warning('is_subscribed failed', error=str(exc)[:200])
+        logger.warning("is_subscribed failed", error=str(exc)[:200])
         return False
 
 
@@ -82,6 +82,7 @@ def _get_redis():
         from redis.asyncio import Redis
 
         from app.config import settings
+
         _redis_singleton = Redis.from_url(settings.REDIS_URL, decode_responses=True)
     return _redis_singleton
 
@@ -110,7 +111,7 @@ async def grant_daily_aware(bot: Bot, session, user) -> int:
     try:
         is_channel = await check(bot, redis, user.telegram_id)
     except Exception as exc:
-        logger.warning('grant_daily_aware channel check failed', error=str(exc)[:200])
+        logger.warning("grant_daily_aware channel check failed", error=str(exc)[:200])
         is_channel = False
 
     granted = await grant_daily_if_needed(session, user, is_channel_sub=is_channel)
@@ -120,6 +121,6 @@ async def grant_daily_aware(bot: Bot, session, user) -> int:
         try:
             await mark_free_tier(redis, user.telegram_id, today.isoformat())
         except Exception as exc:
-            logger.warning('mark_free_tier failed', error=str(exc)[:200])
+            logger.warning("mark_free_tier failed", error=str(exc)[:200])
 
     return granted
