@@ -546,11 +546,17 @@ async def cb_sec_rotate(callback: CallbackQuery) -> None:
         await callback.message.edit_reply_markup(reply_markup=None)
     except Exception:
         pass
+    from html import escape
+
+    login_hint = (
+        f"🔗 Войди заново: {escape(settings.ADMIN_BASE_URL.rstrip('/'))}/admin/login"
+        if settings.ADMIN_BASE_URL
+        else "Открой страницу входа по настроенному адресу админ-панели."
+    )
     await callback.message.answer(
         "🔒 <b>Токен сменён — все прежние сессии сброшены.</b>\n\n"
         "Новый токен (нажми, чтобы скопировать; сохрани в менеджер паролей):\n"
-        f"<code>{new}</code>\n\n"
-        "🔗 Войди заново: https://admin.example.com/admin/login",
+        f"<code>{new}</code>\n\n" + login_hint,
         parse_mode="HTML",
         disable_web_page_preview=True,
     )

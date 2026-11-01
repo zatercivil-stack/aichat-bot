@@ -16,11 +16,7 @@ services:
     extra_hosts:
       - "host.docker.internal:host-gateway"
     ports:
-      # 25.05 БЕЗОПАСНОСТЬ: привязка ТОЛЬКО к localhost. Раньше «8181:8080»
-      # слушало 0.0.0.0 → дашборд/вебхук торчали наружу по http://<публ.IP>:8181
-      # (токен админки летел открытым текстом, минуя TLS). Теперь снаружи порт
-      # недоступен; Caddy ходит через localhost:8181 (см. /etc/caddy/Caddyfile)
-      # и отдаёт всё по HTTPS на admin.example.com.
+      # Expose only on loopback; serve admin/webhook through an HTTPS reverse proxy.
       - "127.0.0.1:8181:8080"
 
   postgres:

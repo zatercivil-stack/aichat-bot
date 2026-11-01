@@ -50,7 +50,6 @@ NAV_ITEMS = [
     ("overview", "📊", "Дашборд", "/admin/"),
     ("users", "👥", "Пользователи", "/admin/users"),
     ("support", "🆘", "Поддержка", "/admin/support"),
-    # отдельный дашборд вынесен на dashboard.example.com (см. astrobot/app/admin.py).
     ("_sec_money", "", "Деньги", None),
     ("finance", "💰", "Финансы", "/admin/finance"),
     ("payments", "💳", "Платежи", "/admin/payments"),

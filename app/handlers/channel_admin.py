@@ -25,16 +25,16 @@ from app.states import ChannelDraftState
 logger = structlog.get_logger(__name__)
 router = Router()
 
-ADMIN_ID = 0
+ADMIN_ID = settings.admin_ids_list[0] if settings.admin_ids_list else 0
 _DRAFT_KEY = "pending_review_post"  # JSON {caption, image_fid, topic, cta_type}
 
 
 def _is_admin(message: Message) -> bool:
-    return message.from_user.id in settings.admin_ids_list or message.from_user.id == ADMIN_ID
+    return message.from_user.id in settings.admin_ids_list
 
 
 def _is_admin_uid(uid: int) -> bool:
-    return uid in settings.admin_ids_list or uid == ADMIN_ID
+    return uid in settings.admin_ids_list
 
 
 def _draft_kb() -> InlineKeyboardMarkup:

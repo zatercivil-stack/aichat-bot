@@ -271,8 +271,7 @@ async def login(request: Request, token: str = Form(...)):
     if await _is_new_admin_ip(ip):
         await _alert_new_login(ip)
     resp = RedirectResponse("/admin/", status_code=302)
-    # secure=True — кука уходит только по HTTPS (дашборд за Caddy/TLS на
-    # admin.example.com). Без флага утекала бы по plain HTTP (24.05 фикс).
+    # Admin cookies are sent only over HTTPS through the configured TLS proxy.
     resp.set_cookie(
         COOKIE_NAME,
         token,

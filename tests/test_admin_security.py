@@ -97,3 +97,36 @@ async def test_rotate_token():
             await set_config_value(s, "admin_token_active", original or "")
             await s.commit()
         adm._ACTIVE_TOKEN = old_active
+
+
+@pytest.mark.parametrize("allowed", [True, False])
+def test_channel_admin_permissions_follow_configuration(monkeypatch, allowed):
+    from app.config import settings
+    from app.handlers.channel_admin import _is_admin_uid
+
+    monkeypatch.setattr(settings, "ADMIN_IDS", "123456" if allowed else "")
+    assert _is_admin_uid(123456) is allowed
+
+
+@pytest.mark.parametrize("base_url", ["https://admin.example.com", ""])
+async def test_token_rotation_uses_configured_admin_url(monkeypatch, base_url):
+    from types import SimpleNamespace
+    from unittest.mock import AsyncMock
+
+    from app.config import settings
+    from app.handlers.admin import cb_sec_rotate
+
+    monkeypatch.setattr(settings, "ADMIN_IDS", "123456")
+    monkeypatch.setattr(settings, "ADMIN_BASE_URL", base_url)
+    monkeypatch.setattr(adm, "rotate_admin_token", AsyncMock(return_value="test-rotation-value"))
+    callback = SimpleNamespace(
+        from_user=SimpleNamespace(id=123456),
+        answer=AsyncMock(),
+        message=SimpleNamespace(edit_reply_markup=AsyncMock(), answer=AsyncMock()),
+    )
+    await cb_sec_rotate(callback)
+    text = callback.message.answer.call_args.args[0]
+    if base_url:
+        assert base_url + "/admin/login" in text
+    else:
+        assert "https://" not in text

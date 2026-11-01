@@ -209,7 +209,7 @@ def _fit_to_caption(full_text: str) -> str:
 logger = structlog.get_logger(__name__)
 
 CHANNEL_ID = "@conturD"
-ADMIN_ID = 0
+ADMIN_ID = settings.admin_ids_list[0] if settings.admin_ids_list else 0
 
 # AI system prompt: каркас постов канала «🟣 Нейра».
 # Главная цель — посты должны быть НАТИВНОЙ воронкой к нашим продуктам
