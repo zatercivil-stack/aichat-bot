@@ -1,0 +1,8 @@
+[extend]
+useDefault = true
+
+[[rules]]
+id = "hardcoded-telegram-admin"
+description = "Telegram administrator IDs must come from private configuration"
+regex = '''(?i)\b(?:ADMIN_ID|ADMIN_CHAT_ID)\s*=\s*([1-9][0-9]{6,})\b'''
+secretGroup = 1
